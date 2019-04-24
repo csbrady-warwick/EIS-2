@@ -23,11 +23,12 @@
 !(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 !SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-MODULE eis_parser
+MODULE eis_parser_mod
 
   USE eis_header
   USE eis_raw_parser_mod
   USE eis_function_registry_mod
+  USE eis_stack_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: c_char_numeric = 1
@@ -37,12 +38,56 @@ MODULE eis_parser
   INTEGER, PARAMETER :: c_char_opcode = 5
   INTEGER, PARAMETER :: c_char_unknown = 1024
 
-  INTEGER :: last_block_type
+  TYPE :: eis_parser
+
+    PRIVATE
+    TYPE(eis_registry) :: registry
+    INTEGER :: last_block_type
+    LOGICAL :: init = .FALSE.
+    CONTAINS
+    PROCEDURE :: self_init => eip_self_init
+    PROCEDURE :: load_block => eip_load_block
+    PROCEDURE :: tokenize_subexpression_infix &
+        => eip_tokenize_subexpression_infix
+    PROCEDURE, PUBLIC :: add_function => eip_add_function
+    PROCEDURE, PUBLIC :: tokenize => eip_tokenize
+
+  END TYPE eis_parser
 
   PRIVATE
-  PUBLIC :: tokenize
+  PUBLIC :: eis_parser, display_tokens, display_tokens_inline
 
 CONTAINS
+
+  SUBROUTINE test(uu)
+    INTEGER(eis_i8), INTENT(INOUT) :: uu
+  END SUBROUTINE test
+
+
+
+  SUBROUTINE eip_self_init(this)
+
+    CLASS(eis_parser) :: this
+    this%init = .TRUE.
+    CALL this%registry%add_operator('+', test, c_assoc_ra, 4, unary = .TRUE.)
+    CALL this%registry%add_operator('-', test, c_assoc_ra, 4, unary = .TRUE.)
+    CALL this%registry%add_operator('+', test, c_assoc_a, 2)
+    CALL this%registry%add_operator('-', test, c_assoc_la, 2)
+    CALL this%registry%add_operator('*', test, c_assoc_a, 3)
+    CALL this%registry%add_operator('/', test, c_assoc_la, 3)
+    CALL this%registry%add_operator('^', test, c_assoc_ra, 4)
+    CALL this%registry%add_operator('e', test, c_assoc_la, 4)
+    CALL this%registry%add_operator('lt', test, c_assoc_la, 1)
+    CALL this%registry%add_operator('gt', test, c_assoc_la, 1)
+    CALL this%registry%add_operator('eq', test, c_assoc_la, 1)
+    CALL this%registry%add_operator('and', test, c_assoc_la, 0)
+    CALL this%registry%add_operator('or', test, c_assoc_la, 0)
+
+    CALL this%registry%add_function('test', test, 1)
+
+  END SUBROUTINE eip_self_init
+
+
 
   FUNCTION char_type(chr)
 
@@ -70,20 +115,20 @@ CONTAINS
 
 
 
-  SUBROUTINE load_block(name, iblock)
+  SUBROUTINE eip_load_block(this, name, iblock)
 
+    CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
     INTEGER :: work
     REAL(eis_num) :: value
-    PROCEDURE(parser_eval_fn), POINTER :: fn_ptr
+    LOGICAL :: can_be_unary
 
     iblock%ptype = c_pt_bad
     iblock%value = 0
     iblock%numerical_data = 0.0_eis_num
-#ifdef PARSER_DEBUG
-    iblock%text = TRIM(name)
-#endif
+    IF (ALLOCATED(iblock%text)) DEALLOCATE(iblock%text)
+    ALLOCATE(iblock%text, SOURCE = name)
     work = 0
 
     IF (LEN(TRIM(name)) == 0) THEN
@@ -93,15 +138,39 @@ CONTAINS
       RETURN
     END IF
 
+    work = as_parenthesis(name)
+    IF (work /= 0) THEN
+      ! block is a parenthesis
+      iblock%ptype = c_pt_parenthesis
+      iblock%value = work
+      RETURN
+    END IF
+
+    IF (strcmp(name, ',')) THEN
+      iblock%ptype = c_pt_separator
+      iblock%value = 0
+      RETURN
+    END IF
+
     value = parse_string_as_real(name, work)
     IF (IAND(work, eis_err_bad_value) == 0) THEN
       ! block is a simple variable
       iblock%ptype = c_pt_variable
       iblock%value = 0
       iblock%numerical_data = value
+      RETURN
     END IF
 
-  END SUBROUTINE load_block
+    can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
+          .OR. this%last_block_type == c_pt_constant &
+          .OR. this%last_block_type == c_pt_default_constant &
+          .OR. this%last_block_type == c_pt_deck_constant &
+          .OR. this%last_block_type == c_pt_species &
+          .OR. this%last_block_type == c_pt_subset)
+
+    CALL this%registry%fill_block(name, iblock, can_be_unary)
+
+  END SUBROUTINE eip_load_block
 
 
 
@@ -123,12 +192,12 @@ CONTAINS
 
 
 
-  SUBROUTINE tokenize(expression, output, err, ispecies)
+  SUBROUTINE eip_tokenize(this, expression, output, err)
 
+    CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: expression
     TYPE(eis_stack), INTENT(INOUT) :: output
     INTEGER, INTENT(INOUT) :: err
-    INTEGER, INTENT(IN), OPTIONAL :: ispecies
     LOGICAL :: maybe_e
 
     CHARACTER(LEN=500) :: current
@@ -136,6 +205,9 @@ CONTAINS
 
     TYPE(eis_stack) :: stack
     TYPE(eis_stack_element) :: iblock
+
+    IF (.NOT. this%init) CALL this%self_init()
+    IF (.NOT. output%init) CALL initialise_stack(output)
 
     CALL initialise_stack(stack)
 
@@ -147,7 +219,7 @@ CONTAINS
 
     err = eis_err_none
 
-    last_block_type = c_pt_null
+    this%last_block_type = c_pt_null
 
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
@@ -165,11 +237,8 @@ CONTAINS
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE
-#ifndef RPN_DECK
-        CALL tokenize_subexpression_infix(current, iblock, stack, output, err)
-#else
-        CALL tokenize_subexpression_rpn(current, iblock, stack, output, err)
-#endif
+        CALL this%tokenize_subexpression_infix(current, iblock, stack, output, &
+            err)
         IF (err /= eis_err_none) RETURN
         current(:) = ' '
         current_pointer = 2
@@ -179,29 +248,45 @@ CONTAINS
       END IF
     END DO
 
-#ifndef RPN_DECK
-    CALL tokenize_subexpression_infix(current, iblock, stack, output, err)
-#else
-    CALL tokenize_subexpression_rpn(current, iblock, stack, output, err)
-#endif
+    CALL this%tokenize_subexpression_infix(current, iblock, stack, output, err)
     IF (err /= eis_err_none) RETURN
-
-    CALL fixup_species_functions(current, stack, output, ispecies)
 
     DO i = 1, stack%stack_point
       CALL pop_to_stack(stack, output)
     END DO
     CALL deallocate_stack(stack)
 
-  END SUBROUTINE tokenize
+  END SUBROUTINE eip_tokenize
 
 
 
-  SUBROUTINE tokenize_subexpression_infix(current, iblock, stack, output, err)
+  SUBROUTINE eip_add_function(this, name, fn, expected_params)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_eval_fn) :: fn
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    INTEGER :: params
+
+    IF (PRESENT(expected_params)) THEN
+      params = expected_params
+    ELSE
+      params = -1
+    END IF
+
+    CALL this%registry%add_function(name, fn, params)
+
+  END SUBROUTINE eip_add_function
+
+
+
+  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, stack, &
+      output, err)
 
     ! This subroutine tokenizes input in normal infix maths notation
     ! It uses Dijkstra's shunting yard algorithm to convert to RPN
 
+    CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: current
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
     TYPE(eis_stack), INTENT(INOUT) :: stack, output
@@ -212,10 +297,7 @@ CONTAINS
     IF (ICHAR(current(1:1)) == 0) RETURN
 
     ! Populate the block
-    CALL load_block(current, iblock)
-#ifdef PARSER_DEBUG
-    iblock%text = TRIM(current)
-#endif
+    CALL this%load_block(current, iblock)
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
       CALL deallocate_stack(stack)
@@ -224,7 +306,7 @@ CONTAINS
 
     IF (iblock%ptype /= c_pt_parenthesis &
         .AND. iblock%ptype /= c_pt_null) THEN
-      last_block_type = iblock%ptype
+      this%last_block_type = iblock%ptype
     END IF
 
     IF (iblock%ptype == c_pt_deck_constant) THEN
@@ -249,7 +331,7 @@ CONTAINS
             IF (stack%stack_point /= 0) THEN
               CALL stack_snoop(stack, block2, 0)
               IF (block2%ptype == c_pt_function) THEN
-                CALL add_function_to_stack(block2%value, stack, output)
+                !Add stored function here
               END IF
             END IF
             EXIT
@@ -293,11 +375,11 @@ CONTAINS
           CALL push_to_stack(stack, iblock)
           EXIT
         ELSE
-          IF (opcode_assoc(iblock%value) == c_assoc_la &
-              .OR. opcode_assoc(iblock%value) == c_assoc_a) THEN
+          IF (iblock%associativity == c_assoc_la &
+              .OR. iblock%associativity == c_assoc_a) THEN
             ! Operator is full associative or left associative
-            IF (opcode_precedence(iblock%value) &
-                <= opcode_precedence(block2%value)) THEN
+            IF (iblock%precedence &
+                <= block2%precedence) THEN
               CALL pop_to_stack(stack, output)
               CYCLE
             ELSE
@@ -305,8 +387,8 @@ CONTAINS
               EXIT
             END IF
           ELSE
-            IF (opcode_precedence(iblock%value) &
-                < opcode_precedence(block2%value)) THEN
+            IF (iblock%precedence &
+                < block2%precedence) THEN
               CALL pop_to_stack(stack, output)
               CYCLE
             ELSE
@@ -318,7 +400,7 @@ CONTAINS
       END DO
     END IF
 
-  END SUBROUTINE tokenize_subexpression_infix
+  END SUBROUTINE eip_tokenize_subexpression_infix
 
 
 
@@ -339,4 +421,15 @@ CONTAINS
 
   END SUBROUTINE display_tokens
 
-END MODULE eis_parser
+
+  SUBROUTINE display_tokens_inline(token_list)
+    TYPE(eis_stack), INTENT(IN) :: token_list
+    INTEGER :: i
+
+    DO i = 1, token_list%stack_point
+      WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%entries(i)%text) // " "
+    END DO
+    WRITE(*,*) NEW_LINE('A')
+  END SUBROUTINE display_tokens_inline
+
+END MODULE eis_parser_mod

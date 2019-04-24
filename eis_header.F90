@@ -15,11 +15,15 @@ MODULE eis_header
       REAL(eis_num), INTENT(IN) :: item
     END SUBROUTINE stack_set_fn
 
-    SUBROUTINE parser_eval_fn(getter, setter, errcode)
+!    SUBROUTINE parser_eval_fn(getter, setter, errcode)
+!      IMPORT stack_set_fn, stack_get_fn, eis_i8
+!      PROCEDURE(stack_get_fn) :: getter
+!      PROCEDURE(stack_set_fn) :: setter
+!      INTEGER(eis_i8) :: errcode
+!    END SUBROUTINE
+    SUBROUTINE parser_eval_fn(errcode)
       IMPORT stack_set_fn, stack_get_fn, eis_i8
-      PROCEDURE(stack_get_fn) :: getter
-      PROCEDURE(stack_set_fn) :: setter
-      INTEGER(eis_i8) :: errcode
+      INTEGER(eis_i8), INTENT(INOUT) :: errcode
     END SUBROUTINE
   END INTERFACE
 
@@ -45,6 +49,7 @@ MODULE eis_header
 
   TYPE eis_stack_element
     INTEGER :: ptype
+    INTEGER :: associativity, precedence
     INTEGER :: value
     REAL(eis_num) :: numerical_data
     CHARACTER(LEN=:), ALLOCATABLE :: text

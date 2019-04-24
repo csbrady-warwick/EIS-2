@@ -15,7 +15,7 @@ MODULE eis_named_store_mod
   END TYPE named_store_item
 
   TYPE :: named_store_inner_list
-    TYPE(named_store_item), DIMENSION(:), POINTER :: list
+    TYPE(named_store_item), DIMENSION(:), POINTER :: list => NULL()
     CONTAINS
     PROCEDURE, PRIVATE :: get_index => nsil_get_index
     PROCEDURE :: get => nsil_get
@@ -230,6 +230,7 @@ CONTAINS
     CLASS(*), POINTER :: item
     INTEGER(INT64) :: bucket
 
+    item => NULL()
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
 
     bucket = this%hash(name)

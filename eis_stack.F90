@@ -166,23 +166,4 @@ MODULE eis_stack_mod
 
   END SUBROUTINE initialise_stack_element
 
-
-
-  SUBROUTINE set_stack_zero(stack, n_zeros)
-
-    TYPE(eis_stack), INTENT(INOUT) :: stack
-    INTEGER, INTENT(IN), OPTIONAL :: n_zeros
-    INTEGER :: zmax, iz, errcode
-
-    zmax = 1
-    IF (PRESENT(n_zeros)) zmax = n_zeros
-
-    CALL deallocate_stack(stack)
-    CALL initialise_stack(stack)
-    DO iz = 1, zmax
-      CALL tokenize('0', stack, errcode)
-    END DO
-
-  END SUBROUTINE set_stack_zero
-
 END MODULE eis_stack_mod

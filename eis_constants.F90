@@ -31,6 +31,7 @@ MODULE eis_constants
   INTEGER, PARAMETER :: c_pt_null = 1025
 
   ! Associativity constants
+  INTEGER, PARAMETER :: c_assoc_null = 0
   INTEGER, PARAMETER :: c_assoc_a = 1
   INTEGER, PARAMETER :: c_assoc_la = 2
   INTEGER, PARAMETER :: c_assoc_ra = 3
