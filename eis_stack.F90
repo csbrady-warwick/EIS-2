@@ -166,4 +166,33 @@ MODULE eis_stack_mod
 
   END SUBROUTINE initialise_stack_element
 
+
+
+  SUBROUTINE display_tokens(token_list)
+
+    TYPE(eis_stack), INTENT(IN) :: token_list
+    INTEGER :: i
+
+      DO i = 1, token_list%stack_point
+        PRINT *, 'Type', token_list%entries(i)%ptype
+        PRINT *, 'Data', token_list%entries(i)%value
+        PRINT *, 'NumData', token_list%entries(i)%numerical_data
+        PRINT *, 'Text :', TRIM(token_list%entries(i)%text)
+        PRINT *, '---------------'
+      END DO
+
+  END SUBROUTINE display_tokens
+
+
+
+  SUBROUTINE display_tokens_inline(token_list)
+    TYPE(eis_stack), INTENT(IN) :: token_list
+    INTEGER :: i
+
+    DO i = 1, token_list%stack_point
+      WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%entries(i)%text) // " "
+    END DO
+    WRITE(*,*) NEW_LINE('A')
+  END SUBROUTINE display_tokens_inline
+
 END MODULE eis_stack_mod

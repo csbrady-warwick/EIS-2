@@ -29,6 +29,7 @@ MODULE eis_parser_mod
   USE eis_raw_parser_mod
   USE eis_function_registry_mod
   USE eis_stack_mod
+  USE eis_tree_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: c_char_numeric = 1
@@ -55,12 +56,14 @@ MODULE eis_parser_mod
   END TYPE eis_parser
 
   PRIVATE
-  PUBLIC :: eis_parser, display_tokens, display_tokens_inline
+  PUBLIC :: eis_parser
 
 CONTAINS
 
-  SUBROUTINE test(uu)
-    INTEGER(eis_i8), INTENT(INOUT) :: uu
+  SUBROUTINE test(getter, setter, errcode)
+    PROCEDURE(stack_get_fn) :: getter
+    PROCEDURE(stack_set_fn) :: setter
+    INTEGER(eis_i8) :: errcode
   END SUBROUTINE test
 
 
@@ -83,8 +86,36 @@ CONTAINS
     CALL this%registry%add_operator('and', test, c_assoc_la, 0)
     CALL this%registry%add_operator('or', test, c_assoc_la, 0)
 
-    CALL this%registry%add_function('test', test, 1)
+    CALL this%registry%add_variable('x', test)
+    CALL this%registry%add_variable('y', test)
+    CALL this%registry%add_variable('x_spot', test)
+    CALL this%registry%add_variable('pi', test)
+    CALL this%registry%add_variable('w_0', test)
+    CALL this%registry%add_variable('lambda0', test)
 
+    CALL this%registry%add_function('test', test, 2)
+    CALL this%registry%add_function('abs', test, 1)
+    CALL this%registry%add_function('floor', test, 1)
+    CALL this%registry%add_function('ceil', test, 1)
+    CALL this%registry%add_function('nint', test, 1)
+    CALL this%registry%add_function('sqrt', test, 1)
+    CALL this%registry%add_function('sin', test, 1)
+    CALL this%registry%add_function('cos', test, 1)
+    CALL this%registry%add_function('tan', test, 1)
+    CALL this%registry%add_function('asin', test, 1)
+    CALL this%registry%add_function('acos', test, 1)
+    CALL this%registry%add_function('atan', test, 1)
+    CALL this%registry%add_function('atan2', test, 2)
+    CALL this%registry%add_function('sinh', test, 1)
+    CALL this%registry%add_function('cosh',test, 1)
+    CALL this%registry%add_function('tanh',test, 1)
+    CALL this%registry%add_function('exp', test, 1)
+    CALL this%registry%add_function('loge', test, 1)
+    CALL this%registry%add_function('log10', test, 1)
+    CALL this%registry%add_function('log_base', test, 1)
+    CALL this%registry%add_function('gauss', test, 3)
+    CALL this%registry%add_function('semigauss', test, 4)
+    CALL this%registry%add_function('supergauss', test, 4)
   END SUBROUTINE eip_self_init
 
 
@@ -128,7 +159,7 @@ CONTAINS
     iblock%value = 0
     iblock%numerical_data = 0.0_eis_num
     IF (ALLOCATED(iblock%text)) DEALLOCATE(iblock%text)
-    ALLOCATE(iblock%text, SOURCE = name)
+    ALLOCATE(iblock%text, SOURCE = TRIM(name))
     work = 0
 
     IF (LEN(TRIM(name)) == 0) THEN
@@ -152,15 +183,6 @@ CONTAINS
       RETURN
     END IF
 
-    value = parse_string_as_real(name, work)
-    IF (IAND(work, eis_err_bad_value) == 0) THEN
-      ! block is a simple variable
-      iblock%ptype = c_pt_variable
-      iblock%value = 0
-      iblock%numerical_data = value
-      RETURN
-    END IF
-
     can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
           .OR. this%last_block_type == c_pt_constant &
           .OR. this%last_block_type == c_pt_default_constant &
@@ -169,6 +191,16 @@ CONTAINS
           .OR. this%last_block_type == c_pt_subset)
 
     CALL this%registry%fill_block(name, iblock, can_be_unary)
+    IF (iblock%ptype /= c_pt_bad) RETURN
+
+    value = parse_string_as_real(name, work)
+    IF (IAND(work, eis_err_bad_value) == 0) THEN
+      ! block is a simple variable
+      iblock%ptype = c_pt_constant
+      iblock%value = 0
+      iblock%numerical_data = value
+      RETURN
+    END IF
 
   END SUBROUTINE eip_load_block
 
@@ -221,6 +253,8 @@ CONTAINS
 
     this%last_block_type = c_pt_null
 
+    PRINT *,'Tokenizing ', TRIM(expression)
+
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
       ! This is a bit of a hack.
@@ -244,7 +278,8 @@ CONTAINS
         current_pointer = 2
         current(1:1) = expression(i:i)
         current_type = ptype
-        maybe_e = iblock%ptype == c_pt_variable
+        maybe_e = (iblock%ptype == c_pt_variable) .OR. (iblock%ptype &
+            == c_pt_constant)
       END IF
     END DO
 
@@ -255,6 +290,7 @@ CONTAINS
       CALL pop_to_stack(stack, output)
     END DO
     CALL deallocate_stack(stack)
+    CALL eis_build_tree(output) 
 
   END SUBROUTINE eip_tokenize
 
@@ -298,6 +334,7 @@ CONTAINS
 
     ! Populate the block
     CALL this%load_block(current, iblock)
+    PRINT *,'Block ', TRIM(current), ' is type ', iblock%ptype
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
       CALL deallocate_stack(stack)
@@ -364,6 +401,7 @@ CONTAINS
         IF (stack%stack_point == 0) THEN
           ! stack is empty, so just push operator onto stack and
           ! leave loop
+          PRINT *,'Operator to stack ', TRIM(current)
           CALL push_to_stack(stack, iblock)
           EXIT
         END IF
@@ -401,35 +439,5 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_tokenize_subexpression_infix
-
-
-
-  SUBROUTINE display_tokens(token_list)
-
-    TYPE(eis_stack), INTENT(IN) :: token_list
-    INTEGER :: i
-
-      DO i = 1, token_list%stack_point
-        PRINT *, 'Type', token_list%entries(i)%ptype
-        PRINT *, 'Data', token_list%entries(i)%value
-        PRINT *, 'NumData', token_list%entries(i)%numerical_data
-#ifdef PARSER_DEBUG
-        PRINT *, 'Text :', TRIM(token_list%entries(i)%text)
-#endif
-        PRINT *, '---------------'
-      END DO
-
-  END SUBROUTINE display_tokens
-
-
-  SUBROUTINE display_tokens_inline(token_list)
-    TYPE(eis_stack), INTENT(IN) :: token_list
-    INTEGER :: i
-
-    DO i = 1, token_list%stack_point
-      WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%entries(i)%text) // " "
-    END DO
-    WRITE(*,*) NEW_LINE('A')
-  END SUBROUTINE display_tokens_inline
 
 END MODULE eis_parser_mod

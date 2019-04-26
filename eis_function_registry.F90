@@ -8,6 +8,8 @@ MODULE eis_function_registry_mod
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: unary_fn => NULL()
+    LOGICAL :: can_simplify = .TRUE.
+    REAL(eis_num) :: value = 0.0_eis_num
     INTEGER :: ptype = c_pt_null
     INTEGER :: associativity = c_assoc_null
     INTEGER :: precedence = 0
@@ -17,11 +19,14 @@ MODULE eis_function_registry_mod
   TYPE :: eis_registry
     PRIVATE
     TYPE(named_store) :: const_table
+    TYPE(named_store) :: var_table
     TYPE(named_store) :: fn_table
     TYPE(named_store) :: op_table
     TYPE(named_store) :: uop_table
     CONTAINS
+    
     PROCEDURE, PUBLIC :: add_constant => eir_add_constant
+    PROCEDURE, PUBLIC :: add_variable => eir_add_variable
     PROCEDURE, PUBLIC :: add_function => eir_add_function
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
@@ -34,15 +39,15 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_constant(this, name, fn)
+  SUBROUTINE eir_add_constant(this, name, value)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
-    PROCEDURE(parser_eval_fn) :: fn
+    REAL(eis_num), INTENT(IN) :: value
     TYPE(eis_function_entry) :: temp
-
-    temp%fn_ptr => fn
-    temp%ptype = c_pt_function
+    
+    temp%ptype = c_pt_constant
+    temp%value = value
 
     CALL this%const_table%store(name, temp)
 
@@ -50,17 +55,37 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_function(this, name, fn, expected_parameters)
+  SUBROUTINE eir_add_variable(this, name, fn, can_simplify)
+
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_eval_fn) :: fn
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    TYPE(eis_function_entry) :: temp
+
+    temp%ptype = c_pt_variable
+    temp%fn_ptr => fn
+    IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
+
+    CALL this%const_table%store(name, temp)
+
+  END SUBROUTINE eir_add_variable
+
+
+
+  SUBROUTINE eir_add_function(this, name, fn, expected_parameters, can_simplify)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN) :: expected_parameters
+    LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
     temp%ptype = c_pt_function
     temp%expected_parameters = expected_parameters
+    IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
 
     CALL this%fn_table%store(name, temp)
 
@@ -68,12 +93,14 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, unary)
+  SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
+      can_simplify, unary)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN) :: associativity, precedence
+    LOGICAL, OPTIONAL :: can_simplify
     LOGICAL, OPTIONAL :: unary
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
@@ -82,13 +109,16 @@ CONTAINS
     temp%ptype = c_pt_operator
     temp%associativity = associativity
     temp%precedence = precedence
+    IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
 
     l_unary = .FALSE.
     IF (PRESENT(unary)) l_unary = unary
 
     IF (.NOT. l_unary) THEN
+      temp%expected_parameters = 2
       CALL this%op_table%store(name, temp)
     ELSE
+      temp%expected_parameters = 1
       CALL this%uop_table%store(name, temp)
     END IF
 
@@ -107,6 +137,7 @@ CONTAINS
 
     temp => NULL()
     gptr => this%const_table%get(name)
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%var_table%get(name)
     IF (.NOT. ASSOCIATED(gptr)) gptr => this%fn_table%get(name)
     IF (unary_ops) THEN
       IF (.NOT. ASSOCIATED(gptr)) gptr => this%uop_table%get(name)
@@ -125,6 +156,8 @@ CONTAINS
       block_in%ptype = temp%ptype
       block_in%associativity = temp%associativity
       block_in%precedence = temp%precedence
+      block_in%params = temp%expected_parameters
+      block_in%can_simplify = temp%can_simplify
     ELSE
       block_in%ptype = c_pt_bad
     END IF
