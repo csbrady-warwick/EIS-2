@@ -49,7 +49,7 @@ CONTAINS
   !> @brief
   !> Deallocates the item held in the store
   !> @param[inout] this
-  SUBROUTINE nsi_cleanup(this)
+  PURE ELEMENTAL SUBROUTINE nsi_cleanup(this)
     CLASS(named_store_item), INTENT(INOUT) :: this !< self pointer
 
     IF (ASSOCIATED(this%item)) DEALLOCATE(this%item)
@@ -75,7 +75,7 @@ CONTAINS
   !> @brief
   !> Destructor for the item store. Deallocates the item held in the store
   !> @param[inout] this
-  SUBROUTINE nsi_destructor(this)
+  PURE ELEMENTAL SUBROUTINE nsi_destructor(this)
     TYPE(named_store_item), INTENT(INOUT) :: this !< self pointer
 
     CALL this%cleanup()

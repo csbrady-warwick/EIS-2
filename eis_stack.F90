@@ -26,10 +26,21 @@ MODULE eis_stack_mod
 
     stack%stack_point = 0
     stack%stack_size = 0
-    IF (stack%init) DEALLOCATE(stack%entries)
+    IF (stack%init) THEN
+      CALL deallocate_stack_element(stack%entries)
+      DEALLOCATE(stack%entries)
+    END IF
     stack%init = .FALSE.
 
   END SUBROUTINE deallocate_stack
+
+
+
+  PURE ELEMENTAL SUBROUTINE deallocate_stack_element(element)
+    TYPE(eis_stack_element), INTENT(INOUT) :: element
+
+    IF (ALLOCATED(element%text)) DEALLOCATE(element%text)
+  END SUBROUTINE deallocate_stack_element
 
 
 
@@ -39,34 +50,46 @@ MODULE eis_stack_mod
     TYPE(eis_stack), INTENT(OUT) :: copy
 
     copy = stack
-    ALLOCATE(copy%entries(copy%stack_size))
-    copy%entries(1:copy%stack_point) = stack%entries(1:copy%stack_point)
 
   END SUBROUTINE copy_stack
+
+
+
+
+  SUBROUTINE grow_stack(stack, new_elements)
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER, INTENT(IN) :: new_elements
+    TYPE(eis_stack_element), ALLOCATABLE :: new_buffer(:)
+    INTEGER :: i
+
+    IF (.NOT. stack%init) RETURN
+    IF (new_elements < stack%stack_point) RETURN
+
+    ALLOCATE(new_buffer(new_elements))
+    new_buffer(1:stack%stack_point) = stack%entries(1:stack%stack_point)
+    DEALLOCATE(stack%entries)
+    CALL MOVE_ALLOC(new_buffer, stack%entries)
+    stack%stack_size = new_elements
+    DO i = stack%stack_point+1,stack%stack_size
+      CALL initialise_stack_element(stack%entries(i))
+    END DO
+
+  END SUBROUTINE grow_stack
 
 
 
   SUBROUTINE append_stack(stack, append)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack, append
-    TYPE(eis_stack_element), POINTER :: old_buffer(:)
     INTEGER :: i, n, old_size, old_stack_point
 
     old_stack_point = stack%stack_point
-    stack%stack_point = old_stack_point + append%stack_point
 
-    IF (stack%stack_point > stack%stack_size) THEN
-      old_size = stack%stack_size
-      stack%stack_size = 2 * stack%stack_point
-      old_buffer => stack%entries
-      ALLOCATE(stack%entries(stack%stack_size))
-      stack%entries(1:old_size) = old_buffer(1:old_size)
-      DO i = old_stack_point+1,stack%stack_size
-        CALL initialise_stack_element(stack%entries(i))
-      END DO
-      DEALLOCATE(old_buffer)
+    IF (stack%stack_point + append%stack_point > stack%stack_size) THEN
+      CALL grow_stack(stack, 2 * (stack%stack_point + append%stack_point))
     END IF
 
+    stack%stack_point = old_stack_point + append%stack_point
     n = old_stack_point + 1
     DO i = 1,append%stack_point
       stack%entries(n) = append%entries(i)
@@ -83,23 +106,13 @@ MODULE eis_stack_mod
 
     TYPE(eis_stack_element), INTENT(IN) :: value
     TYPE(eis_stack), INTENT(INOUT) :: stack
-    TYPE(eis_stack_element), POINTER :: old_buffer(:)
     INTEGER :: i, old_size
 
-    stack%stack_point = stack%stack_point + 1
-
-    IF (stack%stack_point > stack%stack_size) THEN
-      old_size = stack%stack_size
-      stack%stack_size = 2 * stack%stack_size
-      old_buffer => stack%entries
-      ALLOCATE(stack%entries(stack%stack_size))
-      stack%entries(1:old_size) = old_buffer(1:old_size)
-      DO i = old_size+1,stack%stack_size
-        CALL initialise_stack_element(stack%entries(i))
-      END DO
-      DEALLOCATE(old_buffer)
+    IF (stack%stack_point + 1 > stack%stack_size) THEN
+      CALL grow_stack(stack, 2 * stack%stack_size)
     END IF
 
+    stack%stack_point = stack%stack_point + 1
     stack%entries(stack%stack_point) = value
 
   END SUBROUTINE push_to_stack

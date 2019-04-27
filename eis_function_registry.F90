@@ -48,6 +48,7 @@ CONTAINS
     
     temp%ptype = c_pt_constant
     temp%value = value
+    temp%can_simplify = .TRUE.
 
     CALL this%const_table%store(name, temp)
 

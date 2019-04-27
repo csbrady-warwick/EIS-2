@@ -8,71 +8,186 @@ MODULE eis_tree_mod
   TYPE :: eis_tree_item
     TYPE(eis_stack_element) :: value
     TYPE(eis_tree_item), DIMENSION(:), POINTER :: nodes => NULL()
+    LOGICAL :: is_new = .FALSE.
+    CONTAINS
+    FINAL :: eit_destructor
   END TYPE eis_tree_item
 
   CONTAINS
 
+  PURE ELEMENTAL SUBROUTINE eit_destructor(this)
+    TYPE(eis_tree_item), INTENT(INOUT) :: this
+    INTEGER :: inode
+
+    IF (ASSOCIATED(this%nodes)) DEALLOCATE(this%nodes)
+    CALL deallocate_stack_element(this%value)
+
+  END SUBROUTINE eit_destructor
+
+
+  SUBROUTINE eis_simplify_stack(stack, stack_out)
+
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: stack_out
+    TYPE(eis_stack), POINTER :: simplified
+    TYPE(eis_tree_item), POINTER :: root
+    INTEGER :: sp
+
+    IF (.NOT. stack%init) RETURN
+    IF (.NOT. PRESENT(stack_out)) THEN
+      ALLOCATE(simplified)
+    ELSE
+      simplified => stack_out
+    END IF
+
+    IF (.NOT. simplified%init) CALL initialise_stack(simplified)
+    sp = stack%stack_point
+    DO WHILE (sp > 1)
+      PRINT *,'Running simplify'
+      ALLOCATE(root)
+      CALL eis_build_node(stack, sp, root)
+      CALL eis_simplify_tree(root)
+      CALL eis_tree_to_dot(root)
+      CALL eis_tree_to_stack(root, simplified)
+      DEALLOCATE(root)
+    END DO
+
+    IF (.NOT. PRESENT(stack_out)) THEN
+      CALL deallocate_stack(stack)
+      CALL copy_stack(simplified, stack)
+      CALL deallocate_stack(simplified)
+      DEALLOCATE(simplified)
+    END IF
+
+  END SUBROUTINE eis_simplify_stack
+
+
+
   SUBROUTINE eis_build_tree(stack)
     TYPE(eis_stack) :: stack
-    TYPE(eis_tree_item) :: top
+    TYPE(eis_tree_item), POINTER :: top
     TYPE(eis_stack) :: stack2
     INTEGER :: sp
 
     sp = stack%stack_point
-
-    top = eis_build_node(stack, sp)
+    ALLOCATE(top)
+    CALL eis_build_node(stack, sp, top)
     CALL eis_tree_to_dot(top)
+
+!    CALL eis_simplify_tree(top)
+!    CALL eis_tree_to_dot(top)
 
     CALL initialise_stack(stack2)
     CALL eis_tree_to_stack(top, stack2)
 
     PRINT *,'Reconstructed tree is '
     CALL display_tokens_inline(stack2)
+    CALL deallocate_stack(stack2)
+    DEALLOCATE(top)
 
   END SUBROUTINE eis_build_tree
 
 
 
-  RECURSIVE FUNCTION eis_build_node(stack, curindex) RESULT(current)
+  RECURSIVE SUBROUTINE eis_build_node(stack, curindex, current)
     TYPE(eis_stack) :: stack
     INTEGER, INTENT(INOUT) :: curindex
-    TYPE(eis_tree_item) :: current
+    TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
+    TYPE(eis_tree_item), POINTER :: p
     INTEGER :: iparam
 
     current%value = stack%entries(curindex)
-!    PRINT *, current%value%text
 
-    IF (stack%entries(curindex)%ptype == c_pt_function .OR. &
-        stack%entries(curindex)%ptype == c_pt_operator) THEN
+    IF (current%value%ptype == c_pt_function .OR. &
+        current%value%ptype == c_pt_operator) THEN
         ALLOCATE(current%nodes(stack%entries(curindex)%params))
         DO iparam = 1, stack%entries(curindex)%params
           curindex = curindex - 1
-          current%nodes(iparam) = eis_build_node(stack, curindex)
+          p => current%nodes(iparam)
+          CALL eis_build_node(stack, curindex, p)
         END DO
     END IF
 
-  END FUNCTION eis_build_node
+  END SUBROUTINE eis_build_node
+
+
+
+  SUBROUTINE move_tree_item(source, dest)
+    TYPE(eis_tree_item), INTENT(INOUT) :: source
+    TYPE(eis_tree_item), INTENT(OUT) :: dest
+
+    dest = source
+    source%nodes => NULL()
+
+  END SUBROUTINE move_tree_item
 
 
 
   RECURSIVE SUBROUTINE eis_simplify_tree(tree)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     INTEGER :: inode
-    LOGICAL :: can_simplify
+    LOGICAL :: can_simplify, so1, so2
     CHARACTER(LEN=:), ALLOCATABLE :: temp, temp2
-
-    IF (.NOT. tree%value%can_simplify) RETURN
+    CHARACTER(LEN=1) :: ob1, cb1, ob2, cb2
 
     IF (ASSOCIATED(tree%nodes)) THEN
       can_simplify = .TRUE.
+      IF (tree%value%ptype == c_pt_operator .AND. SIZE(tree%nodes) == 2) THEN
+        so1 = ASSOCIATED(tree%nodes(1)%nodes)
+        so2 = ASSOCIATED(tree%nodes(2)%nodes)
+      END IF
+       
       DO inode = SIZE(tree%nodes), 1, -1
-        CALL eis_simpify_tree(tree%nodes(inode)
+        CALL eis_simplify_tree(tree%nodes(inode))
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify
       END DO
+
       IF (can_simplify) THEN
-        ALLOCATE(temp, SOURCE = tree%value%text // "(")
-        DO inode = SIZE(tree%nodes), 1, -1
-        END DO
+        IF (tree%value%ptype == c_pt_function) THEN
+          ALLOCATE(temp, SOURCE = tree%value%text // "(")
+          DO inode = SIZE(tree%nodes), 1, -1
+            IF (inode > 1) THEN
+              ALLOCATE(temp2, SOURCE = temp // tree%nodes(inode)%value%text &
+                  // ",")
+            ELSE
+              ALLOCATE(temp2, SOURCE = temp // tree%nodes(inode)%value%text)
+            END IF
+            DEALLOCATE(temp)
+            CALL MOVE_ALLOC(temp2, temp)
+          END DO
+          ALLOCATE(temp2, SOURCE = temp // ")")
+          DEALLOCATE(temp)
+          DEALLOCATE(tree%value%text)
+          CALL MOVE_ALLOC(temp2, tree%value%text)
+        ELSE
+          IF (SIZE(tree%nodes) == 1) THEN
+            ALLOCATE(temp, SOURCE = "("//tree%value%text &
+                // tree%nodes(1)%value%text // ")")
+          ELSE
+            IF (so2) THEN
+              ob2="("; cb2=")"
+            ELSE
+              ob2=""; cb2=""
+            END IF
+
+            IF (so1) THEN
+              ob1="("; cb1=")"
+            ELSE
+              ob1=""; cb1=""
+            END IF
+
+            ALLOCATE(temp, SOURCE = TRIM(ob2)//tree%nodes(2)%value%text&
+                //TRIM(cb2) &
+                // tree%value%text // TRIM(ob1) // tree%nodes(1)%value%text &
+                //TRIM(cb1))
+          END IF
+          DEALLOCATE(tree%value%text)
+          CALL MOVE_ALLOC(temp, tree%value%text)
+        END IF
+        tree%value%ptype = c_pt_constant
+        DEALLOCATE(tree%nodes)
+      ELSE
+        tree%value%can_simplify = .FALSE.
       END IF
     END IF
 

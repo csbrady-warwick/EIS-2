@@ -86,9 +86,9 @@ CONTAINS
     CALL this%registry%add_operator('and', test, c_assoc_la, 0)
     CALL this%registry%add_operator('or', test, c_assoc_la, 0)
 
-    CALL this%registry%add_variable('x', test)
-    CALL this%registry%add_variable('y', test)
-    CALL this%registry%add_variable('x_spot', test)
+    CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
+    CALL this%registry%add_variable('y', test, can_simplify = .FALSE.)
+    CALL this%registry%add_variable('x_spot', test, can_simplify = .TRUE.)
     CALL this%registry%add_variable('pi', test)
     CALL this%registry%add_variable('w_0', test)
     CALL this%registry%add_variable('lambda0', test)
@@ -253,8 +253,6 @@ CONTAINS
 
     this%last_block_type = c_pt_null
 
-    PRINT *,'Tokenizing ', TRIM(expression)
-
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
       ! This is a bit of a hack.
@@ -290,7 +288,6 @@ CONTAINS
       CALL pop_to_stack(stack, output)
     END DO
     CALL deallocate_stack(stack)
-    CALL eis_build_tree(output) 
 
   END SUBROUTINE eip_tokenize
 
@@ -334,7 +331,6 @@ CONTAINS
 
     ! Populate the block
     CALL this%load_block(current, iblock)
-    PRINT *,'Block ', TRIM(current), ' is type ', iblock%ptype
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
       CALL deallocate_stack(stack)
@@ -401,7 +397,6 @@ CONTAINS
         IF (stack%stack_point == 0) THEN
           ! stack is empty, so just push operator onto stack and
           ! leave loop
-          PRINT *,'Operator to stack ', TRIM(current)
           CALL push_to_stack(stack, iblock)
           EXIT
         END IF
