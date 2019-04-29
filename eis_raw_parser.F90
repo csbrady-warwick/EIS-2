@@ -30,7 +30,7 @@ MODULE eis_raw_parser_mod
   FUNCTION parse_string_as_real(str_in, err)
 
     CHARACTER(*), INTENT(IN) :: str_in
-    INTEGER, INTENT(INOUT) :: err
+    INTEGER(eis_i8), INTENT(INOUT) :: err
     INTEGER :: f
     REAL(eis_num) :: parse_string_as_real
     REAL(eis_num) :: value
@@ -51,7 +51,7 @@ MODULE eis_raw_parser_mod
   FUNCTION parse_string_as_integer(str_in, err)
 
     CHARACTER(*), INTENT(IN) :: str_in
-    INTEGER, INTENT(INOUT) :: err
+    INTEGER(eis_i8), INTENT(INOUT) :: err
     INTEGER :: f
     INTEGER(eis_i8) :: parse_string_as_integer
     INTEGER(eis_i8) :: value = 0

@@ -14,6 +14,9 @@ MODULE eis_constants
   INTEGER, PARAMETER :: eis_i4 = INT32
   INTEGER, PARAMETER :: eis_i8 = INT64
 
+  REAL(eis_num), PARAMETER :: eis_tiny = TINY(1.0_eis_num)
+  REAL(eis_num), PARAMETER :: eis_huge = HUGE(1.0_eis_num)
+
 
   ! block type constants
   INTEGER, PARAMETER :: c_pt_variable = 1

@@ -4,29 +4,21 @@ MODULE eis_header
   USE ISO_C_BINDING
 
   INTERFACE
-!    SUBROUTINE stack_get_fn(nitems, items) BIND(C)
-!      IMPORT eis_num
-!      INTEGER, INTENT(IN) :: nitems
-!      REAL(eis_num), DIMENSION(nitems), INTENT(OUT) :: items
-!    END SUBROUTINE stack_get_fn
-
-!    SUBROUTINE stack_set_fn(item) BIND(C)
-!      IMPORT eis_num
-!      REAL(eis_num), INTENT(IN) :: item
-!    END SUBROUTINE stack_set_fn
-
-    FUNCTION parser_eval_fn(nparams, params, errcode) BIND(C)
-      IMPORT eis_num, eis_i8, eis_i4
-      INTEGER(eis_i4) :: nparams
-      REAL(eis_num), DIMENSION(nparams) :: params
-      INTEGER(eis_i8) :: errcode
+    FUNCTION parser_eval_fn(nparams, params, parameters, errcode) BIND(C)
+      IMPORT eis_num, eis_i8, eis_i4, C_PTR
+      INTEGER(eis_i4), INTENT(IN) :: nparams
+      REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+      TYPE(C_PTR), INTENT(IN) :: parameters
+      INTEGER(eis_i8), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn
     END FUNCTION
   END INTERFACE
 
-  INTEGER, PARAMETER :: eis_err_none = 0
-  INTEGER, PARAMETER :: eis_err_bad_value = 2**0
-  INTEGER, PARAMETER :: eis_err_wrong_parameters = 2**1
+  INTEGER(eis_i8), PARAMETER :: eis_err_none = 0
+  INTEGER(eis_i8), PARAMETER :: eis_err_bad_value = 2**0
+  INTEGER(eis_i8), PARAMETER :: eis_err_wrong_parameters = 2**1
+  INTEGER(eis_i8), PARAMETER :: eis_err_maths_domain = 2**2
+  INTEGER(eis_i8), PARAMETER :: eis_err_no_simplify = 2**3
 
   TYPE :: eis_indirection
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()

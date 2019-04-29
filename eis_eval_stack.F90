@@ -1,5 +1,6 @@
 MODULE eis_eval_stack_mod
 
+  USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
   USE eis_header
 
@@ -48,9 +49,10 @@ MODULE eis_eval_stack_mod
   !> Evaluate a single stack element
   !> @param[inout] this
   !> @param[in] n_elements
-  SUBROUTINE ees_eval_element(this, element, errcode)
+  SUBROUTINE ees_eval_element(this, element, user_params, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack_element), INTENT(IN) :: element
+    TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_i8), INTENT(INOUT) :: errcode
     INTEGER :: iel
 
@@ -63,7 +65,7 @@ MODULE eis_eval_stack_mod
       END IF
       CALL this%pop(element%actual_params, this%fn_call_vals, errcode)
       CALL this%push(element%eval_fn(element%actual_params, &
-          this%fn_call_vals, errcode), errcode)
+          this%fn_call_vals, user_params, errcode), errcode)
     END IF
 
   END SUBROUTINE ees_eval_element
@@ -145,10 +147,12 @@ MODULE eis_eval_stack_mod
   !> @param[inout] this
   !> @param[in] stack
   !> @param[in] result_vals
-  FUNCTION ees_evaluate(this, stack, result_vals, errcode) RESULT(result_count)
+  FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode) &
+      RESULT(result_count)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_vals
+    TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_i8), INTENT(INOUT) :: errcode
     INTEGER :: result_count
     INTEGER :: istack
@@ -157,7 +161,7 @@ MODULE eis_eval_stack_mod
       IF (stack%entries(istack)%ptype == c_pt_constant) THEN
         CALL this%push(stack%entries(istack)%numerical_data, errcode)
       ELSE
-        CALL this%eval_element(stack%entries(istack), errcode)
+        CALL this%eval_element(stack%entries(istack), user_params, errcode)
       END IF
     END DO
 

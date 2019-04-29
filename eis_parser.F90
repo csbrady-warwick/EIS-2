@@ -25,9 +25,11 @@
 
 MODULE eis_parser_mod
 
+  USE, INTRINSIC :: ISO_C_BINDING
   USE eis_header
   USE eis_raw_parser_mod
   USE eis_function_registry_mod
+  USE eis_core_functions_mod
   USE eis_stack_mod
   USE eis_tree_mod
   IMPLICIT NONE
@@ -62,10 +64,11 @@ MODULE eis_parser_mod
 
 CONTAINS
 
-  FUNCTION test(nparams, params, errcode) RESULT(res) BIND(C)
-    INTEGER(eis_i4) :: nparams
-    REAL(eis_num), DIMENSION(nparams) :: params
-    INTEGER(eis_i8) :: errcode
+  FUNCTION test(nparams, params, user_params, errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
     res = params(1) / params(2)
@@ -77,19 +80,21 @@ CONTAINS
 
     CLASS(eis_parser) :: this
     this%init = .TRUE.
-    CALL this%registry%add_operator('+', test, c_assoc_ra, 4, unary = .TRUE.)
-    CALL this%registry%add_operator('-', test, c_assoc_ra, 4, unary = .TRUE.)
-    CALL this%registry%add_operator('+', test, c_assoc_a, 2)
-    CALL this%registry%add_operator('-', test, c_assoc_la, 2)
-    CALL this%registry%add_operator('*', test, c_assoc_a, 3)
-    CALL this%registry%add_operator('/', test, c_assoc_la, 3)
-    CALL this%registry%add_operator('^', test, c_assoc_ra, 4)
-    CALL this%registry%add_operator('e', test, c_assoc_la, 4)
-    CALL this%registry%add_operator('lt', test, c_assoc_la, 1)
-    CALL this%registry%add_operator('gt', test, c_assoc_la, 1)
-    CALL this%registry%add_operator('eq', test, c_assoc_la, 1)
-    CALL this%registry%add_operator('and', test, c_assoc_la, 0)
-    CALL this%registry%add_operator('or', test, c_assoc_la, 0)
+    CALL this%registry%add_operator('+', uplus, c_assoc_ra, 4, unary = .TRUE.)
+    CALL this%registry%add_operator('-', uminus, c_assoc_ra, 4, unary = .TRUE.)
+    CALL this%registry%add_operator('+', bplus, c_assoc_a, 2)
+    CALL this%registry%add_operator('-', bminus, c_assoc_la, 2)
+    CALL this%registry%add_operator('*', times, c_assoc_a, 3)
+    CALL this%registry%add_operator('/', divide, c_assoc_la, 3)
+    CALL this%registry%add_operator('^', pow, c_assoc_ra, 4)
+    CALL this%registry%add_operator('e', expo, c_assoc_la, 4)
+    CALL this%registry%add_operator('lt', lt, c_assoc_la, 1)
+    CALL this%registry%add_operator('le', le, c_assoc_la, 1)
+    CALL this%registry%add_operator('gt', gt, c_assoc_la, 1)
+    CALL this%registry%add_operator('ge', ge, c_assoc_la, 1)
+    CALL this%registry%add_operator('eq', eq, c_assoc_la, 1)
+    CALL this%registry%add_operator('and', and, c_assoc_la, 0)
+    CALL this%registry%add_operator('or', or, c_assoc_la, 0)
 
     CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
     CALL this%registry%add_variable('y', test, can_simplify = .FALSE.)
@@ -98,28 +103,31 @@ CONTAINS
     CALL this%registry%add_variable('w_0', test)
     CALL this%registry%add_variable('lambda0', test)
 
-    CALL this%registry%add_function('test', test, 2)
-    CALL this%registry%add_function('abs', test, 1)
-    CALL this%registry%add_function('floor', test, 1)
-    CALL this%registry%add_function('ceil', test, 1)
-    CALL this%registry%add_function('nint', test, 1)
-    CALL this%registry%add_function('sqrt', test, 1)
-    CALL this%registry%add_function('sin', test, 1)
-    CALL this%registry%add_function('cos', test, 1, output_parameters = 1)
-    CALL this%registry%add_function('tan', test, 1)
-    CALL this%registry%add_function('asin', test, 1)
-    CALL this%registry%add_function('acos', test, 1)
-    CALL this%registry%add_function('atan', test, 1)
-    CALL this%registry%add_function('atan2', test, 2)
-    CALL this%registry%add_function('sinh', test, 1)
-    CALL this%registry%add_function('cosh',test, 1)
-    CALL this%registry%add_function('tanh',test, 1)
-    CALL this%registry%add_function('exp', test, 1)
-    CALL this%registry%add_function('loge', test, 1)
-    CALL this%registry%add_function('log10', test, 1)
-    CALL this%registry%add_function('log_base', test, 1)
-    CALL this%registry%add_function('gauss', test, 3)
-    CALL this%registry%add_function('semigauss', test, 4)
+    CALL this%registry%add_function('abs', eis_abs, 1)
+    CALL this%registry%add_function('floor', eis_floor, 1)
+    CALL this%registry%add_function('ceil', eis_ceil, 1)
+    CALL this%registry%add_function('ceiling', eis_ceil, 1)
+    CALL this%registry%add_function('nint', eis_nint, 1)
+    CALL this%registry%add_function('trunc', eis_aint, 1)
+    CALL this%registry%add_function('truncate', eis_aint, 1)
+    CALL this%registry%add_function('aint', eis_aint, 1)
+    CALL this%registry%add_function('sqrt', eis_sqrt, 1)
+    CALL this%registry%add_function('sin', eis_sin, 1)
+    CALL this%registry%add_function('cos', eis_cos, 1)
+    CALL this%registry%add_function('tan', eis_tan, 1)
+    CALL this%registry%add_function('asin', eis_asin, 1)
+    CALL this%registry%add_function('acos', eis_acos, 1)
+    CALL this%registry%add_function('atan', eis_atan, 1)
+    CALL this%registry%add_function('atan2', eis_atan2, 2)
+    CALL this%registry%add_function('sinh', eis_sinh, 1)
+    CALL this%registry%add_function('cosh',eis_cosh, 1)
+    CALL this%registry%add_function('tanh',eis_tanh, 1)
+    CALL this%registry%add_function('exp', eis_exp, 1)
+    CALL this%registry%add_function('loge', eis_loge, 1)
+    CALL this%registry%add_function('log10', eis_log10, 1)
+    CALL this%registry%add_function('log_base', eis_log_base, 1)
+    CALL this%registry%add_function('gauss', eis_gauss, 3)
+    CALL this%registry%add_function('semigauss', eis_semigauss, 4)
     CALL this%registry%add_function('supergauss', test, 4)
   END SUBROUTINE eip_self_init
 
@@ -156,7 +164,7 @@ CONTAINS
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
-    INTEGER :: work
+    INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
     LOGICAL :: can_be_unary
 
