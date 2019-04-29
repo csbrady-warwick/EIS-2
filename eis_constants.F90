@@ -26,11 +26,8 @@ MODULE eis_constants
   INTEGER, PARAMETER :: c_pt_parenthesis = 5
   INTEGER, PARAMETER :: c_pt_separator = 6
   INTEGER, PARAMETER :: c_pt_character = 7
-  INTEGER, PARAMETER :: c_pt_deck_constant = 8
-  INTEGER, PARAMETER :: c_pt_species = 9
-  INTEGER, PARAMETER :: c_pt_subset = 10
-  INTEGER, PARAMETER :: c_pt_default_constant = 11
-  INTEGER, PARAMETER :: c_pt_param_count = 12
+  INTEGER, PARAMETER :: c_pt_stored_variable = 8
+  INTEGER, PARAMETER :: c_pt_stored_function = 9
   INTEGER, PARAMETER :: c_pt_bad = 1024
   INTEGER, PARAMETER :: c_pt_null = 1025
 

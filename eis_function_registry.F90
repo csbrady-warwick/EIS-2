@@ -1,9 +1,14 @@
 MODULE eis_function_registry_mod
 
   USE eis_header
+  USE eis_stack_mod
   USE eis_named_store_mod
 
   IMPLICIT NONE
+
+  TYPE :: eis_stored_stack
+    TYPE(eis_stack) :: contents
+  END TYPE eis_stored_stack
 
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
@@ -23,13 +28,16 @@ MODULE eis_function_registry_mod
     TYPE(named_store) :: fn_table
     TYPE(named_store) :: op_table
     TYPE(named_store) :: uop_table
+    TYPE(named_store) :: stored_variable_table
     CONTAINS
     
     PROCEDURE, PUBLIC :: add_constant => eir_add_constant
     PROCEDURE, PUBLIC :: add_variable => eir_add_variable
     PROCEDURE, PUBLIC :: add_function => eir_add_function
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
+    PROCEDURE, PUBLIC :: add_stored_stack => eir_add_stored
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
+    PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
   END TYPE eis_registry
 
   PRIVATE
@@ -131,6 +139,19 @@ CONTAINS
 
 
 
+  SUBROUTINE eir_add_stored(this, name, stack)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    TYPE(eis_stack), INTENT(IN) :: stack
+    TYPE(eis_stored_stack) :: store
+
+    CALL copy_stack(stack, store%contents)
+    CALL this%stored_variable_table%store(name, store)
+
+  END SUBROUTINE eir_add_stored
+
+
+
   SUBROUTINE eir_fill_block(this, name, block_in, unary_ops)
 
     CLASS(eis_registry) :: this
@@ -149,11 +170,15 @@ CONTAINS
     ELSE
       IF (.NOT. ASSOCIATED(gptr)) gptr => this%op_table%get(name)
     END IF
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_variable_table%get(name)
 
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
         CLASS IS (eis_function_entry)
           temp => co
+        CLASS IS (eis_stored_stack)
+          block_in%ptype = c_pt_stored_variable
+          RETURN
       END SELECT
     END IF
 
@@ -172,5 +197,30 @@ CONTAINS
     END IF
 
   END SUBROUTINE eir_fill_block
+
+
+  SUBROUTINE eir_copy_in(this, name, output)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    TYPE(eis_stack), INTENT(INOUT) :: output
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_stored_stack), POINTER :: temp
+
+    temp => NULL()
+    gptr => this%stored_variable_table%get(name)
+    PRINT *,ASSOCIATED(gptr)
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_stored_stack)
+          temp => co
+      END SELECT
+      IF (ASSOCIATED(temp)) THEN
+        PRINT *,'Found function'
+        CALL display_tokens_inline(temp%contents)
+        CALL append_stack(output, temp%contents)
+      END IF
+    END IF
+
+  END SUBROUTINE eir_copy_in
 
 END MODULE eis_function_registry_mod

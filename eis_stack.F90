@@ -96,8 +96,6 @@ MODULE eis_stack_mod
       n = n + 1
     END DO
 
-    CALL deallocate_stack(append)
-
   END SUBROUTINE append_stack
 
 

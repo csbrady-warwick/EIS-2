@@ -55,6 +55,9 @@ MODULE eis_parser_mod
     PROCEDURE :: tokenize_subexpression_infix &
         => eip_tokenize_subexpression_infix
     PROCEDURE, PUBLIC :: add_function => eip_add_function
+    PROCEDURE, PUBLIC :: add_constant => eip_add_constant
+    PROCEDURE, PUBLIC :: add_variable => eip_add_variable
+    PROCEDURE, PUBLIC :: add_stored_stack => eip_add_stored_stack
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
 
   END TYPE eis_parser
@@ -202,10 +205,7 @@ CONTAINS
 
     can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
           .OR. this%last_block_type == c_pt_constant &
-          .OR. this%last_block_type == c_pt_default_constant &
-          .OR. this%last_block_type == c_pt_deck_constant &
-          .OR. this%last_block_type == c_pt_species &
-          .OR. this%last_block_type == c_pt_subset)
+          .OR. this%last_block_type == c_pt_stored_variable)
 
     CALL this%registry%fill_block(name, iblock, can_be_unary)
     IF (iblock%ptype /= c_pt_bad) RETURN
@@ -311,12 +311,13 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_add_function(this, name, fn, expected_params)
+  SUBROUTINE eip_add_function(this, name, fn, expected_params, can_simplify)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     INTEGER :: params
 
     IF (PRESENT(expected_params)) THEN
@@ -325,9 +326,47 @@ CONTAINS
       params = -1
     END IF
 
-    CALL this%registry%add_function(name, fn, params)
+    CALL this%registry%add_function(name, fn, params, can_simplify)
 
   END SUBROUTINE eip_add_function
+
+
+
+  SUBROUTINE eip_add_variable(this, name, fn, can_simplify)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_eval_fn) :: fn
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+
+    CALL this%registry%add_variable(name, fn, can_simplify)
+
+  END SUBROUTINE eip_add_variable
+
+
+
+  SUBROUTINE eip_add_constant(this, name, value, can_simplify)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    REAL(eis_num), INTENT(IN) :: value
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+
+    CALL this%registry%add_constant(name, value, can_simplify)
+
+  END SUBROUTINE eip_add_constant
+
+
+
+  SUBROUTINE eip_add_stored_stack(this, name, stack)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    TYPE(eis_stack), INTENT(IN) :: stack
+
+    CALL this%registry%add_stored_stack(name, stack)
+
+  END SUBROUTINE eip_add_stored_stack
 
 
 
@@ -358,14 +397,12 @@ CONTAINS
       this%last_block_type = iblock%ptype
     END IF
 
-    IF (iblock%ptype == c_pt_deck_constant) THEN
-      !Do nothing
-    ELSE IF (iblock%ptype == c_pt_variable &
-        .OR. iblock%ptype == c_pt_constant &
-        .OR. iblock%ptype == c_pt_default_constant &
-        .OR. iblock%ptype == c_pt_species &
-        .OR. iblock%ptype == c_pt_subset) THEN
+    IF (iblock%ptype == c_pt_variable &
+        .OR. iblock%ptype == c_pt_constant) THEN
       CALL push_to_stack(this%output, iblock)
+
+    ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
+      CALL this%registry%copy_in_stored(current, this%output)
 
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN

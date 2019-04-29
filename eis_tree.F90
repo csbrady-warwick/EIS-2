@@ -44,7 +44,7 @@ MODULE eis_tree_mod
     END IF
 
     IF (.NOT. simplified%init) CALL initialise_stack(simplified)
-    sp = stack%stack_point
+    sp = stack%stack_point + 1
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
@@ -71,8 +71,9 @@ MODULE eis_tree_mod
     INTEGER, INTENT(INOUT) :: curindex
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
     TYPE(eis_tree_item), POINTER :: p
-    INTEGER :: iparam, pcount, cp
+    INTEGER :: iparam, pcount, curprime
 
+    curindex = curindex - 1
     current%value = stack%entries(curindex)
 
     IF (current%value%ptype == c_pt_function .OR. &
@@ -84,16 +85,10 @@ MODULE eis_tree_mod
       END IF
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
-        curindex = curindex - 1
-!        PRINT *, TRIM(current%value%text), curindex
         p => current%nodes(iparam)
-        cp = curindex - 1
         CALL eis_build_node(stack, curindex, p)
-        !curindex = cp
       END DO
     END IF
-    !PRINT *, TRIM(current%value%text), curindex
-!    curindex = curindex - 1
   END SUBROUTINE eis_build_node
 
 
@@ -141,8 +136,8 @@ MODULE eis_tree_mod
         tree%value%ptype = c_pt_constant
         tree%value%numerical_data = res
         DEALLOCATE(tree%value%text)
-        WRITE(rstring,'(E10.2)') res
-        ALLOCATE(tree%value%text, SOURCE = TRIM(rstring))
+        WRITE(rstring,'(G10.4)') res
+        ALLOCATE(tree%value%text, SOURCE = TRIM(ADJUSTL(rstring)))
         DEALLOCATE(tree%nodes)
       ELSE
         tree%value%can_simplify = .FALSE.
@@ -192,10 +187,21 @@ MODULE eis_tree_mod
     TYPE(eis_tree_item), INTENT(IN) :: node
     INTEGER, INTENT(INOUT) :: id_in
     INTEGER :: inode, my_id
+    CHARACTER(LEN=10) :: ds
 
     my_id = id_in
 
-    WRITE(10, '(I4.4,A)') id_in, '[label="'//node%value%text//'"];'
+    SELECT CASE (node%value%ptype)
+      CASE(c_pt_function)
+        ds = "box"
+      CASE(c_pt_operator)
+        ds = "diamond"
+      CASE DEFAULT
+        ds = "circle"
+    END SELECT
+
+    WRITE(10, '(I4.4,A,A,A)') id_in, '[label="'//node%value%text//'"] [shape='&
+        , TRIM(ds),'];'
     IF (ASSOCIATED(node%nodes)) THEN
       DO inode = SIZE(node%nodes), 1, -1
         id_in = id_in + 1
