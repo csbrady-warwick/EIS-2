@@ -98,8 +98,9 @@ CONTAINS
 
     CALL this%registry%add_constant('pi', &
         3.141592653589793238462643383279503_eis_num)
+    CALL this%registry%add_constant('x', 1.0_eis_num, can_simplify = .FALSE.)
 
-    CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
+!    CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
     CALL this%registry%add_variable('y', test, can_simplify = .FALSE.)
     CALL this%registry%add_variable('x_spot', test, can_simplify = .TRUE.)
 !    CALL this%registry%add_variable('pi', test)
@@ -392,6 +393,7 @@ CONTAINS
                 this%stack%entries(this%stack%stack_point)%actual_params = &
                     this%brackets%entries(this%brackets%stack_point)%&
                     actual_params
+                CALL pop_to_stack(this%stack, this%output)
                 CALL pop_to_null(this%brackets)
                 !Add stored function here
               END IF

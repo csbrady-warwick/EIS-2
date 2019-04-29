@@ -3,6 +3,7 @@ MODULE eis_tree_mod
   USE eis_constants
   USE eis_header
   USE eis_stack_mod
+  USE eis_eval_stack_mod
   IMPLICIT NONE
 
   TYPE :: eis_tree_item
@@ -12,6 +13,8 @@ MODULE eis_tree_mod
     CONTAINS
     FINAL :: eit_destructor
   END TYPE eis_tree_item
+
+  TYPE(eis_eval_stack), SAVE :: eval
 
   CONTAINS
 
@@ -43,11 +46,11 @@ MODULE eis_tree_mod
     IF (.NOT. simplified%init) CALL initialise_stack(simplified)
     sp = stack%stack_point
     DO WHILE (sp > 1)
-      PRINT *,'Running simplify'
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
+      CALL eis_tree_to_dot(root,'before.dot')
       CALL eis_simplify_tree(root)
-      CALL eis_tree_to_dot(root)
+      CALL eis_tree_to_dot(root,'after.dot')
       CALL eis_tree_to_stack(root, simplified)
       DEALLOCATE(root)
     END DO
@@ -63,38 +66,12 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_build_tree(stack)
-    TYPE(eis_stack) :: stack
-    TYPE(eis_tree_item), POINTER :: top
-    TYPE(eis_stack) :: stack2
-    INTEGER :: sp
-
-    sp = stack%stack_point
-    ALLOCATE(top)
-    CALL eis_build_node(stack, sp, top)
-    CALL eis_tree_to_dot(top)
-
-!    CALL eis_simplify_tree(top)
-!    CALL eis_tree_to_dot(top)
-
-    CALL initialise_stack(stack2)
-    CALL eis_tree_to_stack(top, stack2)
-
-    PRINT *,'Reconstructed tree is '
-    CALL display_tokens_inline(stack2)
-    CALL deallocate_stack(stack2)
-    DEALLOCATE(top)
-
-  END SUBROUTINE eis_build_tree
-
-
-
   RECURSIVE SUBROUTINE eis_build_node(stack, curindex, current)
     TYPE(eis_stack) :: stack
     INTEGER, INTENT(INOUT) :: curindex
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
     TYPE(eis_tree_item), POINTER :: p
-    INTEGER :: iparam, pcount
+    INTEGER :: iparam, pcount, cp
 
     current%value = stack%entries(curindex)
 
@@ -108,11 +85,15 @@ MODULE eis_tree_mod
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
         curindex = curindex - 1
+!        PRINT *, TRIM(current%value%text), curindex
         p => current%nodes(iparam)
+        cp = curindex - 1
         CALL eis_build_node(stack, curindex, p)
+        !curindex = cp
       END DO
     END IF
-
+    !PRINT *, TRIM(current%value%text), curindex
+!    curindex = curindex - 1
   END SUBROUTINE eis_build_node
 
 
@@ -134,6 +115,10 @@ MODULE eis_tree_mod
     LOGICAL :: can_simplify, so1, so2
     CHARACTER(LEN=:), ALLOCATABLE :: temp, temp2
     CHARACTER(LEN=1) :: ob1, cb1, ob2, cb2
+    REAL(eis_num) :: res
+    TYPE(eis_eval_stack) :: eval
+    INTEGER(eis_i8) :: err
+    CHARACTER(LEN=10) :: rstring
 
     IF (ASSOCIATED(tree%nodes)) THEN
       can_simplify = .TRUE.
@@ -148,48 +133,16 @@ MODULE eis_tree_mod
       END DO
 
       IF (can_simplify) THEN
-        IF (tree%value%ptype == c_pt_function) THEN
-          ALLOCATE(temp, SOURCE = tree%value%text // "(")
-          DO inode = SIZE(tree%nodes), 1, -1
-            IF (inode > 1) THEN
-              ALLOCATE(temp2, SOURCE = temp // tree%nodes(inode)%value%text &
-                  // ",")
-            ELSE
-              ALLOCATE(temp2, SOURCE = temp // tree%nodes(inode)%value%text)
-            END IF
-            DEALLOCATE(temp)
-            CALL MOVE_ALLOC(temp2, temp)
-          END DO
-          ALLOCATE(temp2, SOURCE = temp // ")")
-          DEALLOCATE(temp)
-          DEALLOCATE(tree%value%text)
-          CALL MOVE_ALLOC(temp2, tree%value%text)
-        ELSE
-          IF (SIZE(tree%nodes) == 1) THEN
-            ALLOCATE(temp, SOURCE = "("//tree%value%text &
-                // tree%nodes(1)%value%text // ")")
-          ELSE
-            IF (so2) THEN
-              ob2="("; cb2=")"
-            ELSE
-              ob2=""; cb2=""
-            END IF
-
-            IF (so1) THEN
-              ob1="("; cb1=")"
-            ELSE
-              ob1=""; cb1=""
-            END IF
-
-            ALLOCATE(temp, SOURCE = TRIM(ob2)//tree%nodes(2)%value%text&
-                //TRIM(cb2) &
-                // tree%value%text // TRIM(ob1) // tree%nodes(1)%value%text &
-                //TRIM(cb1))
-          END IF
-          DEALLOCATE(tree%value%text)
-          CALL MOVE_ALLOC(temp, tree%value%text)
-        END IF
+        DO inode = SIZE(tree%nodes), 1, -1
+          CALL eval%push(tree%nodes(inode)%value%numerical_data, err)
+        END DO
+        CALL eval%eval_element(tree%value, C_NULL_PTR, err)
+        CALL eval%pop(res, err)
         tree%value%ptype = c_pt_constant
+        tree%value%numerical_data = res
+        DEALLOCATE(tree%value%text)
+        WRITE(rstring,'(E10.2)') res
+        ALLOCATE(tree%value%text, SOURCE = TRIM(rstring))
         DEALLOCATE(tree%nodes)
       ELSE
         tree%value%can_simplify = .FALSE.
@@ -217,13 +170,14 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_tree_to_dot(root)
+  SUBROUTINE eis_tree_to_dot(root, filename)
     TYPE(eis_tree_item) :: root
+    CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER :: root_level
 
     root_level = 1
 
-    OPEN(unit = 10, file='test.dot')
+    OPEN(unit = 10, file=TRIM(filename))
     WRITE(10,*) 'strict graph G {'
     CALL dot_output(root, root_level)
     WRITE(10,*) '}'

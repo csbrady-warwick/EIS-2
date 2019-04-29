@@ -39,16 +39,17 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_constant(this, name, value)
+  SUBROUTINE eir_add_constant(this, name, value, can_simplify)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     REAL(eis_num), INTENT(IN) :: value
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     TYPE(eis_function_entry) :: temp
     
     temp%ptype = c_pt_constant
     temp%value = value
-    temp%can_simplify = .TRUE.
+    IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
 
     CALL this%const_table%store(name, temp)
 

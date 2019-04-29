@@ -10,7 +10,7 @@ MODULE eis_eval_stack_mod
     INTEGER :: stack_point = 0
     CONTAINS
     PROCEDURE, PRIVATE :: resize => ees_resize
-    PROCEDURE, PRIVATE :: eval_element => ees_eval_element
+    PROCEDURE :: eval_element => ees_eval_element
     PROCEDURE :: evaluate => ees_evaluate
     PROCEDURE :: push => ees_push
     PROCEDURE, PRIVATE :: pop_scalar => ees_pop_scalar
