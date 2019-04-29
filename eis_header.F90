@@ -4,23 +4,24 @@ MODULE eis_header
   USE ISO_C_BINDING
 
   INTERFACE
-    SUBROUTINE stack_get_fn(nitems, items) BIND(C)
-      IMPORT eis_num
-      INTEGER, INTENT(IN) :: nitems
-      REAL(eis_num), DIMENSION(nitems), INTENT(OUT) :: items
-    END SUBROUTINE stack_get_fn
+!    SUBROUTINE stack_get_fn(nitems, items) BIND(C)
+!      IMPORT eis_num
+!      INTEGER, INTENT(IN) :: nitems
+!      REAL(eis_num), DIMENSION(nitems), INTENT(OUT) :: items
+!    END SUBROUTINE stack_get_fn
 
-    SUBROUTINE stack_set_fn(item) BIND(C)
-      IMPORT eis_num
-      REAL(eis_num), INTENT(IN) :: item
-    END SUBROUTINE stack_set_fn
+!    SUBROUTINE stack_set_fn(item) BIND(C)
+!      IMPORT eis_num
+!      REAL(eis_num), INTENT(IN) :: item
+!    END SUBROUTINE stack_set_fn
 
-    SUBROUTINE parser_eval_fn(getter, setter, errcode)
-      IMPORT stack_set_fn, stack_get_fn, eis_i8
-      PROCEDURE(stack_get_fn) :: getter
-      PROCEDURE(stack_set_fn) :: setter
+    FUNCTION parser_eval_fn(nparams, params, errcode) BIND(C)
+      IMPORT eis_num, eis_i8, eis_i4
+      INTEGER(eis_i4) :: nparams
+      REAL(eis_num), DIMENSION(nparams) :: params
       INTEGER(eis_i8) :: errcode
-    END SUBROUTINE
+      REAL(eis_num) :: parser_eval_fn
+    END FUNCTION
   END INTERFACE
 
   INTEGER, PARAMETER :: eis_err_none = 0
@@ -35,7 +36,9 @@ MODULE eis_header
     INTEGER :: ptype
     INTEGER :: associativity, precedence
     INTEGER :: value
-    INTEGER :: params
+    INTEGER :: params = -1
+    INTEGER :: actual_params = 0
+    INTEGER :: output_params = 1
     REAL(eis_num) :: numerical_data
     CHARACTER(LEN=:), ALLOCATABLE :: text
     LOGICAL :: can_simplify = .TRUE.

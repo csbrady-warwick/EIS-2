@@ -94,18 +94,23 @@ MODULE eis_tree_mod
     INTEGER, INTENT(INOUT) :: curindex
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
     TYPE(eis_tree_item), POINTER :: p
-    INTEGER :: iparam
+    INTEGER :: iparam, pcount
 
     current%value = stack%entries(curindex)
 
     IF (current%value%ptype == c_pt_function .OR. &
         current%value%ptype == c_pt_operator) THEN
-        ALLOCATE(current%nodes(stack%entries(curindex)%params))
-        DO iparam = 1, stack%entries(curindex)%params
-          curindex = curindex - 1
-          p => current%nodes(iparam)
-          CALL eis_build_node(stack, curindex, p)
-        END DO
+      IF (current%value%ptype == c_pt_function) THEN 
+        pcount = current%value%actual_params
+      ELSE
+        pcount = current%value%params
+      END IF
+      ALLOCATE(current%nodes(pcount))
+      DO iparam = 1, pcount
+        curindex = curindex - 1
+        p => current%nodes(iparam)
+        CALL eis_build_node(stack, curindex, p)
+      END DO
     END IF
 
   END SUBROUTINE eis_build_node

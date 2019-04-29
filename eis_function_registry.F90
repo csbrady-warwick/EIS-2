@@ -7,13 +7,13 @@ MODULE eis_function_registry_mod
 
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
-    PROCEDURE(parser_eval_fn), POINTER, NOPASS :: unary_fn => NULL()
     LOGICAL :: can_simplify = .TRUE.
     REAL(eis_num) :: value = 0.0_eis_num
     INTEGER :: ptype = c_pt_null
     INTEGER :: associativity = c_assoc_null
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = -1
+    INTEGER :: output_parameters = 1
   END TYPE eis_function_entry
 
   TYPE :: eis_registry
@@ -74,19 +74,22 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_function(this, name, fn, expected_parameters, can_simplify)
+  SUBROUTINE eir_add_function(this, name, fn, expected_parameters, &
+      can_simplify, output_parameters)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN) :: expected_parameters
     LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
+    INTEGER, OPTIONAL, INTENT(IN) :: output_parameters
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
     temp%ptype = c_pt_function
     temp%expected_parameters = expected_parameters
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
+    IF (PRESENT(output_parameters)) temp%output_parameters = output_parameters
 
     CALL this%fn_table%store(name, temp)
 
@@ -158,7 +161,10 @@ CONTAINS
       block_in%associativity = temp%associativity
       block_in%precedence = temp%precedence
       block_in%params = temp%expected_parameters
+      block_in%actual_params = temp%expected_parameters
+      block_in%output_params = temp%output_parameters
       block_in%can_simplify = temp%can_simplify
+      block_in%eval_fn => temp%fn_ptr
     ELSE
       block_in%ptype = c_pt_bad
     END IF

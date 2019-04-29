@@ -45,6 +45,8 @@ MODULE eis_parser_mod
     TYPE(eis_registry) :: registry
     INTEGER :: last_block_type
     LOGICAL :: init = .FALSE.
+    TYPE(eis_stack) :: stack, brackets
+    TYPE(eis_stack), POINTER :: output
     CONTAINS
     PROCEDURE :: self_init => eip_self_init
     PROCEDURE :: load_block => eip_load_block
@@ -60,11 +62,14 @@ MODULE eis_parser_mod
 
 CONTAINS
 
-  SUBROUTINE test(getter, setter, errcode)
-    PROCEDURE(stack_get_fn) :: getter
-    PROCEDURE(stack_set_fn) :: setter
+  FUNCTION test(nparams, params, errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4) :: nparams
+    REAL(eis_num), DIMENSION(nparams) :: params
     INTEGER(eis_i8) :: errcode
-  END SUBROUTINE test
+    REAL(eis_num) :: res
+
+    res = params(1) / params(2)
+  END FUNCTION test
 
 
 
@@ -100,7 +105,7 @@ CONTAINS
     CALL this%registry%add_function('nint', test, 1)
     CALL this%registry%add_function('sqrt', test, 1)
     CALL this%registry%add_function('sin', test, 1)
-    CALL this%registry%add_function('cos', test, 1)
+    CALL this%registry%add_function('cos', test, 1, output_parameters = 1)
     CALL this%registry%add_function('tan', test, 1)
     CALL this%registry%add_function('asin', test, 1)
     CALL this%registry%add_function('acos', test, 1)
@@ -228,20 +233,21 @@ CONTAINS
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: expression
-    TYPE(eis_stack), INTENT(INOUT) :: output
-    INTEGER, INTENT(INOUT) :: err
+    TYPE(eis_stack), INTENT(INOUT), TARGET :: output
+    INTEGER(eis_i8), INTENT(INOUT) :: err
     LOGICAL :: maybe_e
 
     CHARACTER(LEN=500) :: current
     INTEGER :: current_type, current_pointer, i, ptype
 
-    TYPE(eis_stack) :: stack
     TYPE(eis_stack_element) :: iblock
 
     IF (.NOT. this%init) CALL this%self_init()
     IF (.NOT. output%init) CALL initialise_stack(output)
 
-    CALL initialise_stack(stack)
+    CALL initialise_stack(this%stack)
+    CALL initialise_stack(this%brackets)
+    this%output => output
 
     current(:) = ' '
     current(1:1) = expression(1:1)
@@ -269,8 +275,7 @@ CONTAINS
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE
-        CALL this%tokenize_subexpression_infix(current, iblock, stack, output, &
-            err)
+        CALL this%tokenize_subexpression_infix(current, iblock, err)
         IF (err /= eis_err_none) RETURN
         current(:) = ' '
         current_pointer = 2
@@ -281,13 +286,14 @@ CONTAINS
       END IF
     END DO
 
-    CALL this%tokenize_subexpression_infix(current, iblock, stack, output, err)
+    CALL this%tokenize_subexpression_infix(current, iblock, err)
     IF (err /= eis_err_none) RETURN
 
-    DO i = 1, stack%stack_point
-      CALL pop_to_stack(stack, output)
+    DO i = 1, this%stack%stack_point
+      CALL pop_to_stack(this%stack, this%output)
     END DO
-    CALL deallocate_stack(stack)
+    CALL deallocate_stack(this%stack)
+    CALL deallocate_stack(this%brackets)
 
   END SUBROUTINE eip_tokenize
 
@@ -313,8 +319,7 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, stack, &
-      output, err)
+  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, err)
 
     ! This subroutine tokenizes input in normal infix maths notation
     ! It uses Dijkstra's shunting yard algorithm to convert to RPN
@@ -322,8 +327,7 @@ CONTAINS
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: current
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
-    TYPE(eis_stack), INTENT(INOUT) :: stack, output
-    INTEGER, INTENT(INOUT) :: err
+    INTEGER(eis_i8), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
     INTEGER :: ipoint, io, iu
 
@@ -333,7 +337,7 @@ CONTAINS
     CALL this%load_block(current, iblock)
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
-      CALL deallocate_stack(stack)
+      CALL deallocate_stack(this%stack)
       RETURN
     END IF
 
@@ -349,44 +353,69 @@ CONTAINS
         .OR. iblock%ptype == c_pt_default_constant &
         .OR. iblock%ptype == c_pt_species &
         .OR. iblock%ptype == c_pt_subset) THEN
-      CALL push_to_stack(output, iblock)
+      CALL push_to_stack(this%output, iblock)
 
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN
-        CALL push_to_stack(stack, iblock)
+        iblock%actual_params = 0
+        CALL push_to_stack(this%stack, iblock)
+        CALL push_to_stack(this%brackets, iblock)
       ELSE
         DO
-          CALL stack_snoop(stack, block2, 0)
+          CALL stack_snoop(this%stack, block2, 0)
           IF (block2%ptype == c_pt_parenthesis &
               .AND. block2%value == c_paren_left_bracket) THEN
-            CALL pop_to_null(stack)
+            CALL pop_to_null(this%stack)
+            IF (this%brackets%stack_point > 1) THEN
+              this%brackets%entries(this%brackets%stack_point-1)%actual_params &
+                  = this%brackets%entries(this%brackets%stack_point-1)% &
+                  actual_params &
+                  + this%brackets%entries(this%brackets%stack_point)%&
+                  actual_params
+              CALL pop_to_null(this%brackets)
+            END IF
             ! If stack isn't empty then check for function
-            IF (stack%stack_point /= 0) THEN
-              CALL stack_snoop(stack, block2, 0)
+            IF (this%stack%stack_point /= 0) THEN
+              CALL stack_snoop(this%stack, block2, 0)
               IF (block2%ptype == c_pt_function) THEN
+                this%stack%entries(this%stack%stack_point)%actual_params = &
+                    this%brackets%entries(this%brackets%stack_point)%&
+                    actual_params
+                CALL pop_to_null(this%brackets)
                 !Add stored function here
               END IF
             END IF
             EXIT
           ELSE
-            CALL pop_to_stack(stack, output)
+            CALL pop_to_stack(this%stack, this%output)
           END IF
         END DO
       END IF
 
     ELSE IF (iblock%ptype == c_pt_function) THEN
       ! Just push functions straight onto the stack
-      CALL push_to_stack(stack, iblock)
+      CALL push_to_stack(this%stack, iblock)
+      IF (this%brackets%stack_point > 0) THEN
+        this%brackets%entries(this%brackets%stack_point)%actual_params &
+        = this%brackets%entries(this%brackets%stack_point)%actual_params &
+        + iblock%output_params - 1
+      END IF
+      iblock%actual_params = 1
+      CALL push_to_stack(this%brackets, iblock)
 
     ELSE IF (iblock%ptype == c_pt_separator) THEN
       DO
-        CALL stack_snoop(stack, block2, 0)
+        CALL stack_snoop(this%stack, block2, 0)
         IF (block2%ptype /= c_pt_parenthesis) THEN
-          CALL pop_to_stack(stack, output)
+          CALL pop_to_stack(this%stack, this%output)
         ELSE
           IF (block2%value /= c_paren_left_bracket) THEN
             PRINT *, 'Bad function expression'
             STOP
+          END IF
+          IF (this%brackets%stack_point > 0) THEN
+            this%brackets%entries(this%brackets%stack_point)%actual_params = &
+            this%brackets%entries(this%brackets%stack_point)%actual_params + 1
           END IF
           EXIT
         END IF
@@ -394,18 +423,18 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_operator) THEN
       DO
-        IF (stack%stack_point == 0) THEN
+        IF (this%stack%stack_point == 0) THEN
           ! stack is empty, so just push operator onto stack and
           ! leave loop
-          CALL push_to_stack(stack, iblock)
+          CALL push_to_stack(this%stack, iblock)
           EXIT
         END IF
         ! stack is not empty so check precedence etc.
-        CALL stack_snoop(stack, block2, 0)
+        CALL stack_snoop(this%stack, block2, 0)
         IF (block2%ptype /= c_pt_operator) THEN
           ! Previous block is not an operator so push current operator
           ! to stack and leave loop
-          CALL push_to_stack(stack, iblock)
+          CALL push_to_stack(this%stack, iblock)
           EXIT
         ELSE
           IF (iblock%associativity == c_assoc_la &
@@ -413,19 +442,19 @@ CONTAINS
             ! Operator is full associative or left associative
             IF (iblock%precedence &
                 <= block2%precedence) THEN
-              CALL pop_to_stack(stack, output)
+              CALL pop_to_stack(this%stack, this%output)
               CYCLE
             ELSE
-              CALL push_to_stack(stack, iblock)
+              CALL push_to_stack(this%stack, iblock)
               EXIT
             END IF
           ELSE
             IF (iblock%precedence &
                 < block2%precedence) THEN
-              CALL pop_to_stack(stack, output)
+              CALL pop_to_stack(this%stack, this%output)
               CYCLE
             ELSE
-              CALL push_to_stack(stack, iblock)
+              CALL push_to_stack(this%stack, iblock)
               EXIT
             END IF
           END IF
