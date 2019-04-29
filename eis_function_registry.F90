@@ -165,6 +165,7 @@ CONTAINS
       block_in%output_params = temp%output_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
+      block_in%numerical_data = temp%value
     ELSE
       block_in%ptype = c_pt_bad
     END IF

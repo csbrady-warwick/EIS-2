@@ -117,15 +117,16 @@ MODULE eis_core_functions_mod
   !> @param[in] params
   !> @param[in] user_params
   !> @param[inout] errcode
-  FUNCTION pow(nparams, params, user_params, errcode) RESULT(res) BIND(C)
+  FUNCTION eis_pow(nparams, params, user_params, errcode) RESULT(res) BIND(C)
     INTEGER(eis_i4), INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
     TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_i8), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    PRINT *,params
     res = params(1) ** params(2)
-  END FUNCTION pow
+  END FUNCTION eis_pow
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief

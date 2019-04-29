@@ -86,7 +86,7 @@ CONTAINS
     CALL this%registry%add_operator('-', bminus, c_assoc_la, 2)
     CALL this%registry%add_operator('*', times, c_assoc_a, 3)
     CALL this%registry%add_operator('/', divide, c_assoc_la, 3)
-    CALL this%registry%add_operator('^', pow, c_assoc_ra, 4)
+    CALL this%registry%add_operator('^', eis_pow, c_assoc_ra, 4)
     CALL this%registry%add_operator('e', expo, c_assoc_la, 4)
     CALL this%registry%add_operator('lt', lt, c_assoc_la, 1)
     CALL this%registry%add_operator('le', le, c_assoc_la, 1)
@@ -96,10 +96,13 @@ CONTAINS
     CALL this%registry%add_operator('and', and, c_assoc_la, 0)
     CALL this%registry%add_operator('or', or, c_assoc_la, 0)
 
+    CALL this%registry%add_constant('pi', &
+        3.141592653589793238462643383279503_eis_num)
+
     CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
     CALL this%registry%add_variable('y', test, can_simplify = .FALSE.)
     CALL this%registry%add_variable('x_spot', test, can_simplify = .TRUE.)
-    CALL this%registry%add_variable('pi', test)
+!    CALL this%registry%add_variable('pi', test)
     CALL this%registry%add_variable('w_0', test)
     CALL this%registry%add_variable('lambda0', test)
 
