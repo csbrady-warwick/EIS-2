@@ -1,3 +1,4 @@
+#define EIS_TYPE REAL(eis_num)
 MODULE eis_constants
 
   IMPLICIT NONE
@@ -13,6 +14,8 @@ MODULE eis_constants
   INTEGER, PARAMETER :: eis_num = REAL64
   INTEGER, PARAMETER :: eis_i4 = INT32
   INTEGER, PARAMETER :: eis_i8 = INT64
+  INTEGER, PARAMETER :: eis_error = eis_i8
+  INTEGER, PARAMETER :: eis_bitmask = eis_i8
 
   REAL(eis_num), PARAMETER :: eis_tiny = TINY(1.0_eis_num)
   REAL(eis_num), PARAMETER :: eis_huge = HUGE(1.0_eis_num)

@@ -12,6 +12,7 @@ MODULE eis_stack_mod
     stack%stack_point = 0
 
     stack%stack_size = 1
+    stack%cap_bits = 0
     ALLOCATE(stack%entries(stack%stack_size))
     CALL initialise_stack_element(stack%entries(1))
     stack%init = .TRUE.
@@ -41,6 +42,7 @@ MODULE eis_stack_mod
 
     IF (ALLOCATED(element%text)) DEALLOCATE(element%text)
   END SUBROUTINE deallocate_stack_element
+
 
 
 
@@ -78,6 +80,20 @@ MODULE eis_stack_mod
 
 
 
+  SUBROUTINE minify_stack(stack)
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER :: istack
+
+    CALL grow_stack(stack, stack%stack_point)
+    DO istack = 1, stack%stack_point
+      IF (ALLOCATED(stack%entries(istack)%text)) &
+          DEALLOCATE(stack%entries(istack)%text)
+    END DO
+
+  END SUBROUTINE minify_stack
+
+
+
   SUBROUTINE append_stack(stack, append)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack, append
@@ -95,6 +111,7 @@ MODULE eis_stack_mod
       stack%entries(n) = append%entries(i)
       n = n + 1
     END DO
+    stack%cap_bits = IOR(stack%cap_bits, append%cap_bits)
 
   END SUBROUTINE append_stack
 
@@ -188,7 +205,9 @@ MODULE eis_stack_mod
         PRINT *, 'Type', token_list%entries(i)%ptype
         PRINT *, 'Data', token_list%entries(i)%value
         PRINT *, 'NumData', token_list%entries(i)%numerical_data
-        PRINT *, 'Text :', TRIM(token_list%entries(i)%text)
+        IF (ALLOCATED(token_list%entries(i)%text)) THEN
+          PRINT *, 'Text :', TRIM(token_list%entries(i)%text)
+        END IF
         PRINT *, '---------------'
       END DO
 
@@ -201,6 +220,7 @@ MODULE eis_stack_mod
     INTEGER :: i
 
     DO i = 1, token_list%stack_point
+      IF (.NOT. ALLOCATED(token_list%entries(i)%text)) CYCLE
       WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%entries(i)%text) // " "
     END DO
     WRITE(*,*) NEW_LINE('A')

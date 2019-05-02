@@ -18,24 +18,26 @@ MODULE eis_function_registry_mod
     INTEGER :: associativity = c_assoc_null
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = -1
-    INTEGER :: output_parameters = 1
+    INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
   END TYPE eis_function_entry
 
   TYPE :: eis_registry
     PRIVATE
-    TYPE(named_store) :: const_table
-    TYPE(named_store) :: var_table
-    TYPE(named_store) :: fn_table
-    TYPE(named_store) :: op_table
-    TYPE(named_store) :: uop_table
-    TYPE(named_store) :: stored_variable_table
+    TYPE(named_store) :: const_table !< Contains named constants
+    TYPE(named_store) :: var_table !< Contains named variables
+    TYPE(named_store) :: fn_table !< Contains named functions
+    TYPE(named_store) :: op_table !< Contains named binary operators
+    TYPE(named_store) :: uop_table !< Contains named unary operators
+    TYPE(named_store) :: stack_variable_table !< Contains stored stacks
+
+    TYPE(named_store) :: user_stored_stack !< Contains stacks stored by the user
     CONTAINS
     
     PROCEDURE, PUBLIC :: add_constant => eir_add_constant
     PROCEDURE, PUBLIC :: add_variable => eir_add_variable
     PROCEDURE, PUBLIC :: add_function => eir_add_function
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
-    PROCEDURE, PUBLIC :: add_stored_stack => eir_add_stored
+    PROCEDURE, PUBLIC :: add_stack_variable => eir_add_stack_var
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
     PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
   END TYPE eis_registry
@@ -47,17 +49,21 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_constant(this, name, value, can_simplify)
+  SUBROUTINE eir_add_constant(this, name, value, errcode, can_simplify, &
+      cap_bits)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     REAL(eis_num), INTENT(IN) :: value
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     TYPE(eis_function_entry) :: temp
     
     temp%ptype = c_pt_constant
     temp%value = value
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
+    IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
 
     CALL this%const_table%store(name, temp)
 
@@ -65,17 +71,21 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_variable(this, name, fn, can_simplify)
+  SUBROUTINE eir_add_variable(this, name, fn, errcode, can_simplify, &
+      cap_bits)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     TYPE(eis_function_entry) :: temp
 
     temp%ptype = c_pt_variable
     temp%fn_ptr => fn
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
+    IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
 
     CALL this%const_table%store(name, temp)
 
@@ -83,22 +93,23 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_function(this, name, fn, expected_parameters, &
-      can_simplify, output_parameters)
+  SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
+      can_simplify, cap_bits)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN) :: expected_parameters
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
-    INTEGER, OPTIONAL, INTENT(IN) :: output_parameters
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
     temp%ptype = c_pt_function
     temp%expected_parameters = expected_parameters
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
-    IF (PRESENT(output_parameters)) temp%output_parameters = output_parameters
+    IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
 
     CALL this%fn_table%store(name, temp)
 
@@ -107,14 +118,16 @@ CONTAINS
 
 
   SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
-      can_simplify, unary)
+      errcode, can_simplify, unary, cap_bits)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER, INTENT(IN) :: associativity, precedence
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, OPTIONAL :: can_simplify
     LOGICAL, OPTIONAL :: unary
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
 
@@ -123,6 +136,7 @@ CONTAINS
     temp%associativity = associativity
     temp%precedence = precedence
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
+    IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
 
     l_unary = .FALSE.
     IF (PRESENT(unary)) l_unary = unary
@@ -139,30 +153,33 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_stored(this, name, stack)
+  SUBROUTINE eir_add_stack_var(this, name, stack, errcode)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack), INTENT(IN) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_stored_stack) :: store
 
     CALL copy_stack(stack, store%contents)
-    CALL this%stored_variable_table%store(name, store)
+    CALL this%stack_variable_table%store(name, store)
 
-  END SUBROUTINE eir_add_stored
+  END SUBROUTINE eir_add_stack_var
 
 
 
-  SUBROUTINE eir_fill_block(this, name, block_in, unary_ops)
+  SUBROUTINE eir_fill_block(this, name, block_in, unary_ops, cap_bits)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack_element), INTENT(INOUT) :: block_in
     LOGICAL, INTENT(IN) :: unary_ops
+    INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     CLASS(*), POINTER :: gptr
     TYPE(eis_function_entry), POINTER :: temp
 
     temp => NULL()
     gptr => this%const_table%get(name)
+    cap_bits = 0_eis_bitmask
     IF (.NOT. ASSOCIATED(gptr)) gptr => this%var_table%get(name)
     IF (.NOT. ASSOCIATED(gptr)) gptr => this%fn_table%get(name)
     IF (unary_ops) THEN
@@ -170,7 +187,7 @@ CONTAINS
     ELSE
       IF (.NOT. ASSOCIATED(gptr)) gptr => this%op_table%get(name)
     END IF
-    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_variable_table%get(name)
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stack_variable_table%get(name)
 
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
@@ -186,12 +203,12 @@ CONTAINS
       block_in%ptype = temp%ptype
       block_in%associativity = temp%associativity
       block_in%precedence = temp%precedence
-      block_in%params = temp%expected_parameters
+      block_in%expected_params = temp%expected_parameters
       block_in%actual_params = temp%expected_parameters
-      block_in%output_params = temp%output_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
       block_in%numerical_data = temp%value
+      cap_bits = temp%cap_bits
     ELSE
       block_in%ptype = c_pt_bad
     END IF
@@ -207,16 +224,13 @@ CONTAINS
     TYPE(eis_stored_stack), POINTER :: temp
 
     temp => NULL()
-    gptr => this%stored_variable_table%get(name)
-    PRINT *,ASSOCIATED(gptr)
+    gptr => this%stack_variable_table%get(name)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
         CLASS IS (eis_stored_stack)
           temp => co
       END SELECT
       IF (ASSOCIATED(temp)) THEN
-        PRINT *,'Found function'
-        CALL display_tokens_inline(temp%contents)
         CALL append_stack(output, temp%contents)
       END IF
     END IF

@@ -28,6 +28,7 @@ MODULE eis_tree_mod
   END SUBROUTINE eit_destructor
 
 
+
   SUBROUTINE eis_simplify_stack(stack, stack_out)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -48,12 +49,14 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_tree_to_dot(root,'before.dot')
       CALL eis_simplify_tree(root)
-      CALL eis_tree_to_dot(root,'after.dot')
       CALL eis_tree_to_stack(root, simplified)
       DEALLOCATE(root)
     END DO
+
+#ifndef ALLOW_UNCAP_BITS
+    simplified%cap_bits = stack%cap_bits
+#endif
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -81,7 +84,7 @@ MODULE eis_tree_mod
       IF (current%value%ptype == c_pt_function) THEN 
         pcount = current%value%actual_params
       ELSE
-        pcount = current%value%params
+        pcount = current%value%expected_params
       END IF
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
@@ -135,9 +138,11 @@ MODULE eis_tree_mod
         CALL eval%pop(res, err)
         tree%value%ptype = c_pt_constant
         tree%value%numerical_data = res
-        DEALLOCATE(tree%value%text)
-        WRITE(rstring,'(G10.4)') res
-        ALLOCATE(tree%value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+        IF (ALLOCATED(tree%value%text)) THEN
+          DEALLOCATE(tree%value%text)
+          WRITE(rstring,'(G10.4)') res
+          ALLOCATE(tree%value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+        END IF
         DEALLOCATE(tree%nodes)
       ELSE
         tree%value%can_simplify = .FALSE.
@@ -165,18 +170,37 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_tree_to_dot(root, filename)
+  SUBROUTINE eis_visualise_stack(stack, lun)
+
+    TYPE(eis_stack), INTENT(IN) :: stack
+    INTEGER, INTENT(IN) :: lun
+    TYPE(eis_tree_item), POINTER :: root
+    INTEGER :: sp
+
+    IF (.NOT. stack%init) RETURN
+
+    sp = stack%stack_point + 1
+    DO WHILE (sp > 1)
+      ALLOCATE(root)
+      CALL eis_build_node(stack, sp, root)
+      CALL eis_tree_to_dot(root, lun)
+      DEALLOCATE(root)
+    END DO
+
+  END SUBROUTINE eis_visualise_stack
+
+
+
+  SUBROUTINE eis_tree_to_dot(root, lun)
     TYPE(eis_tree_item) :: root
-    CHARACTER(LEN=*), INTENT(IN) :: filename
+    INTEGER, INTENT(IN) :: lun
     INTEGER :: root_level
 
     root_level = 1
 
-    OPEN(unit = 10, file=TRIM(filename))
-    WRITE(10,*) 'strict graph G {'
+    WRITE(lun,*) 'strict graph G {'
     CALL dot_output(root, root_level)
-    WRITE(10,*) '}'
-    CLOSE(10)
+    WRITE(lun,*) '}'
 
   END SUBROUTINE eis_tree_to_dot
 

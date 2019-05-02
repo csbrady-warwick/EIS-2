@@ -150,6 +150,7 @@ CONTAINS
 
     IF (iindex > 0) THEN
       CALL this%list(iindex)%cleanup()
+      ALLOCATE(this%list(iindex)%name, SOURCE = name)
       ALLOCATE(this%list(iindex)%item, SOURCE = item)
       RETURN
     END IF

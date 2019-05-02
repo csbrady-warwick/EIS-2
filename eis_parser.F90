@@ -8,14 +8,14 @@
 !    * Redistributions in binary form must reproduce the above copyright
 !      notice, this list of conditions and the following disclaimer in the
 !      documentation and/or other materials provided with the distribution.
-!    * Neither the name of the <organization> nor the
+!    * Neither the name of the University of Warwick nor the
 !      names of its contributors may be used to endorse or promote products
 !      derived from this software without specific prior written permission.
 
 !THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 !ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 !WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-!DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
+!DISCLAIMED. IN NO EVENT SHALL THE UNIVERSITY OF WARWICK BE LIABLE FOR ANY
 !DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
 !(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
 !LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
@@ -32,6 +32,7 @@ MODULE eis_parser_mod
   USE eis_core_functions_mod
   USE eis_stack_mod
   USE eis_tree_mod
+  USE eis_eval_stack_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: c_char_numeric = 1
@@ -45,20 +46,29 @@ MODULE eis_parser_mod
 
     PRIVATE
     TYPE(eis_registry) :: registry
+    TYPE(eis_eval_stack) :: evaluator
     INTEGER :: last_block_type
-    LOGICAL :: init = .FALSE.
+    LOGICAL :: is_init = .FALSE.
+    LOGICAL :: should_simplify = .TRUE.
+    LOGICAL :: should_minify = .TRUE.
     TYPE(eis_stack) :: stack, brackets
     TYPE(eis_stack), POINTER :: output
     CONTAINS
-    PROCEDURE :: self_init => eip_self_init
+    PROCEDURE :: init => eip_init
     PROCEDURE :: load_block => eip_load_block
     PROCEDURE :: tokenize_subexpression_infix &
         => eip_tokenize_subexpression_infix
+    PROCEDURE :: add_stack_variable_stack &
+        => eip_add_stack_variable_stack
+    PROCEDURE :: add_stack_variable_string &
+        => eip_add_stack_variable_string
     PROCEDURE, PUBLIC :: add_function => eip_add_function
     PROCEDURE, PUBLIC :: add_constant => eip_add_constant
     PROCEDURE, PUBLIC :: add_variable => eip_add_variable
-    PROCEDURE, PUBLIC :: add_stored_stack => eip_add_stored_stack
+    GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
+        add_stack_variable_string
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
+    PROCEDURE, PUBLIC :: evaluate => eip_evaluate
 
   END TYPE eis_parser
 
@@ -67,76 +77,69 @@ MODULE eis_parser_mod
 
 CONTAINS
 
-  FUNCTION test(nparams, params, user_params, errcode) RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
-    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
-    REAL(eis_num) :: res
-
-    res = params(1) / params(2)
-  END FUNCTION test
-
-
-
-  SUBROUTINE eip_self_init(this)
+  SUBROUTINE eip_init(this, should_simplify, should_minify)
 
     CLASS(eis_parser) :: this
-    this%init = .TRUE.
-    CALL this%registry%add_operator('+', uplus, c_assoc_ra, 4, unary = .TRUE.)
-    CALL this%registry%add_operator('-', uminus, c_assoc_ra, 4, unary = .TRUE.)
-    CALL this%registry%add_operator('+', bplus, c_assoc_a, 2)
-    CALL this%registry%add_operator('-', bminus, c_assoc_la, 2)
-    CALL this%registry%add_operator('*', times, c_assoc_a, 3)
-    CALL this%registry%add_operator('/', divide, c_assoc_la, 3)
-    CALL this%registry%add_operator('^', eis_pow, c_assoc_ra, 4)
-    CALL this%registry%add_operator('e', expo, c_assoc_la, 4)
-    CALL this%registry%add_operator('lt', lt, c_assoc_la, 1)
-    CALL this%registry%add_operator('le', le, c_assoc_la, 1)
-    CALL this%registry%add_operator('gt', gt, c_assoc_la, 1)
-    CALL this%registry%add_operator('ge', ge, c_assoc_la, 1)
-    CALL this%registry%add_operator('eq', eq, c_assoc_la, 1)
-    CALL this%registry%add_operator('and', and, c_assoc_la, 0)
-    CALL this%registry%add_operator('or', or, c_assoc_la, 0)
+    LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify
+    INTEGER(eis_error) :: err
+
+    IF (PRESENT(should_simplify)) this%should_simplify = should_simplify
+    IF (PRESENT(should_minify)) this%should_minify = should_minify
+
+    this%is_init = .TRUE.
+    CALL this%registry%add_operator('+', uplus, c_assoc_ra, 4, err, &
+        unary = .TRUE.)
+    CALL this%registry%add_operator('-', uminus, c_assoc_ra, 4, err, &
+        unary = .TRUE.)
+    CALL this%registry%add_operator('+', bplus, c_assoc_a, 2, err)
+    CALL this%registry%add_operator('-', bminus, c_assoc_la, 2, err)
+    CALL this%registry%add_operator('*', times, c_assoc_a, 3, err)
+    CALL this%registry%add_operator('/', divide, c_assoc_la, 3, err)
+    CALL this%registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
+    CALL this%registry%add_operator('e', expo, c_assoc_la, 4, err)
+    CALL this%registry%add_operator('lt', lt, c_assoc_la, 1, err)
+    CALL this%registry%add_operator('le', le, c_assoc_la, 1, err)
+    CALL this%registry%add_operator('gt', gt, c_assoc_la, 1, err)
+    CALL this%registry%add_operator('ge', ge, c_assoc_la, 1, err)
+    CALL this%registry%add_operator('eq', eq, c_assoc_la, 1, err)
+    CALL this%registry%add_operator('and', and, c_assoc_la, 0, err)
+    CALL this%registry%add_operator('or', or, c_assoc_la, 0, err)
 
     CALL this%registry%add_constant('pi', &
-        3.141592653589793238462643383279503_eis_num)
-    CALL this%registry%add_constant('x', 1.0_eis_num, can_simplify = .FALSE.)
+        3.141592653589793238462643383279503_eis_num, err)
+    CALL this%registry%add_constant('x', 1.0_eis_num, err, &
+        can_simplify = .FALSE.)
+    CALL this%registry%add_constant('y', 1.0_eis_num, err, &
+        can_simplify = .FALSE.)
 
-!    CALL this%registry%add_variable('x', test, can_simplify = .FALSE.)
-    CALL this%registry%add_variable('y', test, can_simplify = .FALSE.)
-    CALL this%registry%add_variable('x_spot', test, can_simplify = .TRUE.)
-!    CALL this%registry%add_variable('pi', test)
-    CALL this%registry%add_variable('w_0', test)
-    CALL this%registry%add_variable('lambda0', test)
 
-    CALL this%registry%add_function('abs', eis_abs, 1)
-    CALL this%registry%add_function('floor', eis_floor, 1)
-    CALL this%registry%add_function('ceil', eis_ceil, 1)
-    CALL this%registry%add_function('ceiling', eis_ceil, 1)
-    CALL this%registry%add_function('nint', eis_nint, 1)
-    CALL this%registry%add_function('trunc', eis_aint, 1)
-    CALL this%registry%add_function('truncate', eis_aint, 1)
-    CALL this%registry%add_function('aint', eis_aint, 1)
-    CALL this%registry%add_function('sqrt', eis_sqrt, 1)
-    CALL this%registry%add_function('sin', eis_sin, 1)
-    CALL this%registry%add_function('cos', eis_cos, 1)
-    CALL this%registry%add_function('tan', eis_tan, 1)
-    CALL this%registry%add_function('asin', eis_asin, 1)
-    CALL this%registry%add_function('acos', eis_acos, 1)
-    CALL this%registry%add_function('atan', eis_atan, 1)
-    CALL this%registry%add_function('atan2', eis_atan2, 2)
-    CALL this%registry%add_function('sinh', eis_sinh, 1)
-    CALL this%registry%add_function('cosh',eis_cosh, 1)
-    CALL this%registry%add_function('tanh',eis_tanh, 1)
-    CALL this%registry%add_function('exp', eis_exp, 1)
-    CALL this%registry%add_function('loge', eis_loge, 1)
-    CALL this%registry%add_function('log10', eis_log10, 1)
-    CALL this%registry%add_function('log_base', eis_log_base, 1)
-    CALL this%registry%add_function('gauss', eis_gauss, 3)
-    CALL this%registry%add_function('semigauss', eis_semigauss, 4)
-    CALL this%registry%add_function('supergauss', test, 4)
-  END SUBROUTINE eip_self_init
+    CALL this%registry%add_function('abs', eis_abs, 1, err)
+    CALL this%registry%add_function('floor', eis_floor, 1, err)
+    CALL this%registry%add_function('ceil', eis_ceil, 1, err)
+    CALL this%registry%add_function('ceiling', eis_ceil, 1, err)
+    CALL this%registry%add_function('nint', eis_nint, 1, err)
+    CALL this%registry%add_function('trunc', eis_aint, 1, err)
+    CALL this%registry%add_function('truncate', eis_aint, 1, err)
+    CALL this%registry%add_function('aint', eis_aint, 1, err)
+    CALL this%registry%add_function('sqrt', eis_sqrt, 1, err)
+    CALL this%registry%add_function('sin', eis_sin, 1, err)
+    CALL this%registry%add_function('cos', eis_cos, 1, err)
+    CALL this%registry%add_function('tan', eis_tan, 1, err)
+    CALL this%registry%add_function('asin', eis_asin, 1, err)
+    CALL this%registry%add_function('acos', eis_acos, 1, err)
+    CALL this%registry%add_function('atan', eis_atan, 1, err)
+    CALL this%registry%add_function('atan2', eis_atan2, 2, err)
+    CALL this%registry%add_function('sinh', eis_sinh, 1, err)
+    CALL this%registry%add_function('cosh',eis_cosh, 1, err)
+    CALL this%registry%add_function('tanh',eis_tanh, 1, err)
+    CALL this%registry%add_function('exp', eis_exp, 1, err)
+    CALL this%registry%add_function('loge', eis_loge, 1, err)
+    CALL this%registry%add_function('log10', eis_log10, 1, err)
+    CALL this%registry%add_function('log_base', eis_log_base, 2, err)
+    CALL this%registry%add_function('gauss', eis_gauss, 3, err)
+    CALL this%registry%add_function('semigauss', eis_semigauss, 4, err)
+    CALL this%registry%add_function('supergauss', eis_supergauss, 4, err)
+  END SUBROUTINE eip_init
 
 
 
@@ -166,14 +169,16 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_load_block(this, name, iblock)
+  SUBROUTINE eip_load_block(this, name, iblock, cap_bits)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
+    INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
     LOGICAL :: can_be_unary
+    INTEGER :: slen
 
     iblock%ptype = c_pt_bad
     iblock%value = 0
@@ -181,6 +186,7 @@ CONTAINS
     IF (ALLOCATED(iblock%text)) DEALLOCATE(iblock%text)
     ALLOCATE(iblock%text, SOURCE = TRIM(name))
     work = 0
+    cap_bits = 0
 
     IF (LEN(TRIM(name)) == 0) THEN
       iblock%ptype = c_pt_null
@@ -203,11 +209,18 @@ CONTAINS
       RETURN
     END IF
 
+    slen = LEN_TRIM(name)
+    IF (strcmp(name(1:1), '"') .AND. strcmp(name(slen:slen), '"')) THEN
+      iblock%ptype = c_pt_character
+      RETURN
+    END IF
+
     can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
           .OR. this%last_block_type == c_pt_constant &
           .OR. this%last_block_type == c_pt_stored_variable)
 
-    CALL this%registry%fill_block(name, iblock, can_be_unary)
+    CALL this%registry%fill_block(name, iblock, can_be_unary, cap_bits)
+    cap_bits = 0
     IF (iblock%ptype /= c_pt_bad) RETURN
 
     value = parse_string_as_real(name, work)
@@ -246,15 +259,16 @@ CONTAINS
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: expression
     TYPE(eis_stack), INTENT(INOUT), TARGET :: output
-    INTEGER(eis_i8), INTENT(INOUT) :: err
+    INTEGER(eis_error), INTENT(INOUT) :: err
     LOGICAL :: maybe_e
 
     CHARACTER(LEN=500) :: current
     INTEGER :: current_type, current_pointer, i, ptype
+    INTEGER(eis_bitmask) :: cap_bits, cb2
 
     TYPE(eis_stack_element) :: iblock
 
-    IF (.NOT. this%init) CALL this%self_init()
+    IF (.NOT. this%is_init) CALL this%init()
     IF (.NOT. output%init) CALL initialise_stack(output)
 
     CALL initialise_stack(this%stack)
@@ -281,14 +295,19 @@ CONTAINS
           .AND. .NOT. strcmp(current, 'e'))) THEN
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
-      ELSE IF (strcmp(current, 'e') .AND. .NOT.maybe_e) THEN
+      ELSE IF (strcmp(current, 'e') .AND. .NOT. maybe_e) THEN
         ! Only interpret "e" as the Euler number if it is both preceded and
         ! followed by a number
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE
-        CALL this%tokenize_subexpression_infix(current, iblock, err)
-        IF (err /= eis_err_none) RETURN
+        CALL this%tokenize_subexpression_infix(current, iblock, cap_bits, err)
+        IF (err /= eis_err_none) THEN
+          CALL deallocate_stack(this%stack)
+          CALL deallocate_stack(this%brackets)
+          RETURN
+        END IF
+        output%cap_bits = IOR(output%cap_bits, cap_bits)
         current(:) = ' '
         current_pointer = 2
         current(1:1) = expression(i:i)
@@ -298,24 +317,48 @@ CONTAINS
       END IF
     END DO
 
-    CALL this%tokenize_subexpression_infix(current, iblock, err)
-    IF (err /= eis_err_none) RETURN
+    CALL this%tokenize_subexpression_infix(current, iblock, cap_bits, err)
+    output%cap_bits = IOR(output%cap_bits, cap_bits)
 
-    DO i = 1, this%stack%stack_point
-      CALL pop_to_stack(this%stack, this%output)
-    END DO
+    IF (err == eis_err_none) THEN
+      DO i = 1, this%stack%stack_point
+        CALL pop_to_stack(this%stack, this%output)
+      END DO
+    ELSE
+      err = IOR(err, eis_err_bad_value)
+    END IF
     CALL deallocate_stack(this%stack)
     CALL deallocate_stack(this%brackets)
+
+    IF (this%should_simplify) CALL eis_simplify_stack(this%output)
+    IF (this%should_minify) CALL minify_stack(this%output)
 
   END SUBROUTINE eip_tokenize
 
 
 
-  SUBROUTINE eip_add_function(this, name, fn, expected_params, can_simplify)
+  FUNCTION eip_evaluate(this, stack, result, params, errcode)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(IN) :: stack
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    TYPE(C_PTR), INTENT(INOUT) :: params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: eip_evaluate
+
+    eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode)
+
+  END FUNCTION eip_evaluate
+
+
+
+  SUBROUTINE eip_add_function(this, name, fn, errcode,  cap_bits, &
+      expected_params, can_simplify)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     INTEGER :: params
@@ -326,51 +369,77 @@ CONTAINS
       params = -1
     END IF
 
-    CALL this%registry%add_function(name, fn, params, can_simplify)
+    CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
+        cap_bits)
 
   END SUBROUTINE eip_add_function
 
 
 
-  SUBROUTINE eip_add_variable(this, name, fn, can_simplify)
+  SUBROUTINE eip_add_variable(this, name, fn, errcode, cap_bits, &
+      can_simplify)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
 
-    CALL this%registry%add_variable(name, fn, can_simplify)
+    CALL this%registry%add_variable(name, fn, errcode, can_simplify, cap_bits)
 
   END SUBROUTINE eip_add_variable
 
 
 
-  SUBROUTINE eip_add_constant(this, name, value, can_simplify)
+  SUBROUTINE eip_add_constant(this, name, value, errcode, cap_bits, &
+      can_simplify)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     REAL(eis_num), INTENT(IN) :: value
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
 
-    CALL this%registry%add_constant(name, value, can_simplify)
+    CALL this%registry%add_constant(name, value, errcode, can_simplify, &
+        cap_bits)
 
   END SUBROUTINE eip_add_constant
 
 
 
-  SUBROUTINE eip_add_stored_stack(this, name, stack)
+  SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack), INTENT(IN) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
 
-    CALL this%registry%add_stored_stack(name, stack)
+    CALL this%registry%add_stack_variable(name, stack, errcode)
 
-  END SUBROUTINE eip_add_stored_stack
+  END SUBROUTINE eip_add_stack_variable_stack
 
 
 
-  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, err)
+  SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name, string
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_stack) :: stack
+
+    CALL initialise_stack(stack)
+    CALL this%tokenize(string, stack, errcode)
+    CALL this%registry%add_stack_variable(name, stack, errcode)
+    CALL deallocate_stack(stack)
+
+  END SUBROUTINE eip_add_stack_variable_string
+
+
+
+  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, cap_bits, &
+      err)
 
     ! This subroutine tokenizes input in normal infix maths notation
     ! It uses Dijkstra's shunting yard algorithm to convert to RPN
@@ -378,14 +447,18 @@ CONTAINS
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: current
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
-    INTEGER(eis_i8), INTENT(INOUT) :: err
+    INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
+    INTEGER(eis_error), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
     INTEGER :: ipoint, io, iu
+    INTEGER(eis_bitmask) :: cb2
 
+    cap_bits = 0_eis_bitmask
     IF (ICHAR(current(1:1)) == 0) RETURN
 
     ! Populate the block
-    CALL this%load_block(current, iblock)
+    CALL this%load_block(current, iblock, cb2)
+!    cap_bits = cb2
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
       CALL deallocate_stack(this%stack)
@@ -430,6 +503,12 @@ CONTAINS
                 this%stack%entries(this%stack%stack_point)%actual_params = &
                     this%brackets%entries(this%brackets%stack_point)%&
                     actual_params
+                IF ((this%stack%entries(this%stack%stack_point)%actual_params &
+                    /= &
+                    this%stack%entries(this%stack%stack_point)%expected_params)&
+                    .AND. &
+                    this%stack%entries(this%stack%stack_point)%expected_params &
+                    > 0) err = IOR(err, eis_err_wrong_parameters)
                 CALL pop_to_stack(this%stack, this%output)
                 CALL pop_to_null(this%brackets)
                 !Add stored function here
@@ -445,11 +524,11 @@ CONTAINS
     ELSE IF (iblock%ptype == c_pt_function) THEN
       ! Just push functions straight onto the stack
       CALL push_to_stack(this%stack, iblock)
-      IF (this%brackets%stack_point > 0) THEN
-        this%brackets%entries(this%brackets%stack_point)%actual_params &
-        = this%brackets%entries(this%brackets%stack_point)%actual_params &
-        + iblock%output_params - 1
-      END IF
+!      IF (this%brackets%stack_point > 0) THEN
+!        this%brackets%entries(this%brackets%stack_point)%actual_params &
+!        = this%brackets%entries(this%brackets%stack_point)%actual_params &
+!        + iblock%output_params - 1
+!      END IF
       iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock)
 
