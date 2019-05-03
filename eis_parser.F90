@@ -72,6 +72,7 @@ MODULE eis_parser_mod
         add_stack_variable_string
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: evaluate => eip_evaluate
+    PROCEDURE, PUBLIC :: simplify => eip_simplify
 
   END TYPE eis_parser
 
@@ -93,23 +94,23 @@ CONTAINS
 
     IF (.NOT. global_setup) THEN
       global_setup = .TRUE.
-      CALL global_registry%add_operator('+', uplus, c_assoc_ra, 4, err, &
+      CALL global_registry%add_operator('+', eis_uplus, c_assoc_ra, 4, err, &
         unary = .TRUE.)
-      CALL global_registry%add_operator('-', uminus, c_assoc_ra, 4, err, &
+      CALL global_registry%add_operator('-', eis_uminus, c_assoc_ra, 4, err, &
           unary = .TRUE.)
-      CALL global_registry%add_operator('+', bplus, c_assoc_a, 2, err)
-      CALL global_registry%add_operator('-', bminus, c_assoc_la, 2, err)
-      CALL global_registry%add_operator('*', times, c_assoc_a, 3, err)
-      CALL global_registry%add_operator('/', divide, c_assoc_la, 3, err)
+      CALL global_registry%add_operator('+', eis_bplus, c_assoc_a, 2, err)
+      CALL global_registry%add_operator('-', eis_bminus, c_assoc_la, 2, err)
+      CALL global_registry%add_operator('*', eis_times, c_assoc_a, 3, err)
+      CALL global_registry%add_operator('/', eis_divide, c_assoc_la, 3, err)
       CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
-      CALL global_registry%add_operator('e', expo, c_assoc_la, 4, err)
-      CALL global_registry%add_operator('lt', lt, c_assoc_la, 1, err)
-      CALL global_registry%add_operator('le', le, c_assoc_la, 1, err)
-      CALL global_registry%add_operator('gt', gt, c_assoc_la, 1, err)
-      CALL global_registry%add_operator('ge', ge, c_assoc_la, 1, err)
-      CALL global_registry%add_operator('eq', eq, c_assoc_la, 1, err)
-      CALL global_registry%add_operator('and', and, c_assoc_la, 0, err)
-      CALL global_registry%add_operator('or', or, c_assoc_la, 0, err)
+      CALL global_registry%add_operator('e', eis_expo, c_assoc_la, 4, err)
+      CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err)
+      CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err)
 
       CALL global_registry%add_constant('pi', &
           3.141592653589793238462643383279503_eis_num, err)
@@ -346,7 +347,7 @@ CONTAINS
     CALL deallocate_stack(this%stack)
     CALL deallocate_stack(this%brackets)
 
-    IF (this%should_simplify) CALL eis_simplify_stack(this%output, err)
+    IF (this%should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
     IF (this%should_minify) CALL minify_stack(this%output)
 
   END SUBROUTINE eip_tokenize
@@ -357,13 +358,26 @@ CONTAINS
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(IN) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-    TYPE(C_PTR), INTENT(INOUT) :: params
+    TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER :: eip_evaluate
 
     eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode)
 
   END FUNCTION eip_evaluate
+
+
+
+  SUBROUTINE eip_simplify(this, stack, params, errcode)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+    TYPE(C_PTR), INTENT(IN) :: params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    CALL eis_simplify_stack(stack, params, errcode)
+
+  END SUBROUTINE eip_simplify
+  
 
 
 
@@ -538,6 +552,10 @@ CONTAINS
     ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
       CALL this%registry%copy_in_stored(iblock%value, this%output)
 
+    ELSE IF (iblock%ptype == c_pt_stored_function) THEN
+      this%output%has_stored_functions = .FALSE.
+      this%stack%has_stored_functions = .FALSE.
+
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN
         iblock%actual_params = 0
@@ -585,11 +603,6 @@ CONTAINS
     ELSE IF (iblock%ptype == c_pt_function) THEN
       ! Just push functions straight onto the stack
       CALL push_to_stack(this%stack, iblock, icoblock)
-!      IF (this%brackets%stack_point > 0) THEN
-!        this%brackets%entries(this%brackets%stack_point)%actual_params &
-!        = this%brackets%entries(this%brackets%stack_point)%actual_params &
-!        + iblock%output_params - 1
-!      END IF
       iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock, icoblock)
 
@@ -600,8 +613,8 @@ CONTAINS
           CALL pop_to_stack(this%stack, this%output)
         ELSE
           IF (block2%value /= c_paren_left_bracket) THEN
-            PRINT *, 'Bad function expression'
-            STOP
+            err = IOR(err, eis_err_bad_value)
+             RETURN
           END IF
           IF (this%brackets%stack_point > 0) THEN
             this%brackets%entries(this%brackets%stack_point)%actual_params = &
