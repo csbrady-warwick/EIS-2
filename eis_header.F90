@@ -25,33 +25,31 @@ MODULE eis_header
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
   END TYPE eis_indirection
 
-  TYPE eis_co_stack_element
-
-
-  END TYPE eis_co_stack_element
+  TYPE eis_stack_co_element
+    INTEGER :: associativity, precedence
+    INTEGER :: expected_params = -1
+    CHARACTER(LEN=:), ALLOCATABLE :: text
+  END TYPE eis_stack_co_element
 
   TYPE eis_stack_element
     INTEGER :: ptype
-    INTEGER :: associativity, precedence
     INTEGER :: value
-    INTEGER :: expected_params = -1
     INTEGER :: actual_params = 0
     REAL(eis_num) :: numerical_data
-    CHARACTER(LEN=:), ALLOCATABLE :: text
     LOGICAL :: can_simplify = .TRUE.
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
-    TYPE(eis_indirection), POINTER :: indirect_fn => NULL()
   END TYPE eis_stack_element
 
   TYPE eis_stack
     TYPE(eis_stack_element), ALLOCATABLE :: entries(:)
+    TYPE(eis_stack_co_element), ALLOCATABLE :: co_entries(:)
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.
   END TYPE eis_stack
 
   INTERFACE
-    FUNCTION parser_late_bind_fn(nparams, params, parameters, stack_out, &
+    SUBROUTINE parser_late_bind_fn(nparams, params, parameters, stack_out, &
         errcode)
       IMPORT eis_num, eis_i8, eis_i4, C_PTR, eis_stack
       INTEGER(eis_i4), INTENT(IN) :: nparams
@@ -59,8 +57,7 @@ MODULE eis_header
       TYPE(C_PTR), INTENT(IN) :: parameters
       TYPE(eis_stack), INTENT(INOUT) :: stack_out
       INTEGER(eis_i8), INTENT(INOUT) :: errcode
-      REAL(eis_num) :: parser_eval_fn
-    END FUNCTION
+    END SUBROUTINE parser_late_bind_fn
   END INTERFACE
 
 END MODULE eis_header

@@ -42,6 +42,9 @@ MODULE eis_parser_mod
   INTEGER, PARAMETER :: c_char_opcode = 5
   INTEGER, PARAMETER :: c_char_unknown = 1024
 
+  TYPE(eis_registry), SAVE :: global_registry
+  LOGICAL, SAVE :: global_setup = .FALSE.
+
   TYPE :: eis_parser
 
     PRIVATE
@@ -87,58 +90,63 @@ CONTAINS
     IF (PRESENT(should_minify)) this%should_minify = should_minify
 
     this%is_init = .TRUE.
-    CALL this%registry%add_operator('+', uplus, c_assoc_ra, 4, err, &
+
+    IF (.NOT. global_setup) THEN
+      global_setup = .TRUE.
+      CALL global_registry%add_operator('+', uplus, c_assoc_ra, 4, err, &
         unary = .TRUE.)
-    CALL this%registry%add_operator('-', uminus, c_assoc_ra, 4, err, &
-        unary = .TRUE.)
-    CALL this%registry%add_operator('+', bplus, c_assoc_a, 2, err)
-    CALL this%registry%add_operator('-', bminus, c_assoc_la, 2, err)
-    CALL this%registry%add_operator('*', times, c_assoc_a, 3, err)
-    CALL this%registry%add_operator('/', divide, c_assoc_la, 3, err)
-    CALL this%registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
-    CALL this%registry%add_operator('e', expo, c_assoc_la, 4, err)
-    CALL this%registry%add_operator('lt', lt, c_assoc_la, 1, err)
-    CALL this%registry%add_operator('le', le, c_assoc_la, 1, err)
-    CALL this%registry%add_operator('gt', gt, c_assoc_la, 1, err)
-    CALL this%registry%add_operator('ge', ge, c_assoc_la, 1, err)
-    CALL this%registry%add_operator('eq', eq, c_assoc_la, 1, err)
-    CALL this%registry%add_operator('and', and, c_assoc_la, 0, err)
-    CALL this%registry%add_operator('or', or, c_assoc_la, 0, err)
+      CALL global_registry%add_operator('-', uminus, c_assoc_ra, 4, err, &
+          unary = .TRUE.)
+      CALL global_registry%add_operator('+', bplus, c_assoc_a, 2, err)
+      CALL global_registry%add_operator('-', bminus, c_assoc_la, 2, err)
+      CALL global_registry%add_operator('*', times, c_assoc_a, 3, err)
+      CALL global_registry%add_operator('/', divide, c_assoc_la, 3, err)
+      CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
+      CALL global_registry%add_operator('e', expo, c_assoc_la, 4, err)
+      CALL global_registry%add_operator('lt', lt, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('le', le, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('gt', gt, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('ge', ge, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('eq', eq, c_assoc_la, 1, err)
+      CALL global_registry%add_operator('and', and, c_assoc_la, 0, err)
+      CALL global_registry%add_operator('or', or, c_assoc_la, 0, err)
 
-    CALL this%registry%add_constant('pi', &
-        3.141592653589793238462643383279503_eis_num, err)
-    CALL this%registry%add_constant('x', 1.0_eis_num, err, &
-        can_simplify = .FALSE.)
-    CALL this%registry%add_constant('y', 1.0_eis_num, err, &
-        can_simplify = .FALSE.)
+      CALL global_registry%add_constant('pi', &
+          3.141592653589793238462643383279503_eis_num, err)
+      CALL global_registry%add_constant('x', 1.0_eis_num, err, &
+          can_simplify = .FALSE.)
+      CALL global_registry%add_constant('y', 1.0_eis_num, err, &
+          can_simplify = .FALSE.)
 
 
-    CALL this%registry%add_function('abs', eis_abs, 1, err)
-    CALL this%registry%add_function('floor', eis_floor, 1, err)
-    CALL this%registry%add_function('ceil', eis_ceil, 1, err)
-    CALL this%registry%add_function('ceiling', eis_ceil, 1, err)
-    CALL this%registry%add_function('nint', eis_nint, 1, err)
-    CALL this%registry%add_function('trunc', eis_aint, 1, err)
-    CALL this%registry%add_function('truncate', eis_aint, 1, err)
-    CALL this%registry%add_function('aint', eis_aint, 1, err)
-    CALL this%registry%add_function('sqrt', eis_sqrt, 1, err)
-    CALL this%registry%add_function('sin', eis_sin, 1, err)
-    CALL this%registry%add_function('cos', eis_cos, 1, err)
-    CALL this%registry%add_function('tan', eis_tan, 1, err)
-    CALL this%registry%add_function('asin', eis_asin, 1, err)
-    CALL this%registry%add_function('acos', eis_acos, 1, err)
-    CALL this%registry%add_function('atan', eis_atan, 1, err)
-    CALL this%registry%add_function('atan2', eis_atan2, 2, err)
-    CALL this%registry%add_function('sinh', eis_sinh, 1, err)
-    CALL this%registry%add_function('cosh',eis_cosh, 1, err)
-    CALL this%registry%add_function('tanh',eis_tanh, 1, err)
-    CALL this%registry%add_function('exp', eis_exp, 1, err)
-    CALL this%registry%add_function('loge', eis_loge, 1, err)
-    CALL this%registry%add_function('log10', eis_log10, 1, err)
-    CALL this%registry%add_function('log_base', eis_log_base, 2, err)
-    CALL this%registry%add_function('gauss', eis_gauss, 3, err)
-    CALL this%registry%add_function('semigauss', eis_semigauss, 4, err)
-    CALL this%registry%add_function('supergauss', eis_supergauss, 4, err)
+      CALL global_registry%add_function('abs', eis_abs, 1, err)
+      CALL global_registry%add_function('floor', eis_floor, 1, err)
+      CALL global_registry%add_function('ceil', eis_ceil, 1, err)
+      CALL global_registry%add_function('ceiling', eis_ceil, 1, err)
+      CALL global_registry%add_function('nint', eis_nint, 1, err)
+      CALL global_registry%add_function('trunc', eis_aint, 1, err)
+      CALL global_registry%add_function('truncate', eis_aint, 1, err)
+      CALL global_registry%add_function('aint', eis_aint, 1, err)
+      CALL global_registry%add_function('sqrt', eis_sqrt, 1, err)
+      CALL global_registry%add_function('sin', eis_sin, 1, err)
+      CALL global_registry%add_function('cos', eis_cos, 1, err)
+      CALL global_registry%add_function('tan', eis_tan, 1, err)
+      CALL global_registry%add_function('asin', eis_asin, 1, err)
+      CALL global_registry%add_function('acos', eis_acos, 1, err)
+      CALL global_registry%add_function('atan', eis_atan, 1, err)
+      CALL global_registry%add_function('atan2', eis_atan2, 2, err)
+      CALL global_registry%add_function('sinh', eis_sinh, 1, err)
+      CALL global_registry%add_function('cosh',eis_cosh, 1, err)
+      CALL global_registry%add_function('tanh',eis_tanh, 1, err)
+      CALL global_registry%add_function('exp', eis_exp, 1, err)
+      CALL global_registry%add_function('loge', eis_loge, 1, err)
+      CALL global_registry%add_function('log10', eis_log10, 1, err)
+      CALL global_registry%add_function('log_base', eis_log_base, 2, err)
+      CALL global_registry%add_function('gauss', eis_gauss, 3, err)
+      CALL global_registry%add_function('semigauss', eis_semigauss, 4, err)
+      CALL global_registry%add_function('supergauss', eis_supergauss, 4, err)
+    END IF
+
   END SUBROUTINE eip_init
 
 
@@ -169,11 +177,12 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_load_block(this, name, iblock, cap_bits)
+  SUBROUTINE eip_load_block(this, name, iblock, icoblock, cap_bits)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
+    TYPE(eis_stack_co_element), INTENT(OUT) :: icoblock
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
@@ -183,8 +192,8 @@ CONTAINS
     iblock%ptype = c_pt_bad
     iblock%value = 0
     iblock%numerical_data = 0.0_eis_num
-    IF (ALLOCATED(iblock%text)) DEALLOCATE(iblock%text)
-    ALLOCATE(iblock%text, SOURCE = TRIM(name))
+    IF (ALLOCATED(icoblock%text)) DEALLOCATE(icoblock%text)
+    ALLOCATE(icoblock%text, SOURCE = TRIM(name))
     work = 0
     cap_bits = 0
 
@@ -219,8 +228,12 @@ CONTAINS
           .OR. this%last_block_type == c_pt_constant &
           .OR. this%last_block_type == c_pt_stored_variable)
 
-    CALL this%registry%fill_block(name, iblock, can_be_unary, cap_bits)
-    cap_bits = 0
+    CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary, &
+        cap_bits)
+    IF (iblock%ptype /= c_pt_bad) RETURN
+
+    CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary, &
+        cap_bits)
     IF (iblock%ptype /= c_pt_bad) RETURN
 
     value = parse_string_as_real(name, work)
@@ -264,9 +277,10 @@ CONTAINS
 
     CHARACTER(LEN=500) :: current
     INTEGER :: current_type, current_pointer, i, ptype
-    INTEGER(eis_bitmask) :: cap_bits, cb2
+    INTEGER(eis_bitmask) :: cap_bits
 
     TYPE(eis_stack_element) :: iblock
+    TYPE(eis_stack_co_element) :: icoblock
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (.NOT. output%init) CALL initialise_stack(output)
@@ -301,7 +315,8 @@ CONTAINS
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE
-        CALL this%tokenize_subexpression_infix(current, iblock, cap_bits, err)
+        CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
+            cap_bits, err)
         IF (err /= eis_err_none) THEN
           CALL deallocate_stack(this%stack)
           CALL deallocate_stack(this%brackets)
@@ -317,7 +332,8 @@ CONTAINS
       END IF
     END DO
 
-    CALL this%tokenize_subexpression_infix(current, iblock, cap_bits, err)
+    CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
+        cap_bits, err)
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
@@ -330,7 +346,7 @@ CONTAINS
     CALL deallocate_stack(this%stack)
     CALL deallocate_stack(this%brackets)
 
-    IF (this%should_simplify) CALL eis_simplify_stack(this%output)
+    IF (this%should_simplify) CALL eis_simplify_stack(this%output, err)
     IF (this%should_minify) CALL minify_stack(this%output)
 
   END SUBROUTINE eip_tokenize
@@ -352,7 +368,7 @@ CONTAINS
 
 
   SUBROUTINE eip_add_function(this, name, fn, errcode,  cap_bits, &
-      expected_params, can_simplify)
+      expected_params, can_simplify, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -360,8 +376,9 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
     INTEGER :: params
+    LOGICAL :: is_global
 
     IF (PRESENT(expected_params)) THEN
       params = expected_params
@@ -369,77 +386,121 @@ CONTAINS
       params = -1
     END IF
 
-    CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
-        cap_bits)
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    IF (is_global) THEN
+      CALL global_registry%add_function(name, fn, params, errcode, &
+          can_simplify, cap_bits)
+    ELSE
+      CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
+          cap_bits)
+    END IF
 
   END SUBROUTINE eip_add_function
 
 
 
   SUBROUTINE eip_add_variable(this, name, fn, errcode, cap_bits, &
-      can_simplify)
+      can_simplify, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    LOGICAL :: is_global
 
-    CALL this%registry%add_variable(name, fn, errcode, can_simplify, cap_bits)
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    IF (is_global) THEN
+      CALL global_registry%add_variable(name, fn, errcode, can_simplify, &
+          cap_bits)
+    ELSE
+      CALL this%registry%add_variable(name, fn, errcode, can_simplify, cap_bits)
+    END IF
 
   END SUBROUTINE eip_add_variable
 
 
 
   SUBROUTINE eip_add_constant(this, name, value, errcode, cap_bits, &
-      can_simplify)
+      can_simplify, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     REAL(eis_num), INTENT(IN) :: value
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    LOGICAL :: is_global
 
-    CALL this%registry%add_constant(name, value, errcode, can_simplify, &
-        cap_bits)
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    IF (is_global) THEN
+      CALL global_registry%add_constant(name, value, errcode, can_simplify, &
+          cap_bits)
+    ELSE
+      CALL this%registry%add_constant(name, value, errcode, can_simplify, &
+          cap_bits)
+    END IF
 
   END SUBROUTINE eip_add_constant
 
 
 
-  SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode)
+  SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack), INTENT(IN) :: stack
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    LOGICAL :: is_global
+        
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
 
-    CALL this%registry%add_stack_variable(name, stack, errcode)
+    IF (is_global) THEN
+      CALL global_registry%add_stack_variable(name, stack, errcode)
+    ELSE
+      CALL this%registry%add_stack_variable(name, stack, errcode)
+    END IF
 
   END SUBROUTINE eip_add_stack_variable_stack
 
 
 
-  SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode)
+  SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name, string
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    LOGICAL :: is_global
     TYPE(eis_stack) :: stack
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
 
     CALL initialise_stack(stack)
     CALL this%tokenize(string, stack, errcode)
-    CALL this%registry%add_stack_variable(name, stack, errcode)
+    IF (is_global) THEN
+      CALL global_registry%add_stack_variable(name, stack, errcode)
+    ELSE
+      CALL this%registry%add_stack_variable(name, stack, errcode)
+    END IF
     CALL deallocate_stack(stack)
 
   END SUBROUTINE eip_add_stack_variable_string
 
 
 
-  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, cap_bits, &
-      err)
+  SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
+      cap_bits, err)
 
     ! This subroutine tokenizes input in normal infix maths notation
     ! It uses Dijkstra's shunting yard algorithm to convert to RPN
@@ -447,18 +508,18 @@ CONTAINS
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: current
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
+    TYPE(eis_stack_co_element), INTENT(INOUT) :: icoblock
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     INTEGER(eis_error), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
+    TYPE(eis_stack_co_element) :: coblock2
     INTEGER :: ipoint, io, iu
-    INTEGER(eis_bitmask) :: cb2
 
     cap_bits = 0_eis_bitmask
     IF (ICHAR(current(1:1)) == 0) RETURN
 
     ! Populate the block
-    CALL this%load_block(current, iblock, cb2)
-!    cap_bits = cb2
+    CALL this%load_block(current, iblock, icoblock, cap_bits)
     IF (iblock%ptype == c_pt_bad) THEN
       err = eis_err_bad_value
       CALL deallocate_stack(this%stack)
@@ -472,16 +533,16 @@ CONTAINS
 
     IF (iblock%ptype == c_pt_variable &
         .OR. iblock%ptype == c_pt_constant) THEN
-      CALL push_to_stack(this%output, iblock)
+      CALL push_to_stack(this%output, iblock, icoblock)
 
     ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
-      CALL this%registry%copy_in_stored(current, this%output)
+      CALL this%registry%copy_in_stored(iblock%value, this%output)
 
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN
         iblock%actual_params = 0
-        CALL push_to_stack(this%stack, iblock)
-        CALL push_to_stack(this%brackets, iblock)
+        CALL push_to_stack(this%stack, iblock, icoblock)
+        CALL push_to_stack(this%brackets, iblock, icoblock)
       ELSE
         DO
           CALL stack_snoop(this%stack, block2, 0)
@@ -504,11 +565,11 @@ CONTAINS
                     this%brackets%entries(this%brackets%stack_point)%&
                     actual_params
                 IF ((this%stack%entries(this%stack%stack_point)%actual_params &
-                    /= &
-                    this%stack%entries(this%stack%stack_point)%expected_params)&
-                    .AND. &
-                    this%stack%entries(this%stack%stack_point)%expected_params &
-                    > 0) err = IOR(err, eis_err_wrong_parameters)
+                    /= this%stack%co_entries(this%stack%stack_point)% &
+                    expected_params) .AND. &
+                    this%stack%co_entries(this%stack%stack_point)% &
+                    expected_params > 0) err = IOR(err, &
+                    eis_err_wrong_parameters)
                 CALL pop_to_stack(this%stack, this%output)
                 CALL pop_to_null(this%brackets)
                 !Add stored function here
@@ -523,14 +584,14 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_function) THEN
       ! Just push functions straight onto the stack
-      CALL push_to_stack(this%stack, iblock)
+      CALL push_to_stack(this%stack, iblock, icoblock)
 !      IF (this%brackets%stack_point > 0) THEN
 !        this%brackets%entries(this%brackets%stack_point)%actual_params &
 !        = this%brackets%entries(this%brackets%stack_point)%actual_params &
 !        + iblock%output_params - 1
 !      END IF
       iblock%actual_params = 1
-      CALL push_to_stack(this%brackets, iblock)
+      CALL push_to_stack(this%brackets, iblock, icoblock)
 
     ELSE IF (iblock%ptype == c_pt_separator) THEN
       DO
@@ -555,35 +616,35 @@ CONTAINS
         IF (this%stack%stack_point == 0) THEN
           ! stack is empty, so just push operator onto stack and
           ! leave loop
-          CALL push_to_stack(this%stack, iblock)
+          CALL push_to_stack(this%stack, iblock, icoblock)
           EXIT
         END IF
         ! stack is not empty so check precedence etc.
-        CALL stack_snoop(this%stack, block2, 0)
+        CALL stack_snoop(this%stack, block2, 0, coblock2)
         IF (block2%ptype /= c_pt_operator) THEN
           ! Previous block is not an operator so push current operator
           ! to stack and leave loop
-          CALL push_to_stack(this%stack, iblock)
+          CALL push_to_stack(this%stack, iblock, icoblock)
           EXIT
         ELSE
-          IF (iblock%associativity == c_assoc_la &
-              .OR. iblock%associativity == c_assoc_a) THEN
+          IF (icoblock%associativity == c_assoc_la &
+              .OR. icoblock%associativity == c_assoc_a) THEN
             ! Operator is full associative or left associative
-            IF (iblock%precedence &
-                <= block2%precedence) THEN
+            IF (icoblock%precedence &
+                <= coblock2%precedence) THEN
               CALL pop_to_stack(this%stack, this%output)
               CYCLE
             ELSE
-              CALL push_to_stack(this%stack, iblock)
+              CALL push_to_stack(this%stack, iblock, icoblock)
               EXIT
             END IF
           ELSE
-            IF (iblock%precedence &
-                < block2%precedence) THEN
+            IF (icoblock%precedence &
+                < coblock2%precedence) THEN
               CALL pop_to_stack(this%stack, this%output)
               CYCLE
             ELSE
-              CALL push_to_stack(this%stack, iblock)
+              CALL push_to_stack(this%stack, iblock, icoblock)
               EXIT
             END IF
           END IF

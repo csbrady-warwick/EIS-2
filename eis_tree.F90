@@ -8,6 +8,7 @@ MODULE eis_tree_mod
 
   TYPE :: eis_tree_item
     TYPE(eis_stack_element) :: value
+    TYPE(eis_stack_co_element) :: co_value
     TYPE(eis_tree_item), DIMENSION(:), POINTER :: nodes => NULL()
     LOGICAL :: is_new = .FALSE.
     CONTAINS
@@ -24,14 +25,16 @@ MODULE eis_tree_mod
 
     IF (ASSOCIATED(this%nodes)) DEALLOCATE(this%nodes)
     CALL deallocate_stack_element(this%value)
+    CALL deallocate_stack_co_element(this%co_value)
 
   END SUBROUTINE eit_destructor
 
 
 
-  SUBROUTINE eis_simplify_stack(stack, stack_out)
+  SUBROUTINE eis_simplify_stack(stack, errcode, stack_out)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: stack_out
     TYPE(eis_stack), POINTER :: simplified
     TYPE(eis_tree_item), POINTER :: root
@@ -49,14 +52,17 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_simplify_tree(root)
+      CALL eis_simplify_tree(root, errcode)
+      IF (errcode /= eis_err_none) THEN
+        DEALLOCATE(root)
+        RETURN
+      END IF
       CALL eis_tree_to_stack(root, simplified)
+      PRINT *,'Made stack, length is', simplified%stack_point
       DEALLOCATE(root)
     END DO
 
-#ifndef ALLOW_UNCAP_BITS
     simplified%cap_bits = stack%cap_bits
-#endif
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -78,14 +84,11 @@ MODULE eis_tree_mod
 
     curindex = curindex - 1
     current%value = stack%entries(curindex)
+    current%co_value = stack%co_entries(curindex)
 
     IF (current%value%ptype == c_pt_function .OR. &
         current%value%ptype == c_pt_operator) THEN
-      IF (current%value%ptype == c_pt_function) THEN 
-        pcount = current%value%actual_params
-      ELSE
-        pcount = current%value%expected_params
-      END IF
+      pcount = current%value%actual_params
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
         p => current%nodes(iparam)
@@ -107,43 +110,54 @@ MODULE eis_tree_mod
 
 
 
-  RECURSIVE SUBROUTINE eis_simplify_tree(tree)
+  RECURSIVE SUBROUTINE eis_simplify_tree(tree, errcode)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER :: inode
-    LOGICAL :: can_simplify, so1, so2
+    LOGICAL :: can_simplify
     CHARACTER(LEN=:), ALLOCATABLE :: temp, temp2
-    CHARACTER(LEN=1) :: ob1, cb1, ob2, cb2
     REAL(eis_num) :: res
     TYPE(eis_eval_stack) :: eval
-    INTEGER(eis_i8) :: err
+    INTEGER(eis_error) :: err
     CHARACTER(LEN=10) :: rstring
 
     IF (ASSOCIATED(tree%nodes)) THEN
       can_simplify = .TRUE.
-      IF (tree%value%ptype == c_pt_operator .AND. SIZE(tree%nodes) == 2) THEN
-        so1 = ASSOCIATED(tree%nodes(1)%nodes)
-        so2 = ASSOCIATED(tree%nodes(2)%nodes)
-      END IF
        
       DO inode = SIZE(tree%nodes), 1, -1
-        CALL eis_simplify_tree(tree%nodes(inode))
+        CALL eis_simplify_tree(tree%nodes(inode), errcode)
+        IF (tree%nodes(inode)%value%ptype /= c_pt_constant) THEN
+          !This can only happen if one of the nodes downstream returned a
+          !no simplify error
+          RETURN
+        END IF
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify
       END DO
+
+      PRINT *,'Can simplify ', can_simplify
 
       IF (can_simplify) THEN
         DO inode = SIZE(tree%nodes), 1, -1
           CALL eval%push(tree%nodes(inode)%value%numerical_data, err)
         END DO
+        err = eis_err_none
         CALL eval%eval_element(tree%value, C_NULL_PTR, err)
         CALL eval%pop(res, err)
-        tree%value%ptype = c_pt_constant
-        tree%value%numerical_data = res
-        IF (ALLOCATED(tree%value%text)) THEN
-          DEALLOCATE(tree%value%text)
-          WRITE(rstring,'(G10.4)') res
-          ALLOCATE(tree%value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+        PRINT *,'Err is ', err
+        IF (err == eis_err_none) THEN
+          tree%value%ptype = c_pt_constant
+          tree%value%numerical_data = res
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            WRITE(rstring,'(G10.4)') res
+            ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+          END IF
+          DEALLOCATE(tree%nodes)
+        ELSE IF (err == eis_err_no_simplify) THEN
+          RETURN
+        ELSE
+          errcode = IOR(errcode, err)
         END IF
-        DEALLOCATE(tree%nodes)
       ELSE
         tree%value%can_simplify = .FALSE.
       END IF
@@ -164,7 +178,7 @@ MODULE eis_tree_mod
       END DO
     END IF
 
-    CALL push_to_stack(stack_in, tree%value)
+    CALL push_to_stack(stack_in, tree%value, tree%co_value)
 
   END SUBROUTINE eis_tree_to_stack
 
@@ -224,8 +238,8 @@ MODULE eis_tree_mod
         ds = "circle"
     END SELECT
 
-    WRITE(10, '(I4.4,A,A,A)') id_in, '[label="'//node%value%text//'"] [shape='&
-        , TRIM(ds),'];'
+    WRITE(10, '(I4.4,A,A,A)') id_in, '[label="'//node%co_value%text &
+        //'"] [shape=', TRIM(ds),'];'
     IF (ASSOCIATED(node%nodes)) THEN
       DO inode = SIZE(node%nodes), 1, -1
         id_in = id_in + 1

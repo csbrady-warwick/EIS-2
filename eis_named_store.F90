@@ -195,8 +195,7 @@ CONTAINS
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Function to generate a hash from a name
-  !> Implementation of djb2 hash modified for fixed number of bins and
-  !> Fortran style 1 indexed arrays
+  !> Implementation of djb2 hash
   !> @param[in] this
   !> @param[in] name
   !> @result hash
