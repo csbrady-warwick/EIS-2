@@ -1,4 +1,4 @@
-MODULE eis_function_registry_mod
+MODULE eis_registry_mod
 
   USE eis_header
   USE eis_stack_mod
@@ -40,6 +40,8 @@ MODULE eis_function_registry_mod
     PROCEDURE, PUBLIC :: add_stack_function => eir_add_stack_function
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
     PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
+    PROCEDURE, PUBLIC :: get_stored_emplacement => eir_get_stored
+    
   END TYPE eis_registry
 
   PRIVATE
@@ -182,7 +184,7 @@ CONTAINS
 
     holder%contents => def_fn
     index = this%stack_function_registry%store(holder)
-    temp%ptype = c_pt_stored_function
+    temp%ptype = c_pt_emplaced_function
     temp%value = index
     CALL this%generic_table%store(name, temp)
 
@@ -252,13 +254,29 @@ CONTAINS
       END SELECT
       IF (ASSOCIATED(temp)) THEN
         CALL append_stack(output, temp)
-      ELSE
-        PRINT *,'Unable to convert pointer'
       END IF
-    ELSE
-      PRINT *,'No pointer found from index' , index
     END IF
 
   END SUBROUTINE eir_copy_in
 
-END MODULE eis_function_registry_mod
+
+
+  FUNCTION eir_get_stored(this, index) RESULT(fn)
+    CLASS(eis_registry) :: this
+    INTEGER(eis_i4), INTENT(IN) :: index
+    PROCEDURE(parser_late_bind_fn), POINTER :: fn
+    CLASS(*), POINTER :: gptr
+
+    gptr => this%stack_function_registry%get(index)
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (late_bind_fn_holder)
+          fn => co%contents
+        CLASS DEFAULT
+          fn => NULL()
+      END SELECT
+    END IF
+
+  END FUNCTION eir_get_stored
+
+END MODULE eis_registry_mod

@@ -1,4 +1,3 @@
-#define EIS_TYPE REAL(eis_num)
 MODULE eis_constants
 
   IMPLICIT NONE
@@ -30,7 +29,10 @@ MODULE eis_constants
   INTEGER, PARAMETER :: c_pt_separator = 6
   INTEGER, PARAMETER :: c_pt_character = 7
   INTEGER, PARAMETER :: c_pt_stored_variable = 8
-  INTEGER, PARAMETER :: c_pt_stored_function = 9
+  INTEGER, PARAMETER :: c_pt_deferred_variable = 9
+  INTEGER, PARAMETER :: c_pt_deferred_function = 10
+  INTEGER, PARAMETER :: c_pt_emplaced_variable = 11
+  INTEGER, PARAMETER :: c_pt_emplaced_function = 12
   INTEGER, PARAMETER :: c_pt_bad = 1024
   INTEGER, PARAMETER :: c_pt_null = 1025
 
@@ -39,14 +41,6 @@ MODULE eis_constants
   INTEGER, PARAMETER :: c_assoc_a = 1
   INTEGER, PARAMETER :: c_assoc_la = 2
   INTEGER, PARAMETER :: c_assoc_ra = 3
-  INTEGER, PARAMETER :: c_num_ops = 13
-
-  INTEGER, DIMENSION(c_num_ops), PARAMETER :: &
-      opcode_precedence = (/2, 2, 3, 3, 4, 4, 1, 1, 1, 0, 0, 4, 4/)
-  INTEGER, DIMENSION(c_num_ops), PARAMETER :: &
-      opcode_assoc = (/c_assoc_a, c_assoc_la, c_assoc_a, c_assoc_la, &
-          c_assoc_ra, c_assoc_ra, c_assoc_la, c_assoc_la, c_assoc_la, &
-          c_assoc_la, c_assoc_la, c_assoc_ra, c_assoc_ra/)
 
   INTEGER, PARAMETER :: c_paren_left_bracket = 1
   INTEGER, PARAMETER :: c_paren_right_bracket = 2

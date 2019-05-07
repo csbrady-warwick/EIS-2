@@ -145,7 +145,6 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
-    PRINT *,params
     res = params(1) ** params(2)
   END FUNCTION eis_pow
 
@@ -451,7 +450,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_sqrt
@@ -541,7 +539,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_asin
@@ -568,7 +565,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_acos
@@ -721,7 +717,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_loge
@@ -748,7 +743,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_log10
@@ -775,7 +769,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_log_base
@@ -802,7 +795,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_gauss
@@ -835,7 +827,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_semigauss
@@ -863,7 +854,6 @@ MODULE eis_core_functions_mod
     ELSE
       res = 1.0_eis_num
       errcode = IOR(errcode, eis_err_maths_domain)
-      errcode = IOR(errcode, eis_err_bad_value)
     END IF
 
   END FUNCTION eis_supergauss

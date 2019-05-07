@@ -6,7 +6,7 @@ MODULE eis_header
   INTERFACE
     FUNCTION parser_eval_fn(nparams, params, user_params, status_code, &
         errcode) BIND(C)
-      IMPORT eis_num, eis_i8, eis_i4, C_PTR, eis_error, eis_status
+      IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status
       INTEGER(eis_i4), INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: user_params
@@ -16,13 +16,22 @@ MODULE eis_header
     END FUNCTION
   END INTERFACE
 
-  INTEGER(eis_error), PARAMETER :: eis_err_none = 0
-  INTEGER(eis_error), PARAMETER :: eis_err_bad_value = 2**0
-  INTEGER(eis_error), PARAMETER :: eis_err_wrong_parameters = 2**1
-  INTEGER(eis_error), PARAMETER :: eis_err_maths_domain = 2**2
+  INTEGER(eis_error), PARAMETER :: eis_err_none = 0 !< No error
+  INTEGER(eis_error), PARAMETER :: eis_err_parser = 2**0 !< Error in parser
+  INTEGER(eis_error), PARAMETER :: eis_err_simplifier = 2**1 !< Error in simplify
+  INTEGER(eis_error), PARAMETER :: eis_err_emplacer = 2**2 !< Error in emplace
+  INTEGER(eis_error), PARAMETER :: eis_err_evaluator = 2**3 !< Error in evaluate
+  INTEGER(eis_error), PARAMETER :: eis_err_not_found = 2**4 !< Name not found
+  INTEGER(eis_error), PARAMETER :: eis_err_malformed = 2**5 !< Malformed expression
+  INTEGER(eis_error), PARAMETER :: eis_err_wrong_parameters = 2**6 !< Wrong number of parameters
+  INTEGER(eis_error), PARAMETER :: eis_err_maths_domain = 2**7 !< Mathematically invalid
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_value = 2**8 !< Value that makes no sense
+  INTEGER(eis_error), PARAMETER :: eis_err_has_deferred = 2**9
+  INTEGER(eis_error), PARAMETER :: eis_err_has_emplaced = 2**10
 
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**0
+  INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**1
 
   TYPE :: eis_indirection
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
@@ -49,18 +58,19 @@ MODULE eis_header
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.
-    LOGICAL :: has_stored_functions = .FALSE.
+    LOGICAL :: has_emplaced = .FALSE.
   END TYPE eis_stack
 
   INTERFACE
     SUBROUTINE parser_late_bind_fn(nparams, params, parameters, stack_out, &
-        errcode)
-      IMPORT eis_num, eis_i8, eis_i4, C_PTR, eis_stack
+        status_code, errcode)
+      IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
       INTEGER(eis_i4), INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: parameters
       TYPE(eis_stack), INTENT(INOUT) :: stack_out
-      INTEGER(eis_i8), INTENT(INOUT) :: errcode
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_late_bind_fn
   END INTERFACE
 

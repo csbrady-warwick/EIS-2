@@ -185,8 +185,8 @@ CONTAINS
     TYPE(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
 
     IF (.NOT. ASSOCIATED(this%list)) RETURN
-    this%list => NULL()
     DEALLOCATE(this%list)
+    this%list => NULL()
 
   END SUBROUTINE nsil_destructor
 

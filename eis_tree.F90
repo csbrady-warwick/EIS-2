@@ -85,10 +85,12 @@ MODULE eis_tree_mod
 
     curindex = curindex - 1
     current%value = stack%entries(curindex)
-    current%co_value = stack%co_entries(curindex)
+    IF (ALLOCATED(stack%co_entries)) &
+        current%co_value = stack%co_entries(curindex)
 
     IF (current%value%ptype == c_pt_function .OR. &
-        current%value%ptype == c_pt_operator) THEN
+        current%value%ptype == c_pt_operator .OR. &
+        current%value%ptype == c_pt_emplaced_function) THEN
       pcount = current%value%actual_params
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
@@ -185,6 +187,18 @@ MODULE eis_tree_mod
     CALL push_to_stack(stack_in, tree%value, tree%co_value)
 
   END SUBROUTINE eis_tree_to_stack
+
+
+
+  SUBROUTINE eis_simple_dot(root)
+    TYPE(eis_tree_item) :: root
+
+    OPEN(UNIT=10)
+    CALL eis_tree_to_dot(root, 10)
+    FLUSH(10)
+    CLOSE(10)
+
+  END SUBROUTINE eis_simple_dot
 
 
 

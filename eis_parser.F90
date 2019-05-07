@@ -28,11 +28,12 @@ MODULE eis_parser_mod
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_header
   USE eis_raw_parser_mod
-  USE eis_function_registry_mod
+  USE eis_registry_mod
   USE eis_core_functions_mod
   USE eis_stack_mod
   USE eis_tree_mod
   USE eis_eval_stack_mod
+  USE eis_error_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: c_char_numeric = 1
@@ -50,10 +51,11 @@ MODULE eis_parser_mod
     PRIVATE
     TYPE(eis_registry) :: registry
     TYPE(eis_eval_stack) :: evaluator
-    INTEGER :: last_block_type
+    TYPE(eis_error_handler) :: err_handler
+    INTEGER :: last_block_type, last_block_value
     LOGICAL :: is_init = .FALSE.
     LOGICAL :: should_simplify = .TRUE.
-    LOGICAL :: should_minify = .TRUE.
+    LOGICAL :: should_minify = .FALSE.
     TYPE(eis_stack) :: stack, brackets
     TYPE(eis_stack), POINTER :: output
     CONTAINS
@@ -65,14 +67,19 @@ MODULE eis_parser_mod
         => eip_add_stack_variable_stack
     PROCEDURE :: add_stack_variable_string &
         => eip_add_stack_variable_string
+    PROCEDURE :: emplace_node => eip_emplace_node
     PROCEDURE, PUBLIC :: add_function => eip_add_function
     PROCEDURE, PUBLIC :: add_constant => eip_add_constant
     PROCEDURE, PUBLIC :: add_variable => eip_add_variable
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string
+    PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: evaluate => eip_evaluate
     PROCEDURE, PUBLIC :: simplify => eip_simplify
+    PROCEDURE, PUBLIC :: emplace => eip_emplace
+    PROCEDURE, PUBLIC :: print_errors => eip_print_errors
+    PROCEDURE, PUBLIC :: get_error_string => eip_get_error_string
 
   END TYPE eis_parser
 
@@ -93,59 +100,97 @@ CONTAINS
     this%is_init = .TRUE.
 
     IF (.NOT. global_setup) THEN
+      err = eis_err_none
       global_setup = .TRUE.
       CALL global_registry%add_operator('+', eis_uplus, c_assoc_ra, 4, err, &
         unary = .TRUE.)
+      CALL this%err_handler%add_error(eis_err_parser, err, '+')
       CALL global_registry%add_operator('-', eis_uminus, c_assoc_ra, 4, err, &
           unary = .TRUE.)
+      CALL this%err_handler%add_error(eis_err_parser, err, '-')
       CALL global_registry%add_operator('+', eis_bplus, c_assoc_a, 2, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, '+')
       CALL global_registry%add_operator('-', eis_bminus, c_assoc_la, 2, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, '-')
       CALL global_registry%add_operator('*', eis_times, c_assoc_a, 3, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, '*')
       CALL global_registry%add_operator('/', eis_divide, c_assoc_la, 3, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, '/')
       CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, '^')
       CALL global_registry%add_operator('e', eis_expo, c_assoc_la, 4, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'e')
       CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'lt')
       CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'le')
       CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'gt')
       CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'ge')
       CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'eq')
       CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'and')
       CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'or')
 
       CALL global_registry%add_constant('pi', &
           3.141592653589793238462643383279503_eis_num, err)
-      CALL global_registry%add_constant('x', 1.0_eis_num, err, &
-          can_simplify = .FALSE.)
-      CALL global_registry%add_constant('y', 1.0_eis_num, err, &
-          can_simplify = .FALSE.)
-
+      CALL this%err_handler%add_error(eis_err_parser, err, 'pi')
 
       CALL global_registry%add_function('abs', eis_abs, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'abs')
       CALL global_registry%add_function('floor', eis_floor, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'floor')
       CALL global_registry%add_function('ceil', eis_ceil, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'ceil')
       CALL global_registry%add_function('ceiling', eis_ceil, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'ceilin')
       CALL global_registry%add_function('nint', eis_nint, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'nint')
       CALL global_registry%add_function('trunc', eis_aint, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'trunc')
       CALL global_registry%add_function('truncate', eis_aint, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'truncate')
       CALL global_registry%add_function('aint', eis_aint, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'aint')
       CALL global_registry%add_function('sqrt', eis_sqrt, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'sqrt')
       CALL global_registry%add_function('sin', eis_sin, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'sin')
       CALL global_registry%add_function('cos', eis_cos, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'cos')
       CALL global_registry%add_function('tan', eis_tan, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'tan')
       CALL global_registry%add_function('asin', eis_asin, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'asin')
       CALL global_registry%add_function('acos', eis_acos, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'acos')
       CALL global_registry%add_function('atan', eis_atan, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'atan')
       CALL global_registry%add_function('atan2', eis_atan2, 2, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'atan2')
       CALL global_registry%add_function('sinh', eis_sinh, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'sinh')
       CALL global_registry%add_function('cosh',eis_cosh, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'cosh')
       CALL global_registry%add_function('tanh',eis_tanh, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'tanh')
       CALL global_registry%add_function('exp', eis_exp, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'exp')
       CALL global_registry%add_function('loge', eis_loge, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'loge')
       CALL global_registry%add_function('log10', eis_log10, 1, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'log10')
       CALL global_registry%add_function('log_base', eis_log_base, 2, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'log_base')
       CALL global_registry%add_function('gauss', eis_gauss, 3, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'gauss')
       CALL global_registry%add_function('semigauss', eis_semigauss, 4, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'semigauss')
       CALL global_registry%add_function('supergauss', eis_supergauss, 4, err)
+      CALL this%err_handler%add_error(eis_err_parser, err, 'supergauss')
     END IF
 
   END SUBROUTINE eip_init
@@ -164,13 +209,14 @@ CONTAINS
     ELSE IF (chr >= '0' .AND. chr <= '9' .OR. chr == '.') THEN
       char_type = c_char_numeric
     ELSE IF ((chr >= 'A' .AND. chr <= 'Z') &
-        .OR. (chr >= 'a' .AND. chr <= 'z') .OR. chr == '_') THEN
+        .OR. (chr >= 'a' .AND. chr <= 'z') .OR. chr == '_' .OR. chr == '"') THEN
       char_type = c_char_alpha
     ELSE IF (chr == '(' .OR. chr == ')' .OR. chr == ',') THEN
       char_type = c_char_delimiter
     ! 92 is the ASCII code for backslash
     ELSE IF (chr == '+' .OR. chr == '-' .OR. ICHAR(chr) == 92 &
-        .OR. chr == '/' .OR. chr == '*' .OR. chr == '^') THEN
+        .OR. chr == '/' .OR. chr == '*' .OR. chr == '^' .OR. chr == '>' &
+        .OR. chr == '<' .OR. chr == '=' .OR. chr == '!') THEN
       char_type = c_char_opcode
     END IF
 
@@ -227,7 +273,9 @@ CONTAINS
 
     can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
           .OR. this%last_block_type == c_pt_constant &
-          .OR. this%last_block_type == c_pt_stored_variable)
+          .OR. this%last_block_type == c_pt_stored_variable &
+          .OR. (this%last_block_type == c_pt_parenthesis &
+          .AND. this%last_block_value == c_paren_right_bracket))
 
     CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary, &
         cap_bits)
@@ -276,7 +324,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: err
     LOGICAL :: maybe_e
 
-    CHARACTER(LEN=500) :: current
+    CHARACTER(LEN=:), ALLOCATABLE :: current
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
 
@@ -290,6 +338,8 @@ CONTAINS
     CALL initialise_stack(this%brackets)
     this%output => output
 
+    ALLOCATE(CHARACTER(LEN=LEN(expression))::current)
+
     current(:) = ' '
     current(1:1) = expression(1:1)
     current_pointer = 2
@@ -299,6 +349,7 @@ CONTAINS
     err = eis_err_none
 
     this%last_block_type = c_pt_null
+    this%last_block_value = 0
 
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
@@ -321,6 +372,7 @@ CONTAINS
         IF (err /= eis_err_none) THEN
           CALL deallocate_stack(this%stack)
           CALL deallocate_stack(this%brackets)
+          DEALLOCATE(current)
           RETURN
         END IF
         output%cap_bits = IOR(output%cap_bits, cap_bits)
@@ -342,10 +394,11 @@ CONTAINS
         CALL pop_to_stack(this%stack, this%output)
       END DO
     ELSE
-      err = IOR(err, eis_err_bad_value)
+      err = IOR(err, eis_err_parser)
     END IF
     CALL deallocate_stack(this%stack)
     CALL deallocate_stack(this%brackets)
+    DEALLOCATE(current)
 
     IF (this%should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
     IF (this%should_minify) CALL minify_stack(this%output)
@@ -362,6 +415,11 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER :: eip_evaluate
 
+    IF (stack%has_emplaced) THEN
+      errcode = IOR(errcode, eis_err_has_emplaced)
+      RETURN
+    END IF
+
     eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode)
 
   END FUNCTION eip_evaluate
@@ -377,7 +435,105 @@ CONTAINS
     CALL eis_simplify_stack(stack, params, errcode)
 
   END SUBROUTINE eip_simplify
-  
+
+
+
+  RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, user_params, &
+      remaining_functions)
+    CLASS(eis_parser) :: this
+    TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: tree_node
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    LOGICAL, INTENT(INOUT) :: remaining_functions
+    TYPE(eis_tree_item), POINTER :: new_node, next_node
+    INTEGER(eis_error) :: errcode
+    INTEGER :: inode, nparams, sp
+    TYPE(eis_stack) :: temp_stack
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: results, params
+    PROCEDURE(parser_late_bind_fn), POINTER :: late_bind_fn
+    INTEGER(eis_status) :: status_code
+    INTEGER :: rcount
+
+    IF (ASSOCIATED(tree_node%nodes)) THEN
+      DO inode = 1, SIZE(tree_node%nodes)
+        next_node => tree_node%nodes(inode)
+        CALL this%emplace_node(next_node, user_params, remaining_functions)
+      END DO
+    END IF
+
+    !This is not an stored function, no emplacement necessary
+    IF (tree_node%value%ptype /= c_pt_emplaced_function &
+        .AND. tree_node%value%ptype /= c_pt_emplaced_variable) RETURN
+
+    !If there are unresolved functions further down then do nothing,
+    !we'll have to emplace again later
+    IF (remaining_functions) RETURN
+
+    nparams = 0
+    IF (ASSOCIATED(tree_node%nodes)) THEN
+      nparams = SIZE(tree_node%nodes)
+      ALLOCATE(params(nparams))
+      DO inode = 1, nparams
+        CALL initialise_stack(temp_stack)
+        CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
+        CALL display_tokens(temp_stack)
+        rcount = this%evaluate(temp_stack, results, user_params, errcode)
+        params(inode) = results(1)
+        CALL deallocate_stack(temp_stack)
+      END DO
+    END IF
+
+    late_bind_fn => this%registry%get_stored_emplacement(tree_node%value%value)
+
+    CALL initialise_stack(temp_stack)
+    CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
+        errcode)
+
+    IF (temp_stack%has_emplaced) CALL this%emplace(temp_stack, user_params, &
+        errcode)
+
+    !If empilacement is not forbidden by status then build new node
+    IF (IAND(status_code, eis_status_no_emplace) == 0) THEN
+      sp = temp_stack%stack_point + 1
+      ALLOCATE(new_node)
+      CALL eis_build_node(temp_stack, sp, new_node)
+      DEALLOCATE(tree_node)
+      tree_node => new_node
+      new_node => NULL()
+    ELSE
+      remaining_functions = .TRUE.
+    END IF
+
+    CALL deallocate_stack(temp_stack)
+
+  END SUBROUTINE eip_emplace_node
+
+
+
+  SUBROUTINE eip_emplace(this, stack, user_params, errcode)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_tree_item), POINTER :: root
+    INTEGER :: sp
+    LOGICAL :: remaining_functions
+
+    IF (.NOT. stack%has_emplaced) RETURN
+
+    remaining_functions = .FALSE.
+
+    ALLOCATE(root)
+    sp = stack%stack_point + 1
+    CALL eis_build_node(stack, sp, root)
+    CALL eis_simple_dot(root)
+    CALL this%emplace_node(root, user_params, remaining_functions)
+    CALL deallocate_stack(stack)
+    CALL initialise_stack(stack)
+    CALL eis_tree_to_stack(root, stack)
+    DEALLOCATE(root)
+    stack%has_emplaced = remaining_functions
+
+  END SUBROUTINE eip_emplace 
 
 
 
@@ -513,6 +669,19 @@ CONTAINS
 
 
 
+  SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_late_bind_fn) :: def_fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    CALL this%registry%add_stack_function(name, def_fn, errcode)
+
+  END SUBROUTINE eip_add_emplaced_function
+
+
+
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
       cap_bits, err)
 
@@ -540,9 +709,42 @@ CONTAINS
       RETURN
     END IF
 
-    IF (iblock%ptype /= c_pt_parenthesis &
-        .AND. iblock%ptype /= c_pt_null) THEN
-      this%last_block_type = iblock%ptype
+    !Functions must be followed by a left bracket
+    IF ((this%last_block_type == c_pt_function &
+        .OR. this%last_block_type == c_pt_emplaced_function) &
+        .AND. .NOT. (iblock%ptype == c_pt_parenthesis &
+        .AND. iblock%value == c_paren_left_bracket)) THEN
+      err = IOR(err, eis_err_malformed)
+      RETURN
+    END IF
+
+    !If previous block was an operator than almost anything else is valid
+    !except a separator or a right bracket
+    IF (this%last_block_type == c_pt_operator .AND. &
+        (iblock%ptype == c_pt_separator .OR. (iblock%ptype == c_pt_parenthesis &
+        .AND. iblock%value == c_paren_right_bracket))) THEN
+      err = IOR(err, eis_err_malformed)
+    END IF
+
+    !If current block is a binary operator then previous block must not be
+    !a separator or a left bracket. Unary operator must be preceded by either
+    !a separator, an operator, an open bracket or null
+    IF (iblock%ptype == c_pt_operator) THEN
+      IF (icoblock%expected_params == 2) THEN
+        IF (this%last_block_type == c_pt_separator &
+            .OR. (this%last_block_type == c_pt_parenthesis &
+            .AND. this%last_block_value == c_paren_left_bracket)) THEN
+          err = IOR(err, eis_err_malformed)
+        END IF
+      ELSE !No ternary operators so must be unary
+        IF (.NOT. (this%last_block_type == c_pt_null &
+            .OR. this%last_block_type == c_pt_separator &
+            .OR. this%last_block_type == c_pt_operator &
+            .OR. (this%last_block_type == c_pt_parenthesis &
+            .AND. this%last_block_value == c_paren_left_bracket))) THEN
+          err = IOR(err, eis_err_malformed)
+        END IF
+      END IF
     END IF
 
     IF (iblock%ptype == c_pt_variable &
@@ -551,10 +753,6 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
       CALL this%registry%copy_in_stored(iblock%value, this%output)
-
-    ELSE IF (iblock%ptype == c_pt_stored_function) THEN
-      this%output%has_stored_functions = .FALSE.
-      this%stack%has_stored_functions = .FALSE.
 
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN
@@ -568,6 +766,14 @@ CONTAINS
               .AND. block2%value == c_paren_left_bracket) THEN
             CALL pop_to_null(this%stack)
             IF (this%brackets%stack_point > 1) THEN
+              IF (this%last_block_type == c_pt_parenthesis &
+                  .AND. this%last_block_value == c_paren_left_bracket) THEN
+                !No actual parameters between open and close brackets
+                  this%brackets%entries(this%brackets%stack_point)%&
+                      actual_params &
+                      = this%brackets%entries(this%brackets%stack_point)%&
+                      actual_params - 1
+              END IF
               this%brackets%entries(this%brackets%stack_point-1)%actual_params &
                   = this%brackets%entries(this%brackets%stack_point-1)% &
                   actual_params &
@@ -578,7 +784,8 @@ CONTAINS
             ! If stack isn't empty then check for function
             IF (this%stack%stack_point /= 0) THEN
               CALL stack_snoop(this%stack, block2, 0)
-              IF (block2%ptype == c_pt_function) THEN
+              IF (block2%ptype == c_pt_function .OR. &
+                  block2%ptype == c_pt_emplaced_function) THEN
                 this%stack%entries(this%stack%stack_point)%actual_params = &
                     this%brackets%entries(this%brackets%stack_point)%&
                     actual_params
@@ -600,8 +807,11 @@ CONTAINS
         END DO
       END IF
 
-    ELSE IF (iblock%ptype == c_pt_function) THEN
+    ELSE IF (iblock%ptype == c_pt_function .OR. iblock%ptype &
+        == c_pt_emplaced_function) THEN
       ! Just push functions straight onto the stack
+      IF (iblock%ptype == c_pt_emplaced_function) &
+          this%output%has_emplaced = .TRUE.
       CALL push_to_stack(this%stack, iblock, icoblock)
       iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock, icoblock)
@@ -613,7 +823,7 @@ CONTAINS
           CALL pop_to_stack(this%stack, this%output)
         ELSE
           IF (block2%value /= c_paren_left_bracket) THEN
-            err = IOR(err, eis_err_bad_value)
+            err = IOR(err, eis_err_malformed)
              RETURN
           END IF
           IF (this%brackets%stack_point > 0) THEN
@@ -665,6 +875,74 @@ CONTAINS
       END DO
     END IF
 
+    IF (iblock%ptype /= c_pt_null) THEN
+      this%last_block_type = iblock%ptype
+      this%last_block_value = iblock%value
+    END IF
+
   END SUBROUTINE eip_tokenize_subexpression_infix
+
+
+
+!  SUBROUTINE append_string(str_old, str_new)
+!    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_old
+!    CHARACTER(LEN=*), INTENT(IN) :: str_new
+!    CHARACTER(LEN=:), ALLOCATABLE :: temp
+!
+!    IF (ALLOCATED(str_old)) THEN
+!      ALLOCATE(temp, SOURCE = str_old)
+!      DEALLOCATE(str_old)
+!      ALLOCATE(str_old, SOURCE = temp // NEW_LINE(str_new) // str_new)
+!      DEALLOCATE(temp)
+!    ELSE
+!      ALLOCATE(str_old, SOURCE = str_new)
+!    END IF
+
+!  END SUBROUTINE append_string
+
+
+  SUBROUTINE eip_print_errors(this)
+    CLASS(eis_parser) :: this
+    INTEGER :: ierr, ec
+
+    ec = this%err_handler%get_error_count()
+    DO ierr = 1, ec
+      CALL this%err_handler%print_error_string(ierr)
+    END DO
+
+  END SUBROUTINE eip_print_errors
+
+
+  FUNCTION eip_get_error_string(this, errcode, str_out)
+    CLASS(eis_parser) :: this
+    INTEGER(eis_error), INTENT(IN) :: errcode
+    CHARACTER(LEN=*), INTENT(INOUT) :: str_out
+    CHARACTER(LEN=:), ALLOCATABLE :: str1
+    INTEGER :: eip_get_error_string, pos
+
+!    IF (IAND(errcode, eis_err_bad_value) /= 0) THEN
+!      CALL append_string(str1, 'There was a bad value in the expression')
+!    END IF
+!    IF (IAND(errcode, eis_err_malformed) /= 0) THEN
+!      CALL append_string(str1, 'The expression was of invalid form')
+!    END IF
+!    IF (IAND(errcode, eis_err_wrong_parameters) /= 0) THEN
+!      CALL append_string(str1, 'The wrong number of parameters was used in a &
+!          &function')
+!    END IF
+!    IF (IAND(errcode, eis_err_maths_domain) /= 0) THEN
+!      CALL append_string(str1, 'A mathematically invalid operation was &
+!          &requested')
+!    END IF
+
+!    IF (.NOT. ALLOCATED(str1)) ALLOCATE(str1, SOURCE = 'No error found')
+
+!    eip_get_error_string = LEN(str1)
+!    pos = MIN(LEN(str_out), LEN(str1))
+!    str_out = ""
+!    str_out(1:pos) = str1(1:pos)
+!    DEALLOCATE(str1)
+
+  END FUNCTION eip_get_error_string
 
 END MODULE eis_parser_mod

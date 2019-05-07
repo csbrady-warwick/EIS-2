@@ -30,7 +30,8 @@ MODULE eis_stack_mod
     stack%stack_size = 0
     IF (stack%init) THEN
       CALL deallocate_stack_element(stack%entries)
-      CALL deallocate_stack_co_element(stack%co_entries)
+      IF (ALLOCATED(stack%co_entries)) &
+          CALL deallocate_stack_co_element(stack%co_entries)
       DEALLOCATE(stack%entries)
       IF (ALLOCATED(stack%co_entries)) DEALLOCATE(stack%co_entries)
     END IF
