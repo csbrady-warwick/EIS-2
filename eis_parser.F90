@@ -52,7 +52,8 @@ MODULE eis_parser_mod
     TYPE(eis_registry) :: registry
     TYPE(eis_eval_stack) :: evaluator
     TYPE(eis_error_handler) :: err_handler
-    INTEGER :: last_block_type, last_block_value
+    INTEGER :: last_block_type, last_block_value, last_charindex
+    CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
     LOGICAL :: is_init = .FALSE.
     LOGICAL :: should_simplify = .TRUE.
     LOGICAL :: should_minify = .FALSE.
@@ -327,6 +328,7 @@ CONTAINS
     CHARACTER(LEN=:), ALLOCATABLE :: current
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
+    INTEGER :: charindex
 
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
@@ -347,29 +349,30 @@ CONTAINS
     maybe_e = .FALSE.
 
     err = eis_err_none
+    charindex = 1
 
     this%last_block_type = c_pt_null
     this%last_block_value = 0
+    this%last_charindex = 1
+    IF (ALLOCATED(this%last_block_text)) DEALLOCATE(this%last_block_text)
+    ALLOCATE(this%last_block_text, SOURCE = " ")
 
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
-      ! This is a bit of a hack.
-      ! Allow numbers to follow letters in an expression *except* in the
-      ! special case of a single 'e' character, to allow 10.0e5, etc.
       IF (ptype == current_type .AND. ptype /= c_char_delimiter &
           .OR. (ptype == c_char_numeric .AND. current_type == c_char_alpha &
           .AND. .NOT. strcmp(current, 'e'))) THEN
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE IF (strcmp(current, 'e') .AND. .NOT. maybe_e) THEN
-        ! Only interpret "e" as the Euler number if it is both preceded and
-        ! followed by a number
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-            cap_bits, err)
+            cap_bits, charindex, err)
+        charindex = i
         IF (err /= eis_err_none) THEN
+          err = IOR(err, eis_err_parser)
           CALL deallocate_stack(this%stack)
           CALL deallocate_stack(this%brackets)
           DEALLOCATE(current)
@@ -386,7 +389,7 @@ CONTAINS
     END DO
 
     CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-        cap_bits, err)
+        cap_bits,charindex,  err)
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
@@ -420,7 +423,8 @@ CONTAINS
       RETURN
     END IF
 
-    eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode)
+    eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode, &
+        this%err_handler)
 
   END FUNCTION eip_evaluate
 
@@ -432,7 +436,7 @@ CONTAINS
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
-    CALL eis_simplify_stack(stack, params, errcode)
+    CALL eis_simplify_stack(stack, params, errcode, this%err_handler)
 
   END SUBROUTINE eip_simplify
 
@@ -525,7 +529,6 @@ CONTAINS
     ALLOCATE(root)
     sp = stack%stack_point + 1
     CALL eis_build_node(stack, sp, root)
-    CALL eis_simple_dot(root)
     CALL this%emplace_node(root, user_params, remaining_functions)
     CALL deallocate_stack(stack)
     CALL initialise_stack(stack)
@@ -683,7 +686,7 @@ CONTAINS
 
 
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
-      cap_bits, err)
+      cap_bits, charindex, err)
 
     ! This subroutine tokenizes input in normal infix maths notation
     ! It uses Dijkstra's shunting yard algorithm to convert to RPN
@@ -693,6 +696,7 @@ CONTAINS
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
     TYPE(eis_stack_co_element), INTENT(INOUT) :: icoblock
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
+    INTEGER, INTENT(IN) :: charindex
     INTEGER(eis_error), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
@@ -703,8 +707,10 @@ CONTAINS
 
     ! Populate the block
     CALL this%load_block(current, iblock, icoblock, cap_bits)
+    icoblock%charindex = charindex
     IF (iblock%ptype == c_pt_bad) THEN
-      err = eis_err_bad_value
+      err = eis_err_not_found
+      CALL this%err_handler%add_error(eis_err_parser, err, current, charindex)
       CALL deallocate_stack(this%stack)
       RETURN
     END IF
@@ -715,6 +721,8 @@ CONTAINS
         .AND. .NOT. (iblock%ptype == c_pt_parenthesis &
         .AND. iblock%value == c_paren_left_bracket)) THEN
       err = IOR(err, eis_err_malformed)
+      CALL this%err_handler%add_error(eis_err_parser, err, &
+          this%last_block_text, this%last_charindex)
       RETURN
     END IF
 
@@ -724,6 +732,8 @@ CONTAINS
         (iblock%ptype == c_pt_separator .OR. (iblock%ptype == c_pt_parenthesis &
         .AND. iblock%value == c_paren_right_bracket))) THEN
       err = IOR(err, eis_err_malformed)
+      CALL this%err_handler%add_error(eis_err_parser, err, &
+          this%last_block_text, this%last_charindex)
     END IF
 
     !If current block is a binary operator then previous block must not be
@@ -735,6 +745,8 @@ CONTAINS
             .OR. (this%last_block_type == c_pt_parenthesis &
             .AND. this%last_block_value == c_paren_left_bracket)) THEN
           err = IOR(err, eis_err_malformed)
+          CALL this%err_handler%add_error(eis_err_parser, err, current, &
+              charindex)
         END IF
       ELSE !No ternary operators so must be unary
         IF (.NOT. (this%last_block_type == c_pt_null &
@@ -743,6 +755,8 @@ CONTAINS
             .OR. (this%last_block_type == c_pt_parenthesis &
             .AND. this%last_block_value == c_paren_left_bracket))) THEN
           err = IOR(err, eis_err_malformed)
+          CALL this%err_handler%add_error(eis_err_parser, err, current, &
+              charindex)
         END IF
       END IF
     END IF
@@ -793,11 +807,19 @@ CONTAINS
                     /= this%stack%co_entries(this%stack%stack_point)% &
                     expected_params) .AND. &
                     this%stack%co_entries(this%stack%stack_point)% &
-                    expected_params > 0) err = IOR(err, &
-                    eis_err_wrong_parameters)
+                    expected_params > 0) THEN
+                  err = IOR(err, eis_err_wrong_parameters)
+                  IF (ALLOCATED(this%stack%co_entries)) THEN
+                    CALL this%err_handler%add_error(eis_err_parser, err, &
+                        this%stack%co_entries(this%stack%stack_point)%text, &
+                        this%stack%co_entries(this%stack%stack_point)%charindex)
+                  ELSE
+                    CALL this%err_handler%add_error(eis_err_parser, err, &
+                        "{unknown}", charindex)
+                  END IF
+                END IF
                 CALL pop_to_stack(this%stack, this%output)
                 CALL pop_to_null(this%brackets)
-                !Add stored function here
               END IF
             END IF
             EXIT
@@ -809,7 +831,6 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_function .OR. iblock%ptype &
         == c_pt_emplaced_function) THEN
-      ! Just push functions straight onto the stack
       IF (iblock%ptype == c_pt_emplaced_function) &
           this%output%has_emplaced = .TRUE.
       CALL push_to_stack(this%stack, iblock, icoblock)
@@ -824,7 +845,9 @@ CONTAINS
         ELSE
           IF (block2%value /= c_paren_left_bracket) THEN
             err = IOR(err, eis_err_malformed)
-             RETURN
+            CALL this%err_handler%add_error(eis_err_parser, err, current, &
+                charindex)
+            RETURN
           END IF
           IF (this%brackets%stack_point > 0) THEN
             this%brackets%entries(this%brackets%stack_point)%actual_params = &
@@ -878,6 +901,11 @@ CONTAINS
     IF (iblock%ptype /= c_pt_null) THEN
       this%last_block_type = iblock%ptype
       this%last_block_value = iblock%value
+      this%last_charindex = charindex
+      IF (ALLOCATED(this%last_block_text)) THEN
+        DEALLOCATE(this%last_block_text)
+        ALLOCATE(this%last_block_text, SOURCE = current)
+      END IF
     END IF
 
   END SUBROUTINE eip_tokenize_subexpression_infix
@@ -909,6 +937,7 @@ CONTAINS
     DO ierr = 1, ec
       CALL this%err_handler%print_error_string(ierr)
     END DO
+    CALL this%err_handler%flush_errors()
 
   END SUBROUTINE eip_print_errors
 

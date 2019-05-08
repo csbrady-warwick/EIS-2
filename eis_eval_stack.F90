@@ -3,6 +3,7 @@ MODULE eis_eval_stack_mod
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
   USE eis_header
+  USE eis_error_mod
 
   TYPE eis_eval_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: entries
@@ -148,13 +149,15 @@ MODULE eis_eval_stack_mod
   !> @param[inout] this
   !> @param[in] stack
   !> @param[in] result_vals
-  FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode) &
-      RESULT(result_count)
+  FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode, &
+      err_handler) RESULT(result_count)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_vals
     TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    INTEGER(eis_error) :: err
     INTEGER(eis_status) :: status
     INTEGER :: result_count
     INTEGER :: istack
@@ -165,8 +168,19 @@ MODULE eis_eval_stack_mod
       IF (stack%entries(istack)%ptype == c_pt_constant) THEN
         CALL this%push(stack%entries(istack)%numerical_data, errcode)
       ELSE
+        err = eis_err_none
         CALL this%eval_element(stack%entries(istack), user_params, status, &
-            errcode)
+            err)
+        IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
+          IF (ALLOCATED(stack%co_entries)) THEN
+            CALL err_handler%add_error(eis_err_evaluator, err, &
+                stack%co_entries(istack)%text, &
+                stack%co_entries(istack)%charindex)
+          ELSE
+            CALL err_handler%add_error(eis_err_evaluator, err)
+          END IF
+          errcode = IOR(errcode, err)
+        END IF
       END IF
     END DO
 

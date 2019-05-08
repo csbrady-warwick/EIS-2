@@ -712,7 +712,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
-    IF (ABS(params(1)) > 0.0_eis_num) THEN
+    IF (params(1) > 0.0_eis_num) THEN
       res = LOG(params(1))
     ELSE
       res = 1.0_eis_num
@@ -738,7 +738,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
-    IF (ABS(params(1)) > 0.0_eis_num) THEN
+    IF (params(1) > 0.0_eis_num) THEN
       res = LOG10(params(1))
     ELSE
       res = 1.0_eis_num
@@ -764,7 +764,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
-    IF (ABS(params(1)) > 0.0_eis_num .AND. ABS(params(2)) > 1.0_eis_num) THEN
+    IF (params(1) > 0.0_eis_num .AND. params(2) > 0.0_eis_num) THEN
       res = LOG(params(1))/LOG(params(2))
     ELSE
       res = 1.0_eis_num

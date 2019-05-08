@@ -40,6 +40,7 @@ MODULE eis_header
   TYPE eis_stack_co_element
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
+    INTEGER :: charindex = -1
     CHARACTER(LEN=:), ALLOCATABLE :: text
   END TYPE eis_stack_co_element
 

@@ -284,7 +284,7 @@ MODULE eis_stack_mod
       IF (.NOT. ALLOCATED(token_list%co_entries(i)%text)) CYCLE
       WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%co_entries(i)%text) // " "
     END DO
-    WRITE(*,*) NEW_LINE('A')
+    WRITE(*,*) ""
   END SUBROUTINE display_tokens_inline
 
 END MODULE eis_stack_mod

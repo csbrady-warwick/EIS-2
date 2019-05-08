@@ -5,6 +5,7 @@ MODULE eis_tree_mod
   USE eis_header
   USE eis_stack_mod
   USE eis_eval_stack_mod
+  USE eis_error_mod
   IMPLICIT NONE
 
   TYPE :: eis_tree_item
@@ -32,11 +33,12 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_simplify_stack(stack, params, errcode, stack_out)
+  SUBROUTINE eis_simplify_stack(stack, params, errcode, err_handler, stack_out)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: stack_out
     TYPE(eis_stack), POINTER :: simplified
     TYPE(eis_tree_item), POINTER :: root
@@ -54,7 +56,7 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_simplify_tree(root, params, errcode)
+      CALL eis_simplify_tree(root, params, errcode, err_handler)
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
         RETURN
@@ -113,10 +115,11 @@ MODULE eis_tree_mod
 
 
 
-  RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode)
+  RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode, err_handler)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     INTEGER :: inode
     LOGICAL :: can_simplify
     CHARACTER(LEN=:), ALLOCATABLE :: temp, temp2
@@ -132,10 +135,10 @@ MODULE eis_tree_mod
       can_simplify = .TRUE.
        
       DO inode = SIZE(tree%nodes), 1, -1
-        CALL eis_simplify_tree(tree%nodes(inode), params, errcode)
+        CALL eis_simplify_tree(tree%nodes(inode), params, errcode, err_handler)
         IF (tree%nodes(inode)%value%ptype /= c_pt_constant) THEN
           !This can only happen if one of the nodes downstream returned a
-          !no simplify error
+          !no simplify status
           RETURN
         END IF
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify
@@ -163,6 +166,14 @@ MODULE eis_tree_mod
           END IF
         ELSE
           errcode = IOR(errcode, err)
+          IF (PRESENT(err_handler)) THEN
+            IF (ALLOCATED(tree%co_value%text)) THEN
+              CALL err_handler%add_error(eis_err_simplifier, err, &
+                  tree%co_value%text, tree%co_value%charindex)
+            ELSE
+              CALL err_handler%add_error(eis_err_simplifier, err)
+            END IF
+          END IF
         END IF
       ELSE
         tree%value%can_simplify = .FALSE.
