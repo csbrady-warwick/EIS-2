@@ -59,6 +59,7 @@ MODULE eis_parser_mod
     LOGICAL :: should_minify = .FALSE.
     TYPE(eis_stack) :: stack, brackets
     TYPE(eis_stack), POINTER :: output
+    INTEGER :: physics_units = eis_physics_none
     CONTAINS
     PROCEDURE :: init => eip_init
     PROCEDURE :: load_block => eip_load_block
@@ -88,14 +89,21 @@ MODULE eis_parser_mod
 
 CONTAINS
 
-  SUBROUTINE eip_init(this, should_simplify, should_minify)
+  SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, physics)
 
     CLASS(eis_parser) :: this
-    LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify
+    LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
+    INTEGER, INTENT(IN), OPTIONAL :: physics
     INTEGER(eis_error) :: err
+    REAL(eis_num), PARAMETER :: pi = 3.141592653589793238462643383279503_eis_num
+    REAL(eis_num) :: c
+    LOGICAL :: no_import_l
 
+    no_import_l = .FALSE.
     IF (PRESENT(should_simplify)) this%should_simplify = should_simplify
     IF (PRESENT(should_minify)) this%should_minify = should_minify
+    IF (PRESENT(physics)) this%physics_units = physics
+    IF (PRESENT(no_import)) no_import_l = no_import
 
     this%is_init = .TRUE.
 
@@ -149,10 +157,8 @@ CONTAINS
       CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err, &
           err_handler = this%err_handler)
 
-      CALL global_registry%add_constant('math.pi', &
-          3.141592653589793238462643383279503_eis_num, err, &
+      CALL global_registry%add_constant('math.pi', pi, err, &
           err_handler = this%err_handler)
-
 
       CALL global_registry%add_constant('scale.yotta', 1.0e24_eis_num, err, &
           err_handler = this%err_handler)
@@ -258,10 +264,75 @@ CONTAINS
       CALL global_registry%add_function('logic.if', eis_if, &
           3, err, err_handler = this%err_handler)
 
-      CALL global_registry%include_namespace('math')
-      CALL global_registry%include_namespace('scale')
-      CALL global_registry%include_namespace('utility')
-      CALL global_registry%include_namespace('logic')
+      !Unit indepdendent physical constants
+      CALL global_registry%add_constant('physics.na', &
+          6.02214076e23_eis_num, err, err_handler = this%err_handler)
+
+      !SI Physical constants
+      CALL global_registry%add_constant('physics.si.c', 2.99792458e8_eis_num, &
+          err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.G', 6.67408e-11_eis_num, &
+          err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.h', &
+          6.62607015e-34_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.q0', &
+          1.602176565e-19_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.epsilon0', &
+          8.854187817620389850536563031710750e-12_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.mu0', &
+          4.e-7_eis_num * pi, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.kb', &
+          1.3806488e-23_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.me', &
+          9.10938291e-31_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.mp', &
+          1.6726219e-27_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.si.mn', &
+          1.674929e-27_eis_num, err, err_handler = this%err_handler)
+
+      !CGS physical constants
+      c = 2.99792458e10_eis_num
+      CALL global_registry%add_constant('physics.cgs.gauss.c', &
+          c, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.G', &
+          6.67428e-8_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.h', &
+          6.62606885e-27_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.q0', &
+          4.80320427e-10_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.epsilon0', &
+          1.0_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.mu0', &
+          1.0_eis_num/c**2, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.na', &
+          6.02214076e23_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.kb', &
+          1.3806504e-16_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.mu', &
+          1.67377e-27_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.me', &
+          9.10938215e-28_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.mp', &
+          1.6726219e-24_eis_num, err, err_handler = this%err_handler)
+      CALL global_registry%add_constant('physics.cgs.gauss.mn', &
+          1.674929e-24_eis_num, err, err_handler = this%err_handler)
+
+      IF (.NOT. no_import_l) THEN
+        CALL global_registry%include_namespace('math')
+        CALL global_registry%include_namespace('scale')
+        CALL global_registry%include_namespace('utility')
+        CALL global_registry%include_namespace('logic')
+        IF (this%physics_units /= eis_physics_none) THEN
+          CALL global_registry%include_namespace('phyics')
+          IF (this%physics_units == eis_physics_si) THEN
+            CALL global_registry%include_namespace('physics.si')
+          ELSE IF (this%physics_units == eis_physics_cgs_gauss) THEN
+            CALL global_registry%include_namespace('physics.cgs')
+            CALL global_registry%include_namespace('physics.cgs.gauss')
+          END IF
+        END IF
+      END IF
     END IF
 
   END SUBROUTINE eip_init

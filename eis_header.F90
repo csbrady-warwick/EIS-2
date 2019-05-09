@@ -16,6 +16,10 @@ MODULE eis_header
     END FUNCTION
   END INTERFACE
 
+  INTEGER, PARAMETER :: eis_physics_none = 0 !< No physical units specified
+  INTEGER, PARAMETER :: eis_physics_si = 1 !< SI system
+  INTEGER, PARAMETER :: eis_physics_cgs_gauss = 2 !< CGS Gaussian units
+
   INTEGER(eis_error), PARAMETER :: eis_err_none = 0 !< No error
   INTEGER(eis_error), PARAMETER :: eis_err_parser = 2**0 !< Error in parser
   INTEGER(eis_error), PARAMETER :: eis_err_simplifier = 2**1 !< Error in simplify

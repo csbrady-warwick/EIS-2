@@ -223,6 +223,10 @@ MODULE eis_eval_stack_mod
         errcode = IOR(errcode, eis_err_where)
         CALL err_handler%add_error(eis_err_evaluator, errcode, 'where', 1)
       END IF
+    ELSE
+      IF (PRESENT(is_no_op)) THEN
+        is_no_op = .FALSE.
+      END IF
     END IF
 
     IF (.NOT. ALLOCATED(result_vals)) THEN

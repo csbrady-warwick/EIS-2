@@ -118,7 +118,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(eis_namespace), POINTER :: old
 
-    final_i = .FALSE.
+    final_i = .TRUE.
     IF (PRESENT(only_final)) final_i = only_final
     IF (final_i) THEN
       ALLOCATE(sh%text, SOURCE = namespace)
