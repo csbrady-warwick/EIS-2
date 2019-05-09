@@ -19,6 +19,7 @@ MODULE eis_eval_stack_mod
     PROCEDURE, PRIVATE :: pop_scalar => ees_pop_scalar
     PROCEDURE, PRIVATE :: pop_vector => ees_pop_vector
     GENERIC :: pop => pop_scalar, pop_vector
+    PROCEDURE, PRIVATE :: trim_first => ees_trim_first
   END TYPE eis_eval_stack
 
   CONTAINS
@@ -147,6 +148,29 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Pull the bottom element of the stack and push the stack down
+  !> @param[inout] this
+  !> @param[out] value
+  !> @param[inout] errcode
+  SUBROUTINE ees_trim_first(this, value, errcode)
+    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+    REAL(eis_num), INTENT(OUT) :: value
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+
+    IF (this%stack_point > 0) THEN
+      value = this%entries(1)
+      this%entries(1:this%stack_point-1) = this%entries(2:this%stack_point)
+      this%stack_point = this%stack_point - 1
+    ELSE
+      !>@TODO error code
+    END IF
+
+  END SUBROUTINE ees_trim_first
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Evaluate a stack to a set of results
   !> @param[inout] this
   !> @param[in] stack
@@ -191,7 +215,8 @@ MODULE eis_eval_stack_mod
     END DO
 
     IF (stack%where_stack) THEN
-      CALL this%pop(where_condition, errcode)
+      where_condition = this%entries(1)
+      CALL this%trim_first(where_condition, errcode)
       IF (PRESENT(is_no_op)) THEN
         is_no_op = ABS(where_condition) < eis_tiny
       ELSE

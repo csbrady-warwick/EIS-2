@@ -120,13 +120,29 @@ CONTAINS
           err_handler = this%err_handler)
       CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err, &
           err_handler = this%err_handler)
+      CALL global_registry%add_operator('<', eis_lt, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
       CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('<=', eis_le, c_assoc_la, 1, err, &
           err_handler = this%err_handler)
       CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err, &
           err_handler = this%err_handler)
+      CALL global_registry%add_operator('>', eis_gt, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
       CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err, &
           err_handler = this%err_handler)
+      CALL global_registry%add_operator('>=', eis_ge, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
       CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('==', eis_eq, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('ne', eis_neq, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('/=', eis_neq, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('!=', eis_neq, c_assoc_la, 1, err, &
           err_handler = this%err_handler)
       CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err, &
           err_handler = this%err_handler)
@@ -393,7 +409,6 @@ CONTAINS
     IF (expression_in(1:6) == 'where(') THEN
       output%where_stack = .TRUE.
       ALLOCATE(expression, SOURCE = expression_in(7:LEN(expression_in)-1))
-      PRINT *,'UX ', expression
     ELSE
       ALLOCATE(expression, SOURCE = expression_in)
     END IF
@@ -474,12 +489,13 @@ CONTAINS
 
 
 
-  FUNCTION eip_evaluate(this, stack, result, params, errcode)
+  FUNCTION eip_evaluate(this, stack, result, params, errcode, is_no_op)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(IN) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     INTEGER :: eip_evaluate
 
     IF (stack%has_emplaced) THEN
@@ -488,7 +504,7 @@ CONTAINS
     END IF
 
     eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode, &
-        this%err_handler)
+        this%err_handler, is_no_op = is_no_op)
 
   END FUNCTION eip_evaluate
 
@@ -845,7 +861,6 @@ CONTAINS
         CALL push_to_stack(this%brackets, iblock, icoblock)
       ELSE
         DO
-          PRINT *,'s1'
           CALL stack_snoop(this%stack, block2, 0)
           IF (block2%ptype == c_pt_parenthesis &
               .AND. block2%value == c_paren_left_bracket) THEN
@@ -868,7 +883,6 @@ CONTAINS
             END IF
             ! If stack isn't empty then check for function
             IF (this%stack%stack_point /= 0) THEN
-              PRINT *,'s2'
               CALL stack_snoop(this%stack, block2, 0)
               IF (block2%ptype == c_pt_function .OR. &
                   block2%ptype == c_pt_emplaced_function) THEN
@@ -911,22 +925,26 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_separator) THEN
       DO
-        PRINT *,'s3'
-        CALL stack_snoop(this%stack, block2, 0)
-        IF (block2%ptype /= c_pt_parenthesis) THEN
-          CALL pop_to_stack(this%stack, this%output)
-        ELSE
-          IF (block2%value /= c_paren_left_bracket) THEN
-            err = IOR(err, eis_err_malformed)
-            CALL this%err_handler%add_error(eis_err_parser, err, current, &
-                charindex)
-            RETURN
-          END IF
-          IF (this%brackets%stack_point > 0) THEN
-            this%brackets%entries(this%brackets%stack_point)%actual_params = &
-            this%brackets%entries(this%brackets%stack_point)%actual_params + 1
-          END IF
+        IF (this%stack%stack_point == 0) THEN
+          !This is a separator in creating a vector, so nothing to do
           EXIT
+        ELSE
+          CALL stack_snoop(this%stack, block2, 0)
+          IF (block2%ptype /= c_pt_parenthesis) THEN
+            CALL pop_to_stack(this%stack, this%output)
+          ELSE
+            IF (block2%value /= c_paren_left_bracket) THEN
+              err = IOR(err, eis_err_malformed)
+              CALL this%err_handler%add_error(eis_err_parser, err, current, &
+                  charindex)
+              RETURN
+            END IF
+            IF (this%brackets%stack_point > 0) THEN
+              this%brackets%entries(this%brackets%stack_point)%actual_params = &
+              this%brackets%entries(this%brackets%stack_point)%actual_params + 1
+            END IF
+            EXIT
+          END IF
         END IF
       END DO
 
@@ -939,7 +957,6 @@ CONTAINS
           EXIT
         END IF
         ! stack is not empty so check precedence etc.
-        PRINT *,'s4'
         CALL stack_snoop(this%stack, block2, 0, coblock2)
         IF (block2%ptype /= c_pt_operator) THEN
           ! Previous block is not an operator so push current operator

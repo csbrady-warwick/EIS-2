@@ -279,6 +279,28 @@ MODULE eis_core_functions_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Not equal to
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_neq(nparams, params, user_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = 0.0_eis_num
+    IF (ABS(params(1) - params(2)) > eis_tiny) res = 1.0_eis_num
+
+  END FUNCTION eis_neq
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> And
   !> @param[in] nparams
   !> @param[in] params

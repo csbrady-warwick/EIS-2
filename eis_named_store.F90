@@ -182,11 +182,11 @@ CONTAINS
     IF (ASSOCIATED(this%list)) THEN
       sz = SIZE(this%list)
       ALLOCATE(temp(sz), SOURCE = this%list)
-      CALL unlink_items(this%list)
+      CALL this%unlink()
       DEALLOCATE(this%list)
       ALLOCATE(this%list(1:sz+1))
       this%list(1:sz) = temp(1:sz)
-      CALL this%unlink()
+      CALL unlink_items(temp)
       DEALLOCATE(temp)
       sz = sz + 1
     ELSE
