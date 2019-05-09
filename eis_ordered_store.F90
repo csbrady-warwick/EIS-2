@@ -18,6 +18,7 @@ MODULE eis_ordered_store_mod
     LOGICAL, PUBLIC :: is_init = .FALSE.
     CONTAINS
     PRIVATE
+    PROCEDURE, PUBLIC :: get_size => os_get_size
     PROCEDURE, PUBLIC :: get => os_get
     PROCEDURE, PUBLIC :: store => os_store
     FINAL :: os_destructor
@@ -63,6 +64,24 @@ CONTAINS
 
     CALL this%cleanup()
   END SUBROUTINE osi_destructor
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of items in this store. Returns 0 if empty
+  !> @param[in] this
+  !> @result item
+  FUNCTION os_get_size(this) RESULT (sz)
+
+    CLASS(ordered_store), INTENT(IN) :: this
+    INTEGER :: sz
+
+    sz = 0
+    IF (.NOT. ALLOCATED(this%items)) RETURN
+    sz = SIZE(this%items)
+
+  END FUNCTION os_get_size
 
 
 

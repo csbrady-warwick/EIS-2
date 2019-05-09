@@ -858,4 +858,127 @@ MODULE eis_core_functions_mod
 
   END FUNCTION eis_supergauss
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Inverse hyperbolic sine
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_asinh(nparams, params, user_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res, t0
+
+    res = params(1)**2 + 1.0_eis_num
+    IF (res < 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = params(1) + SQRT(res)
+    IF (res <= 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = LOG(res)
+
+  END FUNCTION eis_asinh
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Inverse hyperbolic cosine
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_acosh(nparams, params, user_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res, t0
+
+    res = params(1)**2 - 1.0_eis_num
+    IF (res < 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = params(1) + SQRT(res)
+    IF (res <= 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = LOG(res)
+
+  END FUNCTION eis_acosh
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Inverse hyperbolic tangent
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_atanh(nparams, params, user_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res, t0
+
+    res = 1.0_eis_num - params(1)
+    IF (ABS(res) < eis_tiny) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = (1.0_eis_num + params(1)) / res
+    IF (res <= 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+    res = 0.5_eis_num * LOG(res)
+
+  END FUNCTION eis_atanh
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> If condition is true return first value, if not return second
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_if(nparams, params, user_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    IF (ABS(params(1)) > eis_tiny) THEN
+      res = params(2)
+    ELSE
+      res = params(3)
+    END IF
+
+  END FUNCTION eis_if
+
 END MODULE eis_core_functions_mod

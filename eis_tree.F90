@@ -41,6 +41,7 @@ MODULE eis_tree_mod
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: stack_out
     TYPE(eis_stack), POINTER :: simplified
+    TYPE(eis_stack) :: intermediate
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
 
@@ -61,7 +62,11 @@ MODULE eis_tree_mod
         DEALLOCATE(root)
         RETURN
       END IF
-      CALL eis_tree_to_stack(root, simplified)
+      CALL initialise_stack(intermediate)
+      CALL eis_tree_to_stack(root, intermediate)
+      CALL append_stack(intermediate, simplified)
+      CALL copy_stack(simplified, intermediate)
+      CALL deallocate_stack(intermediate)
       DEALLOCATE(root)
     END DO
 

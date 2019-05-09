@@ -28,6 +28,7 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_bad_value = 2**8 !< Value that makes no sense
   INTEGER(eis_error), PARAMETER :: eis_err_has_deferred = 2**9
   INTEGER(eis_error), PARAMETER :: eis_err_has_emplaced = 2**10
+  INTEGER(eis_error), PARAMETER :: eis_err_where = 2**11
 
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**0
@@ -60,6 +61,7 @@ MODULE eis_header
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
+    LOGICAL :: where_stack = .FALSE.
   END TYPE eis_stack
 
   INTERFACE

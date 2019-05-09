@@ -5,6 +5,8 @@ MODULE eis_eval_stack_mod
   USE eis_header
   USE eis_error_mod
 
+  IMPLICIT NONE
+
   TYPE eis_eval_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: entries
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: fn_call_vals
@@ -150,17 +152,19 @@ MODULE eis_eval_stack_mod
   !> @param[in] stack
   !> @param[in] result_vals
   FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode, &
-      err_handler) RESULT(result_count)
+      err_handler, is_no_op) RESULT(result_count)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_vals
     TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     INTEGER(eis_error) :: err
-    INTEGER(eis_status) :: status
+    INTEGER(eis_status) :: stat_in, status
     INTEGER :: result_count
     INTEGER :: istack
+    REAL(eis_num) :: where_condition
 
     status = eis_status_none
 
@@ -168,9 +172,11 @@ MODULE eis_eval_stack_mod
       IF (stack%entries(istack)%ptype == c_pt_constant) THEN
         CALL this%push(stack%entries(istack)%numerical_data, errcode)
       ELSE
-        err = eis_err_none
-        CALL this%eval_element(stack%entries(istack), user_params, status, &
+        err = errcode
+        stat_in = status
+        CALL this%eval_element(stack%entries(istack), user_params, stat_in, &
             err)
+        status = IOR(status, stat_in)
         IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
           IF (ALLOCATED(stack%co_entries)) THEN
             CALL err_handler%add_error(eis_err_evaluator, err, &
@@ -183,6 +189,16 @@ MODULE eis_eval_stack_mod
         END IF
       END IF
     END DO
+
+    IF (stack%where_stack) THEN
+      CALL this%pop(where_condition, errcode)
+      IF (PRESENT(is_no_op)) THEN
+        is_no_op = ABS(where_condition) < eis_tiny
+      ELSE
+        errcode = IOR(errcode, eis_err_where)
+        CALL err_handler%add_error(eis_err_evaluator, errcode, 'where', 1)
+      END IF
+    END IF
 
     IF (.NOT. ALLOCATED(result_vals)) THEN
       ALLOCATE(result_vals(1:this%stack_point))

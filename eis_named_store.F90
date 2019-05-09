@@ -8,6 +8,7 @@ MODULE eis_named_store_mod
 
   TYPE :: named_store_item
     CHARACTER(LEN=:), ALLOCATABLE :: name
+    LOGICAL :: owns = .TRUE.
     CLASS(*), POINTER :: item => NULL()
     CONTAINS
     PROCEDURE :: cleanup => nsi_cleanup
@@ -18,6 +19,7 @@ MODULE eis_named_store_mod
     TYPE(named_store_item), DIMENSION(:), POINTER :: list => NULL()
     CONTAINS
     PROCEDURE, PRIVATE :: get_index => nsil_get_index
+    PROCEDURE :: unlink => nsil_unlink
     PROCEDURE :: get => nsil_get
     PROCEDURE :: store => nsil_store
     FINAL :: nsil_destructor
@@ -33,6 +35,8 @@ MODULE eis_named_store_mod
     PROCEDURE :: hash => ns_hash
     PROCEDURE, PUBLIC :: get => ns_get
     PROCEDURE, PUBLIC :: store => ns_store
+    PROCEDURE, PUBLIC :: hold => ns_hold
+    PROCEDURE, PUBLIC :: unlink => ns_unlink
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
     GENERIC, PUBLIC :: init => init_i8, init_i4
@@ -52,7 +56,7 @@ CONTAINS
   PURE ELEMENTAL SUBROUTINE nsi_cleanup(this)
     CLASS(named_store_item), INTENT(INOUT) :: this !< self pointer
 
-    IF (ASSOCIATED(this%item)) DEALLOCATE(this%item)
+    IF (ASSOCIATED(this%item) .AND. this%owns) DEALLOCATE(this%item)
     IF (ALLOCATED(this%name)) DEALLOCATE(this%name)
     this%item => NULL()
   END SUBROUTINE nsi_cleanup
@@ -112,6 +116,23 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Unlink all of the items in the list. Needed for copying
+  !> @param[in] this
+  SUBROUTINE nsil_unlink(this)
+
+    CLASS(named_store_inner_list), INTENT(IN) :: this !< self pointer
+    INTEGER :: ifn
+
+    IF (ASSOCIATED(this%list)) THEN
+      CALL unlink_items(this%list)
+    END IF
+
+  END SUBROUTINE nsil_unlink
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Get an item from the store by name
   !> @param[in] this
   !> @param[in] name
@@ -138,11 +159,12 @@ CONTAINS
   !> @param[in] this
   !> @param[in] name
   !> @param[in] item
-  SUBROUTINE nsil_store(this, name, item)
+  SUBROUTINE nsil_store(this, name, item, owns)
 
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to add item under
-    CLASS(*), INTENT(IN) :: item !< Item to add
+    CLASS(*), POINTER, INTENT(IN) :: item !< Item to add
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
     TYPE(named_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz, ssz, iindex
 
@@ -151,7 +173,9 @@ CONTAINS
     IF (iindex > 0) THEN
       CALL this%list(iindex)%cleanup()
       ALLOCATE(this%list(iindex)%name, SOURCE = name)
-      ALLOCATE(this%list(iindex)%item, SOURCE = item)
+      this%list(iindex)%item => item
+      this%list(iindex)%owns = .TRUE.
+      IF (PRESENT(owns)) this%list(iindex)%owns = owns
       RETURN
     END IF
 
@@ -162,7 +186,7 @@ CONTAINS
       DEALLOCATE(this%list)
       ALLOCATE(this%list(1:sz+1))
       this%list(1:sz) = temp(1:sz)
-      CALL unlink_items(temp)
+      CALL this%unlink()
       DEALLOCATE(temp)
       sz = sz + 1
     ELSE
@@ -170,7 +194,9 @@ CONTAINS
       ALLOCATE(this%list(1)) 
     END IF
     ALLOCATE(this%list(sz)%name, SOURCE = name)
-    ALLOCATE(this%list(sz)%item, SOURCE = item)
+    this%list(sz)%owns = .TRUE.
+    IF (PRESENT(owns)) this%list(sz)%owns = owns
+    this%list(sz)%item => item
 
   END SUBROUTINE nsil_store
 
@@ -242,7 +268,8 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Add an item to the hash table
+  !> Add an item to the hash table taking a copy
+  !> when doing so
   !> @param[in] this
   !> @param[in] name
   !> @param[in] item
@@ -251,16 +278,66 @@ CONTAINS
     CLASS(named_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     CLASS(*), INTENT(IN) :: item
+    CLASS(*), POINTER :: copy
     INTEGER(INT64) :: bucket
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)
 
     bucket = this%hash(name)
-    CALL this%buckets(bucket)%store(name, item)
+    ALLOCATE(copy, SOURCE = item)
+    CALL this%buckets(bucket)%store(name, copy)
     this%count = this%count + 1
 
   END SUBROUTINE ns_store
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to the hash table storing the passed item NOT a copy.
+  !> By default is set to assume that it owns the item after adding
+  !> and deletes it when the store is closed. Set "owns = .FALSE." if this
+  !> you have other pointers to the item
+  !> @param[in] this
+  !> @param[in] name
+  !> @param[in] item
+  !> @param[in] owns
+  SUBROUTINE ns_hold(this, name, item, owns)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    CLASS(*), POINTER, INTENT(IN) :: item
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
+    INTEGER(INT64) :: bucket
+
+    IF (.NOT. ALLOCATED(this%buckets)) &
+        CALL this%init(default_bucket_count)
+
+    bucket = this%hash(name)
+    CALL this%buckets(bucket)%store(name, item, owns)
+    this%count = this%count + 1
+
+  END SUBROUTINE ns_hold
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Unlink all of the items in all of the buckets
+  !> needed when copying the list
+  !> @param[in] this
+  SUBROUTINE ns_unlink(this)
+
+    CLASS(named_store), INTENT(IN) :: this !< self pointer
+    INTEGER :: i
+
+    IF (.NOT. ALLOCATED(this%buckets)) RETURN
+    DO i = 1, SIZE(this%buckets)
+      CALL this%buckets(i)%unlink()
+    END DO
+
+  END SUBROUTINE ns_unlink
 
 
 

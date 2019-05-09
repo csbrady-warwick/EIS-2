@@ -80,7 +80,6 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: simplify => eip_simplify
     PROCEDURE, PUBLIC :: emplace => eip_emplace
     PROCEDURE, PUBLIC :: print_errors => eip_print_errors
-    PROCEDURE, PUBLIC :: get_error_string => eip_get_error_string
 
   END TYPE eis_parser
 
@@ -104,94 +103,149 @@ CONTAINS
       err = eis_err_none
       global_setup = .TRUE.
       CALL global_registry%add_operator('+', eis_uplus, c_assoc_ra, 4, err, &
-        unary = .TRUE.)
-      CALL this%err_handler%add_error(eis_err_parser, err, '+')
+        unary = .TRUE., err_handler = this%err_handler)
       CALL global_registry%add_operator('-', eis_uminus, c_assoc_ra, 4, err, &
-          unary = .TRUE.)
-      CALL this%err_handler%add_error(eis_err_parser, err, '-')
-      CALL global_registry%add_operator('+', eis_bplus, c_assoc_a, 2, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, '+')
-      CALL global_registry%add_operator('-', eis_bminus, c_assoc_la, 2, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, '-')
-      CALL global_registry%add_operator('*', eis_times, c_assoc_a, 3, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, '*')
-      CALL global_registry%add_operator('/', eis_divide, c_assoc_la, 3, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, '/')
-      CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, '^')
-      CALL global_registry%add_operator('e', eis_expo, c_assoc_la, 4, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'e')
-      CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'lt')
-      CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'le')
-      CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'gt')
-      CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'ge')
-      CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'eq')
-      CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'and')
-      CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'or')
+          unary = .TRUE., err_handler = this%err_handler)
+      CALL global_registry%add_operator('+', eis_bplus, c_assoc_a, 2, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('-', eis_bminus, c_assoc_la, 2, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('*', eis_times, c_assoc_a, 3, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('/', eis_divide, c_assoc_la, 3, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('e', eis_expo, c_assoc_la, 4, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err, &
+          err_handler = this%err_handler)
 
-      CALL global_registry%add_constant('pi', &
-          3.141592653589793238462643383279503_eis_num, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'pi')
+      CALL global_registry%add_constant('math.pi', &
+          3.141592653589793238462643383279503_eis_num, err, &
+          err_handler = this%err_handler)
 
-      CALL global_registry%add_function('abs', eis_abs, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'abs')
-      CALL global_registry%add_function('floor', eis_floor, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'floor')
-      CALL global_registry%add_function('ceil', eis_ceil, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'ceil')
-      CALL global_registry%add_function('ceiling', eis_ceil, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'ceilin')
-      CALL global_registry%add_function('nint', eis_nint, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'nint')
-      CALL global_registry%add_function('trunc', eis_aint, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'trunc')
-      CALL global_registry%add_function('truncate', eis_aint, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'truncate')
-      CALL global_registry%add_function('aint', eis_aint, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'aint')
-      CALL global_registry%add_function('sqrt', eis_sqrt, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'sqrt')
-      CALL global_registry%add_function('sin', eis_sin, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'sin')
-      CALL global_registry%add_function('cos', eis_cos, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'cos')
-      CALL global_registry%add_function('tan', eis_tan, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'tan')
-      CALL global_registry%add_function('asin', eis_asin, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'asin')
-      CALL global_registry%add_function('acos', eis_acos, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'acos')
-      CALL global_registry%add_function('atan', eis_atan, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'atan')
-      CALL global_registry%add_function('atan2', eis_atan2, 2, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'atan2')
-      CALL global_registry%add_function('sinh', eis_sinh, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'sinh')
-      CALL global_registry%add_function('cosh',eis_cosh, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'cosh')
-      CALL global_registry%add_function('tanh',eis_tanh, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'tanh')
-      CALL global_registry%add_function('exp', eis_exp, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'exp')
-      CALL global_registry%add_function('loge', eis_loge, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'loge')
-      CALL global_registry%add_function('log10', eis_log10, 1, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'log10')
-      CALL global_registry%add_function('log_base', eis_log_base, 2, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'log_base')
-      CALL global_registry%add_function('gauss', eis_gauss, 3, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'gauss')
-      CALL global_registry%add_function('semigauss', eis_semigauss, 4, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'semigauss')
-      CALL global_registry%add_function('supergauss', eis_supergauss, 4, err)
-      CALL this%err_handler%add_error(eis_err_parser, err, 'supergauss')
+
+      CALL global_registry%add_constant('scale.yotta', 1.0e24_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.zetta', 1.0e21_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.exa', 1.0e18_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.peta', 1.0e15_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.tera', 1.0e12_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.giga', 1.0e9_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.mega', 1.0e6_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.kilo', 1.0e3_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.hecto', 1.0e2_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.deca', 1.0e1_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.deci', 1.0e-1_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.centi', 1.0e-2_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.milli', 1.0e-3_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.micro', 1.0e-6_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.nano', 1.0e-9_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.pico', 1.0e-12_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.femto', 1.0e-15_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.atto', 1.0e-18_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.zepto', 1.0e-21_eis_num, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_constant('scale.yocto', 1.0e-24_eis_num, err, &
+          err_handler = this%err_handler)
+
+      CALL global_registry%add_function('math.abs', eis_abs, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.floor', eis_floor, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.ceil', eis_ceil, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.ceiling', eis_ceil, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.nint', eis_nint, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.trunc', eis_aint, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.truncate', eis_aint, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.aint', eis_aint, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.sqrt', eis_sqrt, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.sin', eis_sin, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.cos', eis_cos, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.tan', eis_tan, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.asin', eis_asin, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.acos', eis_acos, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.atan', eis_atan, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.atan2', eis_atan2, 2, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.sinh', eis_sinh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.cosh',eis_cosh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.tanh',eis_tanh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.asinh', eis_asinh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.acosh',eis_acosh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.atanh',eis_atanh, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.exp', eis_exp, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.loge', eis_loge, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.log10', eis_log10, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.log_base', eis_log_base, 2, err, &
+          err_handler = this%err_handler)
+
+      CALL global_registry%add_function('utility.gauss', eis_gauss, 3, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('utility.semigauss', eis_semigauss, 4, &
+          err, err_handler = this%err_handler)
+      CALL global_registry%add_function('utility.supergauss', eis_supergauss, &
+          4, err, err_handler = this%err_handler)
+
+      CALL global_registry%add_function('logic.if', eis_if, &
+          3, err, err_handler = this%err_handler)
+
+      CALL global_registry%include_namespace('math')
+      CALL global_registry%include_namespace('scale')
+      CALL global_registry%include_namespace('utility')
+      CALL global_registry%include_namespace('logic')
     END IF
 
   END SUBROUTINE eip_init
@@ -317,15 +371,15 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_tokenize(this, expression, output, err)
+  SUBROUTINE eip_tokenize(this, expression_in, output, err)
 
     CLASS(eis_parser) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: expression
+    CHARACTER(LEN=*), INTENT(IN) :: expression_in
     TYPE(eis_stack), INTENT(INOUT), TARGET :: output
     INTEGER(eis_error), INTENT(INOUT) :: err
     LOGICAL :: maybe_e
 
-    CHARACTER(LEN=:), ALLOCATABLE :: current
+    CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
     INTEGER :: charindex
@@ -335,6 +389,14 @@ CONTAINS
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (.NOT. output%init) CALL initialise_stack(output)
+
+    IF (expression_in(1:6) == 'where(') THEN
+      output%where_stack = .TRUE.
+      ALLOCATE(expression, SOURCE = expression_in(7:LEN(expression_in)-1))
+      PRINT *,'UX ', expression
+    ELSE
+      ALLOCATE(expression, SOURCE = expression_in)
+    END IF
 
     CALL initialise_stack(this%stack)
     CALL initialise_stack(this%brackets)
@@ -376,6 +438,7 @@ CONTAINS
           CALL deallocate_stack(this%stack)
           CALL deallocate_stack(this%brackets)
           DEALLOCATE(current)
+          DEALLOCATE(expression)
           RETURN
         END IF
         output%cap_bits = IOR(output%cap_bits, cap_bits)
@@ -402,6 +465,7 @@ CONTAINS
     CALL deallocate_stack(this%stack)
     CALL deallocate_stack(this%brackets)
     DEALLOCATE(current)
+    DEALLOCATE(expression)
 
     IF (this%should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
     IF (this%should_minify) CALL minify_stack(this%output)
@@ -564,10 +628,10 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_function(name, fn, params, errcode, &
-          can_simplify, cap_bits)
+          can_simplify, cap_bits, err_handler = this%err_handler)
     ELSE
       CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
-          cap_bits)
+          cap_bits, err_handler = this%err_handler)
     END IF
 
   END SUBROUTINE eip_add_function
@@ -590,9 +654,10 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_variable(name, fn, errcode, can_simplify, &
-          cap_bits)
+          cap_bits, err_handler = this%err_handler)
     ELSE
-      CALL this%registry%add_variable(name, fn, errcode, can_simplify, cap_bits)
+      CALL this%registry%add_variable(name, fn, errcode, can_simplify, &
+          cap_bits, err_handler = this%err_handler)
     END IF
 
   END SUBROUTINE eip_add_variable
@@ -615,10 +680,10 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits)
+          cap_bits, err_handler = this%err_handler)
     ELSE
       CALL this%registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits)
+          cap_bits, err_handler = this%err_handler)
     END IF
 
   END SUBROUTINE eip_add_constant
@@ -638,9 +703,11 @@ CONTAINS
     IF (PRESENT(global)) is_global = global
 
     IF (is_global) THEN
-      CALL global_registry%add_stack_variable(name, stack, errcode)
+      CALL global_registry%add_stack_variable(name, stack, errcode, &
+          err_handler = this%err_handler)
     ELSE
-      CALL this%registry%add_stack_variable(name, stack, errcode)
+      CALL this%registry%add_stack_variable(name, stack, errcode, &
+          err_handler = this%err_handler)
     END IF
 
   END SUBROUTINE eip_add_stack_variable_stack
@@ -662,9 +729,11 @@ CONTAINS
     CALL initialise_stack(stack)
     CALL this%tokenize(string, stack, errcode)
     IF (is_global) THEN
-      CALL global_registry%add_stack_variable(name, stack, errcode)
+      CALL global_registry%add_stack_variable(name, stack, errcode, &
+          err_handler = this%err_handler)
     ELSE
-      CALL this%registry%add_stack_variable(name, stack, errcode)
+      CALL this%registry%add_stack_variable(name, stack, errcode, &
+          err_handler = this%err_handler)
     END IF
     CALL deallocate_stack(stack)
 
@@ -679,7 +748,8 @@ CONTAINS
     PROCEDURE(parser_late_bind_fn) :: def_fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
-    CALL this%registry%add_stack_function(name, def_fn, errcode)
+    CALL this%registry%add_stack_function(name, def_fn, errcode, &
+        err_handler = this%err_handler)
 
   END SUBROUTINE eip_add_emplaced_function
 
@@ -775,6 +845,7 @@ CONTAINS
         CALL push_to_stack(this%brackets, iblock, icoblock)
       ELSE
         DO
+          PRINT *,'s1'
           CALL stack_snoop(this%stack, block2, 0)
           IF (block2%ptype == c_pt_parenthesis &
               .AND. block2%value == c_paren_left_bracket) THEN
@@ -797,6 +868,7 @@ CONTAINS
             END IF
             ! If stack isn't empty then check for function
             IF (this%stack%stack_point /= 0) THEN
+              PRINT *,'s2'
               CALL stack_snoop(this%stack, block2, 0)
               IF (block2%ptype == c_pt_function .OR. &
                   block2%ptype == c_pt_emplaced_function) THEN
@@ -839,6 +911,7 @@ CONTAINS
 
     ELSE IF (iblock%ptype == c_pt_separator) THEN
       DO
+        PRINT *,'s3'
         CALL stack_snoop(this%stack, block2, 0)
         IF (block2%ptype /= c_pt_parenthesis) THEN
           CALL pop_to_stack(this%stack, this%output)
@@ -866,6 +939,7 @@ CONTAINS
           EXIT
         END IF
         ! stack is not empty so check precedence etc.
+        PRINT *,'s4'
         CALL stack_snoop(this%stack, block2, 0, coblock2)
         IF (block2%ptype /= c_pt_operator) THEN
           ! Previous block is not an operator so push current operator
@@ -912,23 +986,6 @@ CONTAINS
 
 
 
-!  SUBROUTINE append_string(str_old, str_new)
-!    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_old
-!    CHARACTER(LEN=*), INTENT(IN) :: str_new
-!    CHARACTER(LEN=:), ALLOCATABLE :: temp
-!
-!    IF (ALLOCATED(str_old)) THEN
-!      ALLOCATE(temp, SOURCE = str_old)
-!      DEALLOCATE(str_old)
-!      ALLOCATE(str_old, SOURCE = temp // NEW_LINE(str_new) // str_new)
-!      DEALLOCATE(temp)
-!    ELSE
-!      ALLOCATE(str_old, SOURCE = str_new)
-!    END IF
-
-!  END SUBROUTINE append_string
-
-
   SUBROUTINE eip_print_errors(this)
     CLASS(eis_parser) :: this
     INTEGER :: ierr, ec
@@ -940,38 +997,5 @@ CONTAINS
     CALL this%err_handler%flush_errors()
 
   END SUBROUTINE eip_print_errors
-
-
-  FUNCTION eip_get_error_string(this, errcode, str_out)
-    CLASS(eis_parser) :: this
-    INTEGER(eis_error), INTENT(IN) :: errcode
-    CHARACTER(LEN=*), INTENT(INOUT) :: str_out
-    CHARACTER(LEN=:), ALLOCATABLE :: str1
-    INTEGER :: eip_get_error_string, pos
-
-!    IF (IAND(errcode, eis_err_bad_value) /= 0) THEN
-!      CALL append_string(str1, 'There was a bad value in the expression')
-!    END IF
-!    IF (IAND(errcode, eis_err_malformed) /= 0) THEN
-!      CALL append_string(str1, 'The expression was of invalid form')
-!    END IF
-!    IF (IAND(errcode, eis_err_wrong_parameters) /= 0) THEN
-!      CALL append_string(str1, 'The wrong number of parameters was used in a &
-!          &function')
-!    END IF
-!    IF (IAND(errcode, eis_err_maths_domain) /= 0) THEN
-!      CALL append_string(str1, 'A mathematically invalid operation was &
-!          &requested')
-!    END IF
-
-!    IF (.NOT. ALLOCATED(str1)) ALLOCATE(str1, SOURCE = 'No error found')
-
-!    eip_get_error_string = LEN(str1)
-!    pos = MIN(LEN(str_out), LEN(str1))
-!    str_out = ""
-!    str_out(1:pos) = str1(1:pos)
-!    DEALLOCATE(str1)
-
-  END FUNCTION eip_get_error_string
 
 END MODULE eis_parser_mod
