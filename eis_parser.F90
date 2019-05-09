@@ -323,13 +323,21 @@ CONTAINS
         CALL global_registry%include_namespace('scale')
         CALL global_registry%include_namespace('utility')
         CALL global_registry%include_namespace('logic')
+        CALL this%registry%include_namespace('math')
+        CALL this%registry%include_namespace('scale')
+        CALL this%registry%include_namespace('utility')
+        CALL this%registry%include_namespace('logic')
         IF (this%physics_units /= eis_physics_none) THEN
-          CALL global_registry%include_namespace('phyics')
+          CALL global_registry%include_namespace('physics')
+          CALL this%registry%include_namespace('physics')
           IF (this%physics_units == eis_physics_si) THEN
             CALL global_registry%include_namespace('physics.si')
+            CALL this%registry%include_namespace('physics.si')
           ELSE IF (this%physics_units == eis_physics_cgs_gauss) THEN
             CALL global_registry%include_namespace('physics.cgs')
             CALL global_registry%include_namespace('physics.cgs.gauss')
+            CALL this%registry%include_namespace('physics.cgs')
+            CALL this%registry%include_namespace('physics.cgs.gauss')
           END IF
         END IF
       END IF
@@ -571,6 +579,7 @@ CONTAINS
 
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
+      CALL this%err_handler%add_error(eis_err_evaluator, errcode)
       RETURN
     END IF
 
@@ -630,7 +639,6 @@ CONTAINS
       DO inode = 1, nparams
         CALL initialise_stack(temp_stack)
         CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
-        CALL display_tokens(temp_stack)
         rcount = this%evaluate(temp_stack, results, user_params, errcode)
         params(inode) = results(1)
         CALL deallocate_stack(temp_stack)
@@ -835,7 +843,7 @@ CONTAINS
     PROCEDURE(parser_late_bind_fn) :: def_fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
-    CALL this%registry%add_stack_function(name, def_fn, errcode, &
+    CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
         err_handler = this%err_handler)
 
   END SUBROUTINE eip_add_emplaced_function

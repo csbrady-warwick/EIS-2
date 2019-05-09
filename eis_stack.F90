@@ -219,11 +219,6 @@ MODULE eis_stack_mod
     INTEGER, INTENT(IN) :: offset
     TYPE(eis_stack_co_element), INTENT(OUT), OPTIONAL :: covalue
 
-    IF (stack%stack_point-offset <= 0) THEN
-      PRINT *, 'Unable to snoop stack', stack%stack_point
-      STOP
-    END IF
-
     value = stack%entries(stack%stack_point-offset)
     IF (PRESENT(covalue) .AND. ALLOCATED(stack%co_entries)) THEN
       covalue = stack%co_entries(stack%stack_point)
@@ -250,27 +245,6 @@ MODULE eis_stack_mod
     TYPE(eis_stack_co_element), INTENT(INOUT) :: element
 
   END SUBROUTINE initialise_stack_co_element
-
-
-
-  SUBROUTINE display_tokens(token_list)
-
-    TYPE(eis_stack), INTENT(IN) :: token_list
-    INTEGER :: i
-
-      DO i = 1, token_list%stack_point
-        PRINT *, 'Type', token_list%entries(i)%ptype
-        PRINT *, 'Data', token_list%entries(i)%value
-        PRINT *, 'NumData', token_list%entries(i)%numerical_data
-        IF (ALLOCATED(token_list%co_entries)) THEN
-          IF (ALLOCATED(token_list%co_entries(i)%text)) THEN
-            PRINT *, 'Text :', TRIM(token_list%co_entries(i)%text)
-          END IF
-        END IF
-        PRINT *, '---------------'
-      END DO
-
-  END SUBROUTINE display_tokens
 
 
 

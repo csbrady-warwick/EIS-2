@@ -56,7 +56,7 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: add_function => eir_add_function
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
     PROCEDURE, PUBLIC :: add_stack_variable => eir_add_stack_var
-    PROCEDURE, PUBLIC :: add_stack_function => eir_add_stack_function
+    PROCEDURE, PUBLIC :: add_emplaced_function => eir_add_emplaced_function
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
     PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
     PROCEDURE, PUBLIC :: get_stored_emplacement => eir_get_stored
@@ -316,7 +316,7 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_stack_function(this, name, def_fn, errcode, err_handler)
+  SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, err_handler)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_late_bind_fn) :: def_fn
@@ -333,7 +333,7 @@ CONTAINS
 
     CALL this%stored_items%store(name, temp)
 
-  END SUBROUTINE eir_add_stack_function
+  END SUBROUTINE eir_add_emplaced_function
 
 
 
