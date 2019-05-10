@@ -316,11 +316,13 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, err_handler)
+  SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, &
+      expected_parameters, err_handler)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_late_bind_fn) :: def_fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
     TYPE(late_bind_fn_holder) :: holder
@@ -328,6 +330,8 @@ CONTAINS
 
     holder%contents => def_fn
     index = this%stack_function_registry%store(holder)
+    IF (PRESENT(expected_parameters)) temp%expected_parameters &
+        = expected_parameters
     temp%ptype = c_pt_emplaced_function
     temp%value = index
 

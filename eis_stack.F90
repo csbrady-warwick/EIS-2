@@ -170,9 +170,14 @@ MODULE eis_stack_mod
 
 
 
-  SUBROUTINE pop_to_stack(stack1, stack2)
+  SUBROUTINE pop_to_stack(stack1, stack2, stack_empty)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack1, stack2
+    LOGICAL, OPTIONAL :: stack_empty
+
+    IF (PRESENT(stack_empty)) stack_empty = .TRUE.
+    IF (stack1%stack_point == 0) RETURN
+    IF (PRESENT(stack_empty)) stack_empty = .FALSE.
 
     IF (ALLOCATED(stack1%co_entries)) THEN
       CALL push_to_stack(stack2, stack1%entries(stack1%stack_point), &

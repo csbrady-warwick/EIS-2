@@ -154,6 +154,14 @@ MODULE eis_error_mod
         &but is not tested for no-ops when evaluated')
     END IF
 
+    IF (IAND(errcode, eis_err_bracketed_constant) /= 0) THEN
+      CALL append_string(str1, 'Attempting to subscript a constant')
+    END IF
+
+    IF (IAND(errcode, eis_err_extra_bracket) /= 0) THEN
+      CALL append_string(str1, 'Extraneous bracket')
+    END IF
+
     IF (.NOT. ALLOCATED(str1)) ALLOCATE(str1, SOURCE = 'No error text found')
 
     eeh_get_error_string_from_code = LEN(str1)
@@ -229,7 +237,7 @@ MODULE eis_error_mod
     END IF
 
     IF (charpos > 0) THEN
-      nchar = CEILING(LOG10(REAL(charpos, eis_num)))
+      nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
       WRITE(format_str, '(A,I1,A)') '(A, A, A, I',nchar,', A, A)'
       PRINT format_str, 'In block with text "', TRIM(errname), &
           '" starting at character position ', charpos, ' : ' , errstring

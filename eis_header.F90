@@ -33,6 +33,8 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_has_deferred = 2**9
   INTEGER(eis_error), PARAMETER :: eis_err_has_emplaced = 2**10
   INTEGER(eis_error), PARAMETER :: eis_err_where = 2**11
+  INTEGER(eis_error), PARAMETER :: eis_err_bracketed_constant = 2**12
+  INTEGER(eis_error), PARAMETER :: eis_err_extra_bracket = 2**13
 
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**0

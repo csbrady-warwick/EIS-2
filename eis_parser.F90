@@ -76,6 +76,7 @@ MODULE eis_parser_mod
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
+    PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: evaluate => eip_evaluate
     PROCEDURE, PUBLIC :: simplify => eip_simplify
@@ -550,7 +551,14 @@ CONTAINS
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
-      DO i = 1, this%stack%stack_point
+      DO i = this%stack%stack_point, 1, -1
+        IF (this%stack%entries(i)%ptype == c_pt_function .AND. &
+            this%stack%co_entries(i)%expected_params > 0) THEN
+          err = IOR(err, eis_err_wrong_parameters)
+          CALL this%err_handler%add_error(eis_err_parser, err, &
+              this%stack%co_entries(i)%text, &
+              this%stack%co_entries(i)%charindex)
+        END IF
         CALL pop_to_stack(this%stack, this%output)
       END DO
     ELSE
@@ -603,11 +611,12 @@ CONTAINS
 
 
   RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, user_params, &
-      remaining_functions)
+      remaining_functions, capbits)
     CLASS(eis_parser) :: this
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: tree_node
     TYPE(C_PTR), INTENT(IN) :: user_params
     LOGICAL, INTENT(INOUT) :: remaining_functions
+    INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
     TYPE(eis_tree_item), POINTER :: new_node, next_node
     INTEGER(eis_error) :: errcode
     INTEGER :: inode, nparams, sp
@@ -620,7 +629,8 @@ CONTAINS
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
         next_node => tree_node%nodes(inode)
-        CALL this%emplace_node(next_node, user_params, remaining_functions)
+        CALL this%emplace_node(next_node, user_params, remaining_functions, &
+            capbits)
       END DO
     END IF
 
@@ -643,6 +653,8 @@ CONTAINS
         params(inode) = results(1)
         CALL deallocate_stack(temp_stack)
       END DO
+    ELSE
+      ALLOCATE(params(nparams))
     END IF
 
     late_bind_fn => this%registry%get_stored_emplacement(tree_node%value%value)
@@ -651,10 +663,13 @@ CONTAINS
     CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
         errcode)
 
+    DEALLOCATE(params)
+
     IF (temp_stack%has_emplaced) CALL this%emplace(temp_stack, user_params, &
         errcode)
 
-    !If empilacement is not forbidden by status then build new node
+    capbits = IOR(capbits, temp_stack%cap_bits)
+    !If emplacement is not forbidden by status then build new node
     IF (IAND(status_code, eis_status_no_emplace) == 0) THEN
       sp = temp_stack%stack_point + 1
       ALLOCATE(new_node)
@@ -679,6 +694,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
+    INTEGER(eis_bitmask) :: capbits
     LOGICAL :: remaining_functions
 
     IF (.NOT. stack%has_emplaced) RETURN
@@ -686,12 +702,14 @@ CONTAINS
     remaining_functions = .FALSE.
 
     ALLOCATE(root)
+    capbits = stack%cap_bits
     sp = stack%stack_point + 1
     CALL eis_build_node(stack, sp, root)
-    CALL this%emplace_node(root, user_params, remaining_functions)
+    CALL this%emplace_node(root, user_params, remaining_functions, capbits)
     CALL deallocate_stack(stack)
     CALL initialise_stack(stack)
     CALL eis_tree_to_stack(root, stack)
+    stack%cap_bits = capbits
     DEALLOCATE(root)
     stack%has_emplaced = remaining_functions
 
@@ -836,7 +854,24 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode)
+  SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode, &
+      expected_parameters)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_late_bind_fn) :: def_fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+
+    CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
+        err_handler = this%err_handler, &
+        expected_parameters = expected_parameters)
+
+  END SUBROUTINE eip_add_emplaced_function
+
+
+
+  SUBROUTINE eip_add_emplaced_variable(this, name, def_fn, errcode)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -844,9 +879,9 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
-        err_handler = this%err_handler)
+        err_handler = this%err_handler, expected_parameters = 0)
 
-  END SUBROUTINE eip_add_emplaced_function
+  END SUBROUTINE eip_add_emplaced_variable
 
 
 
@@ -866,6 +901,7 @@ CONTAINS
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
     INTEGER :: ipoint, io, iu
+    LOGICAL :: stack_empty
 
     cap_bits = 0_eis_bitmask
     IF (ICHAR(current(1:1)) == 0) RETURN
@@ -885,10 +921,28 @@ CONTAINS
         .OR. this%last_block_type == c_pt_emplaced_function) &
         .AND. .NOT. (iblock%ptype == c_pt_parenthesis &
         .AND. iblock%value == c_paren_left_bracket)) THEN
-      err = IOR(err, eis_err_malformed)
-      CALL this%err_handler%add_error(eis_err_parser, err, &
-          this%last_block_text, this%last_charindex)
-      RETURN
+      IF (this%stack%co_entries(this%stack%stack_point)%expected_params &
+          == 0) THEN
+        !Functions that take no parameters
+        CALL pop_to_stack(this%stack, this%output)
+      ELSE
+        err = IOR(err, eis_err_malformed)
+        CALL this%err_handler%add_error(eis_err_parser, err, &
+            this%last_block_text, this%last_charindex)
+        RETURN
+      END IF
+    END IF
+
+    !Open brackets must not be preceeded by a constant or variable
+    IF (iblock%ptype == c_pt_parenthesis &
+        .AND. iblock%value == c_paren_left_bracket) THEN
+      IF (this%last_block_type == c_pt_variable &
+          .OR. this%last_block_type == c_pt_constant) THEN
+        err = IOR(err, eis_err_bracketed_constant)
+        CALL this%err_handler%add_error(eis_err_parser, err, &
+            this%last_block_text, this%last_charindex)
+        RETURN
+      END IF
     END IF
 
     !If previous block was an operator than almost anything else is valid
@@ -989,7 +1043,13 @@ CONTAINS
             END IF
             EXIT
           ELSE
-            CALL pop_to_stack(this%stack, this%output)
+            CALL pop_to_stack(this%stack, this%output, stack_empty)
+            IF (stack_empty) THEN
+              err = IOR(err, eis_err_extra_bracket)
+              CALL this%err_handler%add_error(eis_err_parser, err, &
+                  ")", charindex)
+              RETURN
+            END IF
           END IF
         END DO
       END IF
