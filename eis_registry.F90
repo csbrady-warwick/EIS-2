@@ -39,6 +39,7 @@ MODULE eis_registry_mod
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = -1
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
+    LOGICAL :: defer = .FALSE.
   END TYPE eis_function_entry
 
   TYPE :: eis_registry
@@ -189,7 +190,7 @@ CONTAINS
 
 
   SUBROUTINE eir_add_constant(this, name, value, errcode, can_simplify, &
-      cap_bits, err_handler)
+      cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -197,6 +198,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
 
     TYPE(eis_function_entry) :: temp
@@ -205,6 +207,7 @@ CONTAINS
     temp%numerical_data = value
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
+    IF (PRESENT(defer)) temp%defer = defer
 
     CALL this%stored_items%store(name, temp)
 
@@ -213,7 +216,7 @@ CONTAINS
 
 
   SUBROUTINE eir_add_variable(this, name, fn, errcode, can_simplify, &
-      cap_bits, err_handler)
+      cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -221,6 +224,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
 
@@ -228,6 +232,7 @@ CONTAINS
     temp%fn_ptr => fn
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
+    IF (PRESENT(defer)) temp%defer = defer
 
     CALL this%stored_items%store(name, temp)
 
@@ -236,7 +241,7 @@ CONTAINS
 
 
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
-      can_simplify, cap_bits, err_handler)
+      can_simplify, cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -245,6 +250,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
 
@@ -253,6 +259,7 @@ CONTAINS
     temp%expected_parameters = expected_parameters
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
+    IF (PRESENT(defer)) temp%defer = defer
 
     CALL this%stored_items%store(name, temp)
 
@@ -297,20 +304,41 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_stack_var(this, name, stack, errcode, err_handler)
+  SUBROUTINE eir_add_stack_var(this, name, stack, errcode, defer, err_handler)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack), INTENT(IN) :: stack
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
-    TYPE(eis_function_entry) :: temp
+    TYPE(eis_function_entry), TARGET :: temp
+    TYPE(eis_function_entry), POINTER :: temp_ptr
+    CLASS(*), POINTER :: gptr
     INTEGER(eis_i4) :: index
 
-    index = this%stack_variable_registry%store(stack)
-    temp%ptype = c_pt_stored_variable
-    temp%value = index
+    gptr => this%stored_items%get(name)
+    temp_ptr => NULL()
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp_ptr => co
+      END SELECT
+    END IF
 
-    CALL this%stored_items%store(name, temp)
+    IF (ASSOCIATED(temp_ptr)) THEN
+      index = this%stack_variable_registry%store(stack, index = temp_ptr%value)
+    ELSE
+      temp_ptr => temp
+      index = this%stack_variable_registry%store(stack)
+    END IF
+
+    temp_ptr%ptype = c_pt_stored_variable
+    temp_ptr%value = index
+    temp_ptr%cap_bits = stack%cap_bits
+    temp_ptr%defer = .FALSE.
+    IF (PRESENT(defer)) temp_ptr%defer = defer
+
+    CALL this%stored_items%store(name, temp_ptr)
 
   END SUBROUTINE eir_add_stack_var
 
@@ -324,16 +352,34 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
-    TYPE(eis_function_entry) :: temp
+    TYPE(eis_function_entry), TARGET :: temp
+    TYPE(eis_function_entry), POINTER :: temp_ptr
+    CLASS(*), POINTER :: gptr
     TYPE(late_bind_fn_holder) :: holder
     INTEGER(eis_i4) :: index
 
     holder%contents => def_fn
-    index = this%stack_function_registry%store(holder)
-    IF (PRESENT(expected_parameters)) temp%expected_parameters &
+
+    gptr => this%stored_items%get(name)
+    temp_ptr => NULL()
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp_ptr => co
+      END SELECT
+    END IF
+
+    IF (ASSOCIATED(temp_ptr)) THEN
+      index = this%stack_function_registry%store(holder, index = temp_ptr%value)
+    ELSE
+      temp_ptr => temp
+      index = this%stack_function_registry%store(holder)
+    END IF
+
+    IF (PRESENT(expected_parameters)) temp_ptr%expected_parameters &
         = expected_parameters
-    temp%ptype = c_pt_emplaced_function
-    temp%value = index
+    temp_ptr%ptype = c_pt_emplaced_function
+    temp_ptr%value = index
 
     CALL this%stored_items%store(name, temp)
 
@@ -374,6 +420,7 @@ CONTAINS
       coblock_in%associativity = temp%associativity
       coblock_in%precedence = temp%precedence
       coblock_in%expected_params = temp%expected_parameters
+      coblock_in%defer = temp%defer
       block_in%actual_params = temp%expected_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
@@ -388,11 +435,12 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_copy_in(this, index, output, err_handler)
+  SUBROUTINE eir_copy_in(this, index, output, err_handler, insert_point)
     CLASS(eis_registry) :: this
     INTEGER(eis_i4), INTENT(IN) :: index
     TYPE(eis_stack), INTENT(INOUT) :: output
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    INTEGER, INTENT(IN), OPTIONAL :: insert_point
     CLASS(*), POINTER :: gptr
     TYPE(eis_stack), POINTER :: temp
 
@@ -404,7 +452,11 @@ CONTAINS
           temp => co
       END SELECT
       IF (ASSOCIATED(temp)) THEN
-        CALL append_stack(output, temp)
+        IF (PRESENT(insert_point)) THEN
+          CALL replace_element(output, temp, insert_point)
+        ELSE
+          CALL append_stack(output, temp)
+        END IF
       END IF
     END IF
 

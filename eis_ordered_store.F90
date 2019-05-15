@@ -114,15 +114,35 @@ CONTAINS
   !> @param[in] this
   !> @param[in] item
   !> @result os_store
-  FUNCTION os_store(this, item, nocopy)
+  FUNCTION os_store(this, item, index, nocopy)
 
     CLASS(ordered_store), INTENT(INOUT) :: this
     CLASS(*), TARGET, INTENT(IN) :: item
+    INTEGER, INTENT(IN), OPTIONAL :: index
     LOGICAL, INTENT(IN), OPTIONAL :: nocopy
     INTEGER(INT32) :: os_store
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER(INT32) :: sz
     LOGICAL :: makecopy
+    INTEGER(INT32) :: re_store_index
+
+    makecopy = .TRUE.
+    IF (PRESENT(nocopy)) makecopy= .NOT. nocopy
+
+    IF (PRESENT(index)) THEN
+      IF (ALLOCATED(this%items)) THEN
+        IF (index >=1 .OR. index <= SIZE(this%items)) THEN
+          CALL this%items(index)%cleanup()
+          IF (makecopy) THEN
+            ALLOCATE(this%items(index)%item, SOURCE = item)
+          ELSE
+            this%items(index)%item => item
+          END IF
+          os_store = index
+          RETURN
+        END IF
+      END IF
+    END IF
 
     makecopy = .TRUE.
     IF (PRESENT(nocopy)) makecopy= .NOT. nocopy

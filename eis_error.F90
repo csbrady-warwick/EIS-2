@@ -149,15 +149,17 @@ MODULE eis_error_mod
     IF (IAND(errcode, eis_err_has_emplaced) /= 0) THEN
       CALL append_string(str1, 'The specified stack has emplaced elements')
     END IF
+    IF (IAND(errcode, eis_err_has_deferred) /= 0) THEN
+      CALL append_string(str1, 'The specified stack has unresolved deferred &
+          &elements')
+    END IF
     IF (IAND(errcode, eis_err_where) /= 0) THEN
       CALL append_string(str1, 'The specified stack uses the "where" construct &
         &but is not tested for no-ops when evaluated')
     END IF
-
     IF (IAND(errcode, eis_err_bracketed_constant) /= 0) THEN
       CALL append_string(str1, 'Attempting to subscript a constant')
     END IF
-
     IF (IAND(errcode, eis_err_extra_bracket) /= 0) THEN
       CALL append_string(str1, 'Extraneous bracket')
     END IF

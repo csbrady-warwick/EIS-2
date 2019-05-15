@@ -103,6 +103,8 @@ MODULE eis_stack_mod
     TYPE(eis_stack), INTENT(INOUT) :: stack
     INTEGER :: istack
 
+    IF (stack%has_deferred) RETURN
+
     !Manually deleting strings unnecessary per standard
     !but there are compilers in the wild that fail
     DO istack = 1, stack%stack_point
@@ -146,6 +148,55 @@ MODULE eis_stack_mod
     stack%cap_bits = IOR(stack%cap_bits, append%cap_bits)
 
   END SUBROUTINE append_stack
+
+
+
+  SUBROUTINE replace_element(dest, src, insert_point)
+
+    TYPE(eis_stack), INTENT(INOUT) :: dest, src
+    INTEGER, INTENT(IN) :: insert_point
+    INTEGER :: i, n, old_size, old_stack_point
+
+    IF (.NOT. dest%init .OR. .NOT. src%init) RETURN
+
+
+    IF (insert_point > dest%stack_point) THEN
+      CALL append_stack(dest, src)
+      RETURN
+    END IF
+
+    old_stack_point = dest%stack_point
+
+    IF (dest%stack_point + src%stack_point > dest%stack_size) THEN
+      CALL grow_stack(dest, 2 * (dest%stack_point + src%stack_point))
+    END IF
+
+    dest%entries(insert_point + src%stack_point + 1:&
+        dest%stack_point + src%stack_point) &
+        = dest%entries(insert_point + 1:dest%stack_point)
+    IF (ALLOCATED(dest%co_entries) .AND. ALLOCATED(src%co_entries)) THEN
+      dest%co_entries(insert_point + src%stack_point + 1:&
+          dest%stack_point + src%stack_point)&
+          = dest%co_entries(insert_point + 1:dest%stack_point)
+    END IF
+
+    dest%stack_point = old_stack_point + src%stack_point
+    n = insert_point
+    DO i = 1,src%stack_point
+      dest%entries(n) = src%entries(i)
+      n = n + 1
+    END DO
+
+    IF (ALLOCATED(dest%co_entries) .AND. ALLOCATED(src%co_entries)) THEN
+      n = insert_point
+      DO i = 1,src%stack_point
+        dest%co_entries(n) = src%co_entries(i)
+        n = n + 1
+      END DO
+    END IF
+    dest%cap_bits = IOR(dest%cap_bits, src%cap_bits)
+
+  END SUBROUTINE replace_element
 
 
 

@@ -48,13 +48,14 @@ MODULE eis_header
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
     INTEGER :: charindex = -1
+    LOGICAL :: defer = .FALSE.
     CHARACTER(LEN=:), ALLOCATABLE :: text
   END TYPE eis_stack_co_element
 
   TYPE eis_stack_element
     INTEGER :: ptype
     INTEGER :: value
-    INTEGER :: actual_params = 0
+    INTEGER :: actual_params = -1
     REAL(eis_num) :: numerical_data
     LOGICAL :: can_simplify = .TRUE.
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
@@ -67,6 +68,7 @@ MODULE eis_header
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
+    LOGICAL :: has_deferred = .FALSE.
     LOGICAL :: where_stack = .FALSE.
   END TYPE eis_stack
 

@@ -69,17 +69,30 @@ MODULE eis_parser_mod
         => eip_add_stack_variable_stack
     PROCEDURE :: add_stack_variable_string &
         => eip_add_stack_variable_string
+    PROCEDURE :: add_stack_variable_defer &
+        => eip_add_stack_variable_defer
     PROCEDURE :: emplace_node => eip_emplace_node
-    PROCEDURE, PUBLIC :: add_function => eip_add_function
-    PROCEDURE, PUBLIC :: add_constant => eip_add_constant
-    PROCEDURE, PUBLIC :: add_variable => eip_add_variable
+    PROCEDURE :: add_function_now => eip_add_function_now
+    PROCEDURE :: add_function_defer => eip_add_function_defer
+    PROCEDURE :: add_variable_now => eip_add_variable_now
+    PROCEDURE :: add_variable_defer => eip_add_variable_defer
+    PROCEDURE :: add_constant_now => eip_add_constant_now
+    PROCEDURE :: add_constant_defer => eip_add_constant_defer
+    PROCEDURE :: evaluate_stack => eip_evaluate_stack
+    PROCEDURE :: evaluate_string => eip_evaluate_string
+
+    GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
+    GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
+    GENERIC, PUBLIC :: add_constant => add_constant_now, add_constant_defer
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
-        add_stack_variable_string
+        add_stack_variable_string, add_stack_variable_defer
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
-    PROCEDURE, PUBLIC :: evaluate => eip_evaluate
+    GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
     PROCEDURE, PUBLIC :: simplify => eip_simplify
+    PROCEDURE, PUBLIC :: minify => eip_minify
+    PROCEDURE, PUBLIC :: undefer => eip_undefer
     PROCEDURE, PUBLIC :: emplace => eip_emplace
     PROCEDURE, PUBLIC :: print_errors => eip_print_errors
 
@@ -467,14 +480,14 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_tokenize(this, expression_in, output, err)
+  SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: expression_in
     TYPE(eis_stack), INTENT(INOUT), TARGET :: output
     INTEGER(eis_error), INTENT(INOUT) :: err
-    LOGICAL :: maybe_e
-
+    LOGICAL, INTENT(IN), OPTIONAL :: simplify, minify
+    LOGICAL :: maybe_e, should_simplify, should_minify
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
@@ -482,6 +495,11 @@ CONTAINS
 
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
+
+    should_minify = this%should_minify
+    IF (PRESENT(minify)) should_minify = minify
+    should_simplify = this%should_simplify
+    IF (PRESENT(simplify)) should_simplify = simplify
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (.NOT. output%init) CALL initialise_stack(output)
@@ -552,12 +570,15 @@ CONTAINS
 
     IF (err == eis_err_none) THEN
       DO i = this%stack%stack_point, 1, -1
-        IF (this%stack%entries(i)%ptype == c_pt_function .AND. &
-            this%stack%co_entries(i)%expected_params > 0) THEN
-          err = IOR(err, eis_err_wrong_parameters)
-          CALL this%err_handler%add_error(eis_err_parser, err, &
-              this%stack%co_entries(i)%text, &
-              this%stack%co_entries(i)%charindex)
+        IF (this%stack%entries(i)%ptype == c_pt_function) THEN
+          IF (this%stack%co_entries(i)%expected_params > 0) THEN
+            err = IOR(err, eis_err_wrong_parameters)
+            CALL this%err_handler%add_error(eis_err_parser, err, &
+                this%stack%co_entries(i)%text, &
+                this%stack%co_entries(i)%charindex)
+          ELSE
+            this%stack%entries(i)%actual_params = 0
+          END IF
         END IF
         CALL pop_to_stack(this%stack, this%output)
       END DO
@@ -569,21 +590,21 @@ CONTAINS
     DEALLOCATE(current)
     DEALLOCATE(expression)
 
-    IF (this%should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
-    IF (this%should_minify) CALL minify_stack(this%output)
+    IF (should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
+    IF (should_minify) CALL this%minify(this%output, err)
 
   END SUBROUTINE eip_tokenize
 
 
 
-  FUNCTION eip_evaluate(this, stack, result, params, errcode, is_no_op)
+  FUNCTION eip_evaluate_stack(this, stack, result, params, errcode, is_no_op)
     CLASS(eis_parser) :: this
-    CLASS(eis_stack), INTENT(IN) :: stack
+    CLASS(eis_stack), INTENT(INOUT) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
-    INTEGER :: eip_evaluate
+    INTEGER :: eip_evaluate_stack
 
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
@@ -591,10 +612,82 @@ CONTAINS
       RETURN
     END IF
 
-    eip_evaluate = this%evaluator%evaluate(stack, result, params, errcode, &
-        this%err_handler, is_no_op = is_no_op)
+    IF (stack%has_deferred) THEN
+      CALL this%undefer(stack, params, errcode)
+      IF (errcode /= eis_err_none) RETURN
+      stack%has_deferred = .FALSE.
+    END IF
 
-  END FUNCTION eip_evaluate
+    eip_evaluate_stack = this%evaluator%evaluate(stack, result, params, &
+        errcode, this%err_handler, is_no_op = is_no_op)
+
+  END FUNCTION eip_evaluate_stack
+
+
+
+  FUNCTION eip_evaluate_string(this, str, result, params, errcode, is_no_op, &
+      simplify, minify)
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: str
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    TYPE(C_PTR), INTENT(IN) :: params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
+    LOGICAL, INTENT(IN), OPTIONAL :: simplify, minify
+    INTEGER :: eip_evaluate_string
+    TYPE(eis_stack) :: stack
+
+    CALL this%tokenize(str, stack, errcode, simplify, minify)
+    IF (errcode == eis_err_none) THEN
+      eip_evaluate_string = this%evaluate(stack, result, params, errcode, &
+          is_no_op)
+      CALL deallocate_stack(stack)
+    END IF
+
+  END FUNCTION eip_evaluate_string
+
+
+
+  SUBROUTINE eip_undefer(this, stack, params, errcode)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+    TYPE(C_PTR), INTENT(IN) :: params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: ipt, stored_params
+    INTEGER(eis_bitmask) :: cap_bits
+    CHARACTER(LEN=:), ALLOCATABLE :: str
+
+    cap_bits = 0_eis_bitmask
+
+    PRINT *,'Undeferring'
+
+    DO ipt = 1, stack%stack_point
+      IF (stack%co_entries(ipt)%defer) THEN
+        !This copy is a workaround, I do not believe it is required per standard
+        ALLOCATE(str, SOURCE = stack%co_entries(ipt)%text)
+        stored_params = stack%entries(ipt)%actual_params
+        CALL this%load_block(str, stack%entries(ipt), &
+            stack%co_entries(ipt), cap_bits)
+        stack%entries(ipt)%actual_params = stored_params
+        IF (stack%co_entries(ipt)%defer) THEN
+          errcode = IOR(errcode, eis_err_has_deferred)
+          CALL this%err_handler%add_error(eis_err_parser, errcode, &
+              str, stack%co_entries(ipt)%charindex)
+        END IF
+        IF (stack%entries(ipt)%ptype == c_pt_stored_variable) THEN
+          CALL this%registry%copy_in_stored(stack%entries(ipt)%value, &
+              this%output, this%err_handler, ipt)
+        END IF
+        DEALLOCATE(str)
+      END IF
+    END DO
+
+    stack%cap_bits = IOR(stack%cap_bits, cap_bits)
+
+    IF (this%should_minify) CALL this%minify(stack, errcode)
+    IF (this%should_simplify) CALL this%simplify(stack, params, errcode)
+
+  END SUBROUTINE eip_undefer
 
 
 
@@ -607,6 +700,17 @@ CONTAINS
     CALL eis_simplify_stack(stack, params, errcode, this%err_handler)
 
   END SUBROUTINE eip_simplify
+
+
+
+  SUBROUTINE eip_minify(this, stack, errcode)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    CALL minify_stack(stack)
+
+  END SUBROUTINE eip_minify
 
 
 
@@ -687,38 +791,68 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_emplace(this, stack, user_params, errcode)
+  SUBROUTINE eip_emplace(this, stack, user_params, errcode, destination)
     CLASS(eis_parser) :: this
-    CLASS(eis_stack), INTENT(INOUT) :: stack
+    CLASS(eis_stack), INTENT(INOUT), TARGET :: stack
     TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(eis_stack), INTENT(INOUT), OPTIONAL, TARGET :: destination
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
     INTEGER(eis_bitmask) :: capbits
     LOGICAL :: remaining_functions
+    CLASS(eis_stack), POINTER :: sptr
 
-    IF (.NOT. stack%has_emplaced) RETURN
+    IF (.NOT. stack%has_emplaced) THEN
+      IF (PRESENT(destination)) THEN
+        CALL copy_stack(stack, destination)
+      END IF
+      RETURN
+    END IF
+
+    IF (PRESENT(destination)) THEN
+      CALL copy_stack(stack, destination)
+      sptr => destination
+    ELSE
+      sptr => stack
+    END IF
 
     remaining_functions = .FALSE.
-
     ALLOCATE(root)
-    capbits = stack%cap_bits
-    sp = stack%stack_point + 1
+    capbits = sptr%cap_bits
+    sp = sptr%stack_point + 1
     CALL eis_build_node(stack, sp, root)
     CALL this%emplace_node(root, user_params, remaining_functions, capbits)
-    CALL deallocate_stack(stack)
-    CALL initialise_stack(stack)
-    CALL eis_tree_to_stack(root, stack)
-    stack%cap_bits = capbits
+    CALL deallocate_stack(sptr)
+    CALL initialise_stack(sptr)
+    CALL eis_tree_to_stack(root, sptr)
+    sptr%cap_bits = capbits
     DEALLOCATE(root)
-    stack%has_emplaced = remaining_functions
+    sptr%has_emplaced = remaining_functions
 
-  END SUBROUTINE eip_emplace 
+  END SUBROUTINE eip_emplace
 
 
 
-  SUBROUTINE eip_add_function(this, name, fn, errcode,  cap_bits, &
+  SUBROUTINE eip_add_function_defer(this, name, errcode,  cap_bits, &
       expected_params, can_simplify, global)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+
+    CALL this%add_function(name, eis_dummy, errcode, cap_bits, &
+        expected_params, can_simplify, .TRUE., global)
+
+  END SUBROUTINE eip_add_function_defer
+
+
+
+  SUBROUTINE eip_add_function_now(this, name, fn, errcode,  cap_bits, &
+      expected_params, can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -726,7 +860,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -741,25 +875,41 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_function(name, fn, params, errcode, &
-          can_simplify, cap_bits, err_handler = this%err_handler)
+          can_simplify, cap_bits, err_handler = this%err_handler, defer = defer)
     ELSE
       CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler)
+          cap_bits, err_handler = this%err_handler, defer = defer)
     END IF
 
-  END SUBROUTINE eip_add_function
+  END SUBROUTINE eip_add_function_now
 
 
 
-  SUBROUTINE eip_add_variable(this, name, fn, errcode, cap_bits, &
+  SUBROUTINE eip_add_variable_defer(this, name, errcode, cap_bits, &
       can_simplify, global)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+
+    CALL this%add_variable(name, eis_dummy, errcode, cap_bits, can_simplify, &
+        .TRUE., global)
+
+  END SUBROUTINE eip_add_variable_defer
+
+
+
+  SUBROUTINE eip_add_variable_now(this, name, fn, errcode, cap_bits, &
+      can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_eval_fn) :: fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
     LOGICAL :: is_global
 
     is_global = .FALSE.
@@ -767,25 +917,41 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_variable(name, fn, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler)
+          cap_bits, err_handler = this%err_handler, defer = defer)
     ELSE
       CALL this%registry%add_variable(name, fn, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler)
+          cap_bits, err_handler = this%err_handler, defer = defer)
     END IF
 
-  END SUBROUTINE eip_add_variable
+  END SUBROUTINE eip_add_variable_now
 
 
 
-  SUBROUTINE eip_add_constant(this, name, value, errcode, cap_bits, &
+  SUBROUTINE eip_add_constant_defer(this, name, errcode, cap_bits, &
       can_simplify, global)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+
+    CALL this%add_constant(name, 0.0_eis_num, errcode, cap_bits, can_simplify, &
+        .TRUE., global)
+
+  END SUBROUTINE eip_add_constant_defer
+
+
+
+  SUBROUTINE eip_add_constant_now(this, name, value, errcode, cap_bits, &
+      can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     REAL(eis_num), INTENT(IN) :: value
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
     LOGICAL :: is_global
 
     is_global = .FALSE.
@@ -793,23 +959,38 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler)
+          cap_bits, err_handler = this%err_handler, defer = defer)
     ELSE
       CALL this%registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler)
+          cap_bits, err_handler = this%err_handler, defer = defer)
     END IF
 
-  END SUBROUTINE eip_add_constant
+  END SUBROUTINE eip_add_constant_now
 
 
 
-  SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode, global)
+  SUBROUTINE eip_add_stack_variable_defer(this, name, errcode, global)
+
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    TYPE(eis_stack) :: stack
+
+    CALL this%add_stack_variable(name, stack, errcode, .TRUE., global)
+
+  END SUBROUTINE eip_add_stack_variable_defer
+
+
+
+  SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode, defer, &
+      global)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     TYPE(eis_stack), INTENT(IN) :: stack
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    LOGICAL, INTENT(IN), OPTIONAL :: global
+    LOGICAL, INTENT(IN), OPTIONAL :: defer, global
     LOGICAL :: is_global
         
     is_global = .FALSE.
@@ -817,10 +998,10 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, defer = defer)
     ELSE
       CALL this%registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, defer = defer)
     END IF
 
   END SUBROUTINE eip_add_stack_variable_stack
@@ -855,17 +1036,17 @@ CONTAINS
 
 
   SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode, &
-      expected_parameters)
+      expected_params)
 
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     PROCEDURE(parser_late_bind_fn) :: def_fn
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
         err_handler = this%err_handler, &
-        expected_parameters = expected_parameters)
+        expected_parameters = expected_params)
 
   END SUBROUTINE eip_add_emplaced_function
 
@@ -924,6 +1105,7 @@ CONTAINS
       IF (this%stack%co_entries(this%stack%stack_point)%expected_params &
           == 0) THEN
         !Functions that take no parameters
+        this%stack%entries(this%stack%stack_point)%actual_params = 0
         CALL pop_to_stack(this%stack, this%output)
       ELSE
         err = IOR(err, eis_err_malformed)
@@ -980,13 +1162,19 @@ CONTAINS
       END IF
     END IF
 
+    this%output%has_deferred = this%output%has_deferred .OR. icoblock%defer
+
     IF (iblock%ptype == c_pt_variable &
         .OR. iblock%ptype == c_pt_constant) THEN
       CALL push_to_stack(this%output, iblock, icoblock)
 
     ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
-      CALL this%registry%copy_in_stored(iblock%value, this%output)
-
+      IF (.NOT. icoblock%defer) THEN
+        CALL this%registry%copy_in_stored(iblock%value, this%output, &
+        this%err_handler)
+      ELSE
+        CALL push_to_stack(this%stack, iblock, icoblock)
+      END IF
     ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
       IF (iblock%value == c_paren_left_bracket) THEN
         iblock%actual_params = 0
@@ -1026,7 +1214,7 @@ CONTAINS
                     /= this%stack%co_entries(this%stack%stack_point)% &
                     expected_params) .AND. &
                     this%stack%co_entries(this%stack%stack_point)% &
-                    expected_params > 0) THEN
+                    expected_params >= 0) THEN
                   err = IOR(err, eis_err_wrong_parameters)
                   IF (ALLOCATED(this%stack%co_entries)) THEN
                     CALL this%err_handler%add_error(eis_err_parser, err, &

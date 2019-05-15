@@ -73,6 +73,8 @@ MODULE eis_tree_mod
 
     simplified%cap_bits = stack%cap_bits
 
+    CALL display_tokens_inline(simplified)
+
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
       CALL copy_stack(simplified, stack)
@@ -147,7 +149,8 @@ MODULE eis_tree_mod
           !no simplify status
           RETURN
         END IF
-        can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify
+        can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify &
+            .AND. .NOT. tree%nodes(inode)%co_value%defer
       END DO
 
       IF (can_simplify) THEN
