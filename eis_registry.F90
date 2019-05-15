@@ -89,6 +89,8 @@ CONTAINS
       CALL this%generic_store%store(name, item)
     ELSE IF (dotloc == 1) THEN
       CALL this%generic_store%store(name(2:), item)
+    ELSE IF (dotloc == LEN(name)) THEN
+      CALL this%generic_store%store(name(1:LEN(name)-1), item)
     ELSE
       gptr => this%namespaces%get(name(1:dotloc-1))
       IF (ASSOCIATED(gptr)) THEN
@@ -147,7 +149,6 @@ CONTAINS
     CLASS(eis_namespace), POINTER :: old
 
     dotloc = SCAN(name, '.')
-
     item => NULL()
 
     IF (dotloc == 0) THEN
@@ -163,8 +164,8 @@ CONTAINS
         item => this%get(txt%text//'.'//name)
         c_ins = c_ins + 1
       END DO
-    ELSE IF (dotloc == 1) THEN
-      item => this%get(name(2:))
+    ELSE IF (dotloc == LEN(name) .OR. dotloc == 1) THEN
+      item => NULL()
     ELSE
       gptr => this%namespaces%get(name(1:dotloc-1))
       IF (.NOT. ASSOCIATED(gptr)) RETURN

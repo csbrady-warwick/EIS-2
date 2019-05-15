@@ -659,8 +659,6 @@ CONTAINS
 
     cap_bits = 0_eis_bitmask
 
-    PRINT *,'Undeferring'
-
     DO ipt = 1, stack%stack_point
       IF (stack%co_entries(ipt)%defer) THEN
         !This copy is a workaround, I do not believe it is required per standard
