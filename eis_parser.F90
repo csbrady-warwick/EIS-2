@@ -734,7 +734,8 @@ CONTAINS
     INTEGER(eis_status) :: status_code
     INTEGER :: rcount
 
-    status_code = 0
+    status_code = 0_eis_bitmask
+    errcode = 0_eis_error
 
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
