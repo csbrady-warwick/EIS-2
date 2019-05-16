@@ -2,6 +2,8 @@ MODULE eis_error_mod
 
   USE eis_header
   USE eis_constants
+  USE eis_utils
+  USE eis_string_store_mod
   IMPLICIT NONE
 
   TYPE :: eis_error_item
@@ -11,35 +13,113 @@ MODULE eis_error_mod
   END TYPE eis_error_item
 
   TYPE :: eis_error_handler
+    PRIVATE
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: errors
+    TYPE(eis_string_store) :: strings
+    LOGICAL :: is_init = .FALSE.
+    INTEGER :: language = -1
     CONTAINS
-    PROCEDURE :: add_error => eeh_add_error
-    PROCEDURE :: flush_errors => eeh_flush
-    PROCEDURE :: get_error_count => eeh_get_count
-    PROCEDURE, PRIVATE :: get_error_string => eeh_get_error_string
-    PROCEDURE, PRIVATE :: get_error_string_from_code &
+    PROCEDURE, PUBLIC:: add_error => eeh_add_error
+    PROCEDURE, PUBLIC :: flush_errors => eeh_flush
+    PROCEDURE, PUBLIC :: get_error_count => eeh_get_count
+    PROCEDURE, PUBLIC :: get_error_string => eeh_get_error_string
+    PROCEDURE, PUBLIC :: get_error_string_from_code &
         => eeh_get_error_string_from_code
-    PROCEDURE, PRIVATE :: get_error_source => eeh_get_error_source
-    PROCEDURE :: print_error_string => eeh_print_err
+    PROCEDURE, PUBLIC :: get_error_cause => eeh_get_error_cause
+    PROCEDURE, PUBLIC :: get_error_report => eeh_get_error_report
+    PROCEDURE, PUBLIC :: print_error_string => eeh_print_err
+    PROCEDURE, PUBLIC :: init => eeh_init
   END TYPE eis_error_handler
 
   CONTAINS
 
-  SUBROUTINE append_string(str_old, str_new)
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_old
-    CHARACTER(LEN=*), INTENT(IN) :: str_new
-    CHARACTER(LEN=:), ALLOCATABLE :: temp
+  SUBROUTINE eeh_init(this, language)
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN), OPTIONAL :: language
+    INTEGER :: language_i
 
-    IF (ALLOCATED(str_old)) THEN
-      ALLOCATE(temp, SOURCE = str_old)
-      DEALLOCATE(str_old)
-      ALLOCATE(str_old, SOURCE = temp // NEW_LINE(str_new) // str_new)
-      DEALLOCATE(temp)
+    IF (PRESENT(language)) THEN
+      language_i = language
     ELSE
-      ALLOCATE(str_old, SOURCE = str_new)
+      language_i = eis_lang_en
     END IF
 
-  END SUBROUTINE append_string
+    IF (this%is_init .AND. language_i== this%language) RETURN
+    this%is_init = .TRUE.
+    this%language = language_i
+
+    !All non-English translations are from machine translation
+    !IF you wish to supply an improved translation, please contact the authors
+    IF (this%language == eis_lang_en) THEN
+      CALL this%strings%store('err_src_parse','Error when parsing text to &
+          &stack')
+      CALL this%strings%store('err_src_simplify','Error when simplifying stack')
+      CALL this%strings%store('err_src_emplace','Error during emplacement of &
+          &function')
+      CALL this%strings%store('err_src_evaluate','Error when evaluating stack')
+      CALL this%strings%store('err_src_undefined', 'Error in unspecified part &
+          &of the parser. (This is probably a bug in the parser code)')
+
+      CALL this%strings%store('err_bad_value', 'There was a bad value in the &
+          &expression')
+      CALL this%strings%store('err_malformed', 'The expression was of invalid &
+          &form')
+      CALL this%strings%store('err_wrong_parameters', 'The wrong number of &
+          &parameters was used in a function call')
+      CALL this%strings%store('err_maths_domain', 'A mathematically invalid &
+          &operation was requested')
+      CALL this%strings%store('err_not_found', 'The specified block was not &
+          &found in the list of known keys')
+      CALL this%strings%store('err_has_emplaced', 'The specified stack has &
+          &unresolved emplaced elements')
+      CALL this%strings%store('err_has_deferred', 'The specified stack has &
+          &unresolved deferred elements')
+      CALL this%strings%store('err_where', 'The specified stack uses the &
+        &"where" construct but is not tested for no-ops when evaluated')
+      CALL this%strings%store('err_bracketed_constant', 'Attempting to &
+          &subscript a constant')
+      CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
+      CALL this%strings%store('err_report_place', 'In block with text &
+          &"{errtext}" starting at character position {charpos}: ')
+      CALL this%strings%store('err_report_fail', 'Unable to report source of &
+          &error. To see the location of the error do not minify the stack. &
+          &Errors are :')
+    ELSE IF (this%language == eis_lang_ru) THEN
+      CALL this%strings%store('err_src_parse','Ошибка при разборе текста в &
+          &стек')
+      CALL this%strings%store('err_src_simplify','Ошибка при упрощении стека')
+      CALL this%strings%store('err_src_emplace','Ошибка при «emplacing» &
+          &функции')
+      CALL this%strings%store('err_src_evaluate','Ошибка при оценке стека')
+      CALL this%strings%store('err_src_undefined', 'Ошибка в неуказанной части &
+          &парсера. (Это, вероятно, ошибка в коде парсера)')
+
+      CALL this%strings%store('err_bad_value', 'Выражение неверно')
+      CALL this%strings%store('err_malformed', 'Выражение было искажено')
+      CALL this%strings%store('err_wrong_parameters', 'Неправильное количество &
+          &параметров было использовано при вызове функции')
+      CALL this%strings%store('err_maths_domain', 'Запрошена математически &
+          &неверная операция')
+      CALL this%strings%store('err_not_found', 'Указанный блок не найден в &
+          &списке известных ключей')
+      CALL this%strings%store('err_has_emplaced', 'В указанном стеке есть &
+          &неразрешенные «emplaced» элементы')
+      CALL this%strings%store('err_has_deferred', 'Указанный стек имеет &
+          &неразрешенные «deferred» элементы')
+      CALL this%strings%store('err_where', 'Указанный стек использует &
+          &конструкцию «where», но при оценке не проверяется на нулевые &
+          &операции')
+      CALL this%strings%store('err_bracketed_constant', 'Попытка вызвать &
+          &константу как функцию')
+      CALL this%strings%store('err_extra_bracket', 'Посторонняя скобка')
+      CALL this%strings%store('err_report_place', 'В блоке с текстом &
+          &«{errtext}», начинающимся с позиции символа {charpos} :')
+      CALL this%strings%store('err_report_fail', 'Невозможно &
+          &сообщить источник ошибки. Чтобы увидеть расположение &
+          &ошибки, не минимизируйте стек. Ошибки:')
+    END IF
+
+  END SUBROUTINE eeh_init
 
 
 
@@ -99,157 +179,166 @@ MODULE eis_error_mod
 
 
 
-  FUNCTION eeh_get_error_source(this, index, str_out, cloc_out)
+  SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out)
     CLASS(eis_error_handler) :: this
     INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=*), INTENT(INOUT) :: str_out
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_text
     INTEGER, INTENT(OUT) :: cloc_out
-    INTEGER :: eeh_get_error_source, pos
+    LOGICAL :: ok
 
     cloc_out = -1
-    eeh_get_error_source = -1
+    IF (ALLOCATED(err_text)) DEALLOCATE(err_text)
     IF (.NOT. ALLOCATED(this%errors)) RETURN
     IF (index < 1 .OR. index > SIZE(this%errors)) RETURN
-    IF (.NOT. ALLOCATED(this%errors(index)%errstring)) RETURN
-
-    eeh_get_error_source = LEN(this%errors(index)%errstring)
-    pos = MIN(LEN(str_out), eeh_get_error_source)
-    str_out(1:pos) = this%errors(index)%errstring(1:pos)
     cloc_out = this%errors(index)%charindex
 
-  END FUNCTION eeh_get_error_source
+    IF (.NOT. ALLOCATED(this%errors(index)%errstring)) RETURN
+    ALLOCATE(err_text, SOURCE = this%errors(index)%errstring)
+
+  END SUBROUTINE eeh_get_error_CAUSE
 
 
 
-  FUNCTION eeh_get_error_string_from_code(this, errcode, str_out)
+  SUBROUTINE eeh_get_error_string_from_code(this, errcode, err_string, &
+      err_source)
     CLASS(eis_error_handler) :: this
     INTEGER(eis_error), INTENT(IN) :: errcode
-    CHARACTER(LEN=*), INTENT(INOUT) :: str_out
-    CHARACTER(LEN=:), ALLOCATABLE :: str1
-    INTEGER :: eeh_get_error_string_from_code, pos
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string, err_source
+    LOGICAL :: ok
+
+    IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
+    IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
+
+    IF (IAND(errcode, eis_err_parser) /= 0) THEN
+      ok = this%strings%append('err_src_parse', err_source)
+    ELSE IF (IAND(errcode, eis_err_simplifier) /= 0) THEN
+      ok = this%strings%append('err_src_simplify', err_source)
+    ELSE IF (IAND(errcode, eis_err_emplacer) /= 0) THEN
+      ok = this%strings%append('err_src_emplace', err_source)
+    ELSE IF (IAND(errcode, eis_err_evaluator) /= 0) THEN
+      ok = this%strings%append('err_src_evaluate', err_source)
+    ELSE
+      ok = this%strings%append('err_src_undefined', err_source)
+    END IF
+
 
     IF (IAND(errcode, eis_err_bad_value) /= 0) THEN
-      CALL append_string(str1, 'There was a bad value in the expression')
+      ok = this%strings%append('err_bad_value', err_string)
     END IF
     IF (IAND(errcode, eis_err_malformed) /= 0) THEN
-      CALL append_string(str1, 'The expression was of invalid form')
+      ok = this%strings%append('err_malformed', err_string)
     END IF
     IF (IAND(errcode, eis_err_wrong_parameters) /= 0) THEN
-      CALL append_string(str1, 'The wrong number of parameters was used in a &
-          &function call')
+      ok = this%strings%append('err_wrong_parameters', err_string)
     END IF
     IF (IAND(errcode, eis_err_maths_domain) /= 0) THEN
-      CALL append_string(str1, 'A mathematically invalid operation was &
-          &requested')
+      ok = this%strings%append('err_maths_domain', err_string)
     END IF
     IF (IAND(errcode, eis_err_not_found) /= 0) THEN
-      CALL append_string(str1, 'The specified block was not found in the list &
-          &of known keys')
+      ok = this%strings%append('err_not_found', err_string)
     END IF
     IF (IAND(errcode, eis_err_has_emplaced) /= 0) THEN
-      CALL append_string(str1, 'The specified stack has emplaced elements')
+      ok = this%strings%append('err_has_emplaced', err_string)
     END IF
     IF (IAND(errcode, eis_err_has_deferred) /= 0) THEN
-      CALL append_string(str1, 'The specified stack has unresolved deferred &
-          &elements')
+      ok = this%strings%append('err_has_deferred', err_string)
     END IF
     IF (IAND(errcode, eis_err_where) /= 0) THEN
-      CALL append_string(str1, 'The specified stack uses the "where" construct &
-        &but is not tested for no-ops when evaluated')
+      ok = this%strings%append('err_where', err_string)
     END IF
     IF (IAND(errcode, eis_err_bracketed_constant) /= 0) THEN
-      CALL append_string(str1, 'Attempting to subscript a constant')
+      ok = this%strings%append('err_bracketed_constant', err_string)
     END IF
     IF (IAND(errcode, eis_err_extra_bracket) /= 0) THEN
-      CALL append_string(str1, 'Extraneous bracket')
+      ok = this%strings%append('err_extra_bracket', err_string)
     END IF
 
-    IF (.NOT. ALLOCATED(str1)) ALLOCATE(str1, SOURCE = 'No error text found')
+    IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
+        'No error text found')
 
-    eeh_get_error_string_from_code = LEN(str1)
-    pos = MIN(LEN(str_out), LEN(str1))
-    str_out = ""
-    str_out(1:pos) = str1(1:pos)
-    DEALLOCATE(str1)
-
-  END FUNCTION eeh_get_error_string_from_code
+  END SUBROUTINE eeh_get_error_string_from_code
 
 
 
-  FUNCTION eeh_get_error_string(this, index, str_out)
+  SUBROUTINE eeh_get_error_string(this, index, err_string, err_source)
     CLASS(eis_error_handler) :: this
     INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=*), INTENT(INOUT) :: str_out
-    INTEGER :: eeh_get_error_string
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string, err_source
 
-    eeh_get_error_string = -1
-
+    IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
+    IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
     IF (.NOT. ALLOCATED(this%errors)) RETURN
     IF (index < 1 .OR. index > SIZE(this%errors)) RETURN
 
-    eeh_get_error_string = this%get_error_string_from_code(&
-        this%errors(index)%errcode, str_out)
+    CALL this%get_error_string_from_code(this%errors(index)%errcode, &
+        err_string, err_source)
 
-  END FUNCTION eeh_get_error_string
+  END SUBROUTINE eeh_get_error_string
 
+
+
+  SUBROUTINE eeh_get_error_report(this, index, report)
+    CLASS(eis_error_handler), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: index
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
+    CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp
+    CHARACTER(LEN=9) :: posstr
+    CHARACTER(LEN=19) :: format_str
+    INTEGER :: icount, charpos, nchar
+    TYPE(eis_string_store) :: errstr_store
+    LOGICAL :: ok
+
+    IF (ALLOCATED(report)) DEALLOCATE(report)
+
+    IF (.NOT. ALLOCATED(this%errors)) THEN
+      CALL eis_append_string(report, 'No stored errors')
+      RETURN
+    END IF
+
+    IF (index < 1 .OR. index > SIZE(this%errors)) THEN
+      CALL eis_append_string(report, 'Error out of range')
+      RETURN
+    END IF
+
+    CALL this%get_error_cause(index, errname, charpos)
+    CALL this%get_error_string(index, errstring, err_source)
+
+    CALL eis_append_string(report, REPEAT("=", 80))
+
+    CALL eis_append_string(report, err_source)
+
+    IF (charpos > 0) THEN
+      nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
+      WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
+      WRITE(posstr, format_str) charpos
+      CALL errstr_store%store('charpos', TRIM(posstr))
+      CALL errstr_store%store('errtext', TRIM(errname))
+      ok = this%strings%get('err_report_place', temp)
+      CALL errstr_store%format_fill(temp)
+      CALL eis_append_string(report, temp)
+    ELSE
+      ok = this%strings%append('err_report_fail', report)
+    END IF
+    CALL eis_append_string(report, errstring, newline = .FALSE.)
+    CALL eis_append_string(report, REPEAT("=", 80))
+    CALL eis_append_string(report,"")
+
+    IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
+    IF (ALLOCATED(errstring)) DEALLOCATE(errstring)
+    IF (ALLOCATED(errname)) DEALLOCATE(errname)
+    IF (ALLOCATED(temp)) DEALLOCATE(temp)
+
+  END SUBROUTINE eeh_get_error_report
 
 
   SUBROUTINE eeh_print_err(this, index)
     CLASS(eis_error_handler), INTENT(IN) :: this
     INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname
-    CHARACTER(LEN=19) :: format_str
-    INTEGER :: icount, charpos, nchar
+    CHARACTER(LEN=:), ALLOCATABLE :: report
 
-    IF (.NOT. ALLOCATED(this%errors)) THEN
-      PRINT *, 'No stored errors'
-      RETURN
-    END IF
-
-    IF (index < 1 .OR. index > SIZE(this%errors)) THEN
-      PRINT *,'Error out of range'
-      RETURN
-    END IF
-
-    ALLOCATE(CHARACTER(LEN=1)::errstring)
-    icount = this%get_error_string(index, errstring)
-    DEALLOCATE(errstring)
-    ALLOCATE(CHARACTER(LEN=icount)::errstring)
-    icount = this%get_error_string(index, errstring)
-
-    ALLOCATE(CHARACTER(LEN=1)::errname)
-    icount = this%get_error_source(index, errname, charpos)
-    IF (icount > 0) THEN
-      DEALLOCATE(errname)
-      ALLOCATE(CHARACTER(LEN=icount)::errname)
-      icount = this%get_error_source(index, errname, charpos)
-    END IF
-
-
-    PRINT *,REPEAT("=", 80)
-
-    IF (IAND(this%errors(index)%errcode, eis_err_parser) /= 0) THEN
-      PRINT *,'Error when parsing text to stack'
-    ELSE IF (IAND(this%errors(index)%errcode, eis_err_simplifier) /= 0) THEN
-      PRINT *,'Error when simplifying stack'
-    ELSE IF (IAND(this%errors(index)%errcode, eis_err_emplacer) /= 0) THEN
-      PRINT *,'Error when emplacement of function'
-    ELSE IF (IAND(this%errors(index)%errcode, eis_err_evaluator) /= 0) THEN
-      PRINT *,'Error when evaluating stack'
-    END IF
-
-    IF (charpos > 0) THEN
-      nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
-      WRITE(format_str, '(A,I1,A)') '(A, A, A, I',nchar,', A, A)'
-      PRINT format_str, 'In block with text "', TRIM(errname), &
-          '" starting at character position ', charpos, ' : ' , errstring
-    ELSE
-      PRINT *,'Unable to report source of error. To see the location of the &
-          &error do not minify the stack. Errors are :'
-      PRINT *, errstring
-    END IF
-    PRINT *,REPEAT("=", 80)
-    PRINT *, ""
+    CALL this%get_error_report(index, report)
+    WRITE(*,'(A)') report
+    DEALLOCATE(report)
 
   END SUBROUTINE eeh_print_err
 

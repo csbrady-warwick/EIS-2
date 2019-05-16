@@ -24,6 +24,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     errcode = eis_err_bad_value
 
   END FUNCTION eis_dummy

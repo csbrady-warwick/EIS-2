@@ -76,7 +76,7 @@ CONTAINS
 
 
 
-  SUBROUTINE ern_add_item(this, name, item)
+  RECURSIVE SUBROUTINE ern_add_item(this, name, item)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     CLASS(*), INTENT(IN) :: item
@@ -465,10 +465,10 @@ CONTAINS
 
 
 
-  FUNCTION eir_get_stored(this, index, err_handler) RESULT(fn)
+  SUBROUTINE eir_get_stored(this, index, fn, err_handler)
     CLASS(eis_registry) :: this
     INTEGER(eis_i4), INTENT(IN) :: index
-    PROCEDURE(parser_late_bind_fn), POINTER :: fn
+    PROCEDURE(parser_late_bind_fn), POINTER, INTENT(OUT) :: fn
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
 
@@ -482,6 +482,6 @@ CONTAINS
       END SELECT
     END IF
 
-  END FUNCTION eir_get_stored
+  END SUBROUTINE eir_get_stored
 
 END MODULE eis_registry_mod

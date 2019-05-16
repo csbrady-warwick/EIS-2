@@ -1,16 +1,11 @@
 MODULE eis_string_store_mod
 
   USE eis_named_store_mod
+  USE eis_constants
+  USE eis_utils
   USE, INTRINSIC :: ISO_FORTRAN_ENV
 
   IMPLICIT NONE
-
-#ifndef NO_UNICODE
-  INTEGER, PARAMETER :: UCS4 = SELECTED_CHAR_KIND('ISO_10646')
-#else
-  INTEGER, PARAMETER :: UCS4 = SELECTED_CHAR_KIND('ASCII')
-#endif
-  INTEGER, PARAMETER :: ASCII = SELECTED_CHAR_KIND('ASCII')
 
   TYPE :: string_holder
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: text
@@ -23,16 +18,25 @@ MODULE eis_string_store_mod
     TYPE(named_store) :: strings
 
     CONTAINS
-#ifndef NO_UNICODE
+#ifdef UNICODE
     PROCEDURE :: store_string_ucs4 => ess_store_string_ucs4
     PROCEDURE :: get_string_ucs4 => ess_get_string_ucs4
     PROCEDURE :: store_string_ascii => ess_store_string_ascii
     PROCEDURE :: get_string_ascii => ess_get_string_ascii
-    GENERIC, PUBLIC :: store_string => store_string_ucs4, store_string_ascii
-    GENERIC, PUBLIC :: get_string => get_string_ucs4, get_string_ascii
+    PROCEDURE :: append_string_ucs4 => ess_append_string_ucs4
+    PROCEDURE :: append_string_ascii => ess_append_string_ascii
+    PROCEDURE :: format_fill_ucs4 => ess_format_fill_ucs4
+    PROCEDURE :: format_fill_ascii => ess_format_fill_ascii
+
+    GENERIC, PUBLIC :: store => store_string_ucs4, store_string_ascii
+    GENERIC, PUBLIC :: get => get_string_ucs4, get_string_ascii
+    GENERIC, PUBLIC :: append => append_string_ucs4, append_string_ascii
+    GENERIC, PUBLIC :: format_fill => format_fill_uu, format_fill_aa
 #else
-    PROCEDURE :: store_string => ess_store_string_ascii
-    PROCEDURE :: get_string => ess_get_string_ascii
+    PROCEDURE, PUBLIC :: store => ess_store_string_ascii
+    PROCEDURE, PUBLIC :: get => ess_get_string_ascii
+    PROCEDURE, PUBLIC :: append => ess_append_string_ascii
+    PROCEDURE, PUBLIC :: format_fill => ess_format_fill_aa
 #endif
     
   END TYPE eis_string_store
@@ -48,7 +52,7 @@ CONTAINS
   END SUBROUTINE sh_destructor
 
 
-#ifndef NO_UNICODE
+#ifdef UNICODE
   SUBROUTINE ess_store_string_ucs4(this, key, text)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
@@ -76,9 +80,9 @@ CONTAINS
   END SUBROUTINE ess_store_string_ascii
 
 
-#ifndef NO_UNICODE
+#ifdef UNICODE
   FUNCTION ess_get_string_ucs4(this, key, text)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CLASS(eis_string_store), INTENT(IN) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: text
     LOGICAL :: ess_get_string_ucs4
@@ -115,7 +119,7 @@ CONTAINS
 
 
   FUNCTION ess_get_string_ascii(this,key, text)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CLASS(eis_string_store), INTENT(IN) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
     LOGICAL :: ess_get_string_ascii
@@ -149,5 +153,81 @@ CONTAINS
     END IF
 
   END FUNCTION ess_get_string_ascii
+
+
+
+
+  FUNCTION ess_append_string_ucs4(this, key, text, newline)
+    CLASS(eis_string_store), INTENT(IN) :: this
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: text
+    LOGICAL, INTENT(IN), OPTIONAL :: newline
+    LOGICAL :: ess_append_string_ucs4
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: retreived
+
+    ess_append_string_ucs4 = this%get(key, retreived)
+    IF (.NOT. ess_append_string_ucs4) RETURN
+
+    CALL eis_append_string(text, retreived, newline = newline)
+
+  END FUNCTION ess_append_string_ucs4
+
+
+
+  FUNCTION ess_append_string_ascii(this, key, text, newline)
+    CLASS(eis_string_store), INTENT(IN) :: this
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
+    LOGICAL, INTENT(IN), OPTIONAL :: newline
+    LOGICAL :: ess_append_string_ascii
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: retreived
+
+    ess_append_string_ascii = this%get(key, retreived)
+    IF (.NOT. ess_append_string_ascii) RETURN
+
+    CALL eis_append_string(text, retreived, newline = newline)
+
+  END FUNCTION ess_append_string_ascii
+
+
+
+  SUBROUTINE ess_format_fill_aa(this, text)
+    CLASS(eis_string_store), INTENT(IN) :: this
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp, temp_o
+    INTEGER :: istr, rstr
+    LOGICAL :: recording_name, ok
+
+    ALLOCATE(CHARACTER(LEN=LEN(text), KIND=ASCII) :: temp)
+    recording_name = .FALSE.
+    rstr = 1
+    DO istr = 1, LEN(text)
+      IF (.NOT. recording_name) THEN
+        IF (text(istr:istr) /= '{') THEN
+          temp(rstr:rstr) = text(istr:istr)
+          rstr = rstr + 1
+        ELSE
+          CALL eis_append_string(temp_o, temp(1:rstr-1), newline = .FALSE.)
+          recording_name = .TRUE.
+          rstr = 1
+        END IF
+      ELSE
+        IF (text(istr:istr) /= '}') THEN
+          temp(rstr:rstr) = text(istr:istr)
+          rstr = rstr+1
+        ELSE
+          ok = this%append(temp(1:rstr-1), temp_o, newline = .FALSE.)
+          recording_name = .FALSE.
+          rstr = 1
+        END IF
+      END IF
+    END DO
+    CALL eis_append_string(temp_o, temp(1:rstr-1), newline = .FALSE.)
+    DEALLOCATE(text)
+    ALLOCATE(text, SOURCE = temp_o)
+    IF (ALLOCATED(temp_o)) DEALLOCATE(temp_o)
+    IF (ALLOCATED(temp)) DEALLOCATE(temp)
+
+  END SUBROUTINE ess_format_fill_aa
 
 END MODULE eis_string_store_mod

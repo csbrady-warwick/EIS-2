@@ -95,6 +95,9 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: undefer => eip_undefer
     PROCEDURE, PUBLIC :: emplace => eip_emplace
     PROCEDURE, PUBLIC :: print_errors => eip_print_errors
+    PROCEDURE, PUBLIC :: get_error_count => eip_get_error_count
+    PROCEDURE, PUBLIC :: get_error_report => eip_get_error_report
+    PROCEDURE, PUBLIC :: get_error_info => eip_get_error_info
 
   END TYPE eis_parser
 
@@ -103,11 +106,12 @@ MODULE eis_parser_mod
 
 CONTAINS
 
-  SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, physics)
+  SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, &
+      physics, language)
 
     CLASS(eis_parser) :: this
     LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
-    INTEGER, INTENT(IN), OPTIONAL :: physics
+    INTEGER, INTENT(IN), OPTIONAL :: physics, language
     INTEGER(eis_error) :: err
     REAL(eis_num), PARAMETER :: pi = 3.141592653589793238462643383279503_eis_num
     REAL(eis_num) :: c
@@ -118,6 +122,8 @@ CONTAINS
     IF (PRESENT(should_minify)) this%should_minify = should_minify
     IF (PRESENT(physics)) this%physics_units = physics
     IF (PRESENT(no_import)) no_import_l = no_import
+
+    CALL this%err_handler%init(language = language)
 
     this%is_init = .TRUE.
 
@@ -756,7 +762,8 @@ CONTAINS
       ALLOCATE(params(nparams))
     END IF
 
-    late_bind_fn => this%registry%get_stored_emplacement(tree_node%value%value)
+    CALL this%registry%get_stored_emplacement(tree_node%value%value, &
+        late_bind_fn)
 
     CALL initialise_stack(temp_stack)
     CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
@@ -1337,5 +1344,52 @@ CONTAINS
     CALL this%err_handler%flush_errors()
 
   END SUBROUTINE eip_print_errors
+
+
+
+  FUNCTION eip_get_error_count(this) RESULT(count)
+    CLASS(eis_parser), INTENT(IN) :: this
+    INTEGER :: count
+
+    count = this%err_handler%get_error_count()
+
+  END FUNCTION eip_get_error_count
+
+
+
+  SUBROUTINE eip_get_error_report(this, index, report)
+    CLASS(eis_parser), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: index
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
+
+    CALL this%err_handler%get_error_report(index, report)
+  END SUBROUTINE eip_get_error_report
+
+
+
+  SUBROUTINE eip_get_error_info(this, index, error_cause, &
+      error_cause_location, error_phase, error_type)
+
+    CLASS(eis_parser), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: index
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_cause, &
+        error_phase, error_type
+    INTEGER, INTENT(INOUT), OPTIONAL :: error_cause_location
+    CHARACTER(LEN=:), ALLOCATABLE :: ec, eps, ets
+    INTEGER :: ecl
+
+    CALL this%err_handler%get_error_cause(index, ec, ecl)
+    CALL this%err_handler%get_error_string(index, ets, eps)
+
+    IF (PRESENT(error_cause)) CALL MOVE_ALLOC(ec, error_cause)
+    IF (PRESENT(error_cause_location)) error_cause_location = ecl
+    IF (PRESENT(error_phase)) CALL MOVE_ALLOC(eps, error_phase)
+    IF (PRESENT(error_type)) CALL MOVE_ALLOC(ets, error_type)
+
+    IF (ALLOCATED(ec)) DEALLOCATE(ec)
+    IF (ALLOCATED(eps)) DEALLOCATE(eps)
+    IF (ALLOCATED(ets)) DEALLOCATE(ets)
+
+  END SUBROUTINE eip_get_error_info
 
 END MODULE eis_parser_mod

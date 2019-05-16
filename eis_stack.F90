@@ -1,6 +1,7 @@
 MODULE eis_stack_mod
 
   USE eis_header
+  USE eis_utils
   IMPLICIT NONE
 
   CONTAINS
@@ -303,17 +304,37 @@ MODULE eis_stack_mod
   END SUBROUTINE initialise_stack_co_element
 
 
-
-  SUBROUTINE display_tokens_inline(token_list)
+  SUBROUTINE get_tokens(token_list, str)
     TYPE(eis_stack), INTENT(IN) :: token_list
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     INTEGER :: i
 
+    IF (ALLOCATED(str)) DEALLOCATE(str)
     IF (.NOT. ALLOCATED(token_list%co_entries)) RETURN
 
     DO i = 1, token_list%stack_point
-      IF (.NOT. ALLOCATED(token_list%co_entries(i)%text)) CYCLE
-      WRITE(*,'(A)', ADVANCE='NO') TRIM(token_list%co_entries(i)%text) // " "
+      IF (ALLOCATED(token_list%co_entries(i)%text)) THEN
+        CALL eis_append_string(str, token_list%co_entries(i)%text // " ", &
+            newline = .FALSE.)
+      ELSE
+        CALL eis_append_string(str,"{bad_token}", newline = .FALSE.)
+      END IF
     END DO
+   
+  END SUBROUTINE get_tokens
+
+
+  SUBROUTINE display_tokens_inline(token_list)
+    TYPE(eis_stack), INTENT(IN) :: token_list
+    CHARACTER(LEN=:), ALLOCATABLE :: str
+
+    IF (.NOT. ALLOCATED(token_list%co_entries)) RETURN
+
+    CALL get_tokens(token_list, str)
+    IF (ALLOCATED(str)) THEN
+      WRITE(*,*) str
+      DEALLOCATE(str)
+    END IF
     WRITE(*,*) ""
   END SUBROUTINE display_tokens_inline
 
