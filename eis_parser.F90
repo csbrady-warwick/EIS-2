@@ -715,7 +715,7 @@ CONTAINS
   RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, user_params, &
       remaining_functions, capbits)
     CLASS(eis_parser) :: this
-    TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: tree_node
+    TYPE(eis_tree_item), INTENT(INOUT) :: tree_node
     TYPE(C_PTR), INTENT(IN) :: user_params
     LOGICAL, INTENT(INOUT) :: remaining_functions
     INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
@@ -728,21 +728,18 @@ CONTAINS
     INTEGER(eis_status) :: status_code
     INTEGER :: rcount
 
+    status_code = 0
+
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
-        next_node => tree_node%nodes(inode)
-        CALL this%emplace_node(next_node, user_params, remaining_functions, &
-            capbits)
+        CALL this%emplace_node(tree_node%nodes(inode), user_params, &
+            remaining_functions, capbits)
       END DO
     END IF
 
     !This is not an stored function, no emplacement necessary
     IF (tree_node%value%ptype /= c_pt_emplaced_function &
         .AND. tree_node%value%ptype /= c_pt_emplaced_variable) RETURN
-
-    !If there are unresolved functions further down then do nothing,
-    !we'll have to emplace again later
-    IF (remaining_functions) RETURN
 
     nparams = 0
     IF (ASSOCIATED(tree_node%nodes)) THEN
@@ -776,9 +773,9 @@ CONTAINS
       sp = temp_stack%stack_point + 1
       ALLOCATE(new_node)
       CALL eis_build_node(temp_stack, sp, new_node)
-      DEALLOCATE(tree_node)
-      tree_node => new_node
-      new_node => NULL()
+      DEALLOCATE(tree_node%nodes)
+      tree_node = new_node
+      DEALLOCATE(new_node)
     ELSE
       remaining_functions = .TRUE.
     END IF
@@ -820,6 +817,7 @@ CONTAINS
     capbits = sptr%cap_bits
     sp = sptr%stack_point + 1
     CALL eis_build_node(stack, sp, root)
+    CALL eis_simple_dot(root)
     CALL this%emplace_node(root, user_params, remaining_functions, capbits)
     CALL deallocate_stack(sptr)
     CALL initialise_stack(sptr)
