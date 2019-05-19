@@ -7,9 +7,9 @@ MODULE eis_header
     FUNCTION parser_eval_fn(nparams, params, user_params, status_code, &
         errcode) BIND(C)
       IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status
-      INTEGER(eis_i4), INTENT(IN) :: nparams
+      INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-      TYPE(C_PTR), INTENT(IN) :: user_params
+      TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn
@@ -39,6 +39,8 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_where = 2**11
   INTEGER(eis_error), PARAMETER :: eis_err_bracketed_constant = 2**12
   INTEGER(eis_error), PARAMETER :: eis_err_extra_bracket = 2**13
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_stack = 2**14
+  INTEGER(eis_error), PARAMETER :: eis_err_extra_results = 2**15
 
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**0
@@ -87,6 +89,18 @@ MODULE eis_header
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_late_bind_fn
+  END INTERFACE
+  INTERFACE
+    SUBROUTINE parser_late_bind_interop_fn(nparams, params, parameters, &
+        stack_id_out, status_code, errcode) BIND(C)
+      IMPORT eis_num_c, C_PTR, eis_error_c, eis_status_c, C_INT
+      INTEGER(C_INT), VALUE, INTENT(IN) :: nparams
+      REAL(eis_num_c), DIMENSION(nparams), INTENT(IN) :: params
+      TYPE(C_PTR), INTENT(IN) :: parameters
+      INTEGER(C_INT), INTENT(INOUT) :: stack_id_out
+      INTEGER(eis_status_c), INTENT(INOUT) :: status_code
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+    END SUBROUTINE parser_late_bind_interop_fn
   END INTERFACE
 
 END MODULE eis_header

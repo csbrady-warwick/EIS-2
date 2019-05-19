@@ -38,5 +38,13 @@
   extern int eis_evaluate_stack(int, int, double*, long long *, void*, int*);
   extern void eis_add_function(int, void*, parser_eval_fn, long long, int, int,
       int, long long *);
+  extern void eis_add_variable(int, void*, parser_eval_fn, long long, int,
+      int, long long *);
+  extern void eis_add_constant(int, void*, double, long long, int, 
+      int, long long *);
+  extern int eis_get_error_count(int);
+  extern int eis_get_error_report(int, int, int, char*);
+  extern void eis_stack_inc_ref(int);
+  extern void eis_stack_dec_ref(int);
 
 #endif

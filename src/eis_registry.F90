@@ -9,7 +9,9 @@ MODULE eis_registry_mod
   IMPLICIT NONE
 
   TYPE :: late_bind_fn_holder
-    PROCEDURE(parser_late_bind_fn), POINTER, NOPASS :: contents
+    PROCEDURE(parser_late_bind_interop_fn), POINTER, NOPASS :: c_contents &
+       => NULL()
+    PROCEDURE(parser_late_bind_fn), POINTER, NOPASS :: contents => NULL()
   END TYPE late_bind_fn_holder
 
   TYPE :: string_holder
@@ -51,6 +53,8 @@ MODULE eis_registry_mod
 
     CONTAINS
 
+    PROCEDURE :: add_emplaced_func_holder => eir_add_emplaced_func_holder
+
     PROCEDURE, PUBLIC :: include_namespace => eir_include_namespace    
     PROCEDURE, PUBLIC :: add_constant => eir_add_constant
     PROCEDURE, PUBLIC :: add_variable => eir_add_variable
@@ -58,6 +62,7 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
     PROCEDURE, PUBLIC :: add_stack_variable => eir_add_stack_var
     PROCEDURE, PUBLIC :: add_emplaced_function => eir_add_emplaced_function
+    PROCEDURE, PUBLIC :: add_emplaced_function_c => eir_add_emplaced_function_c
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
     PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
     PROCEDURE, PUBLIC :: get_stored_emplacement => eir_get_stored
@@ -345,21 +350,18 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, &
+  SUBROUTINE eir_add_emplaced_func_holder(this, name, holder, errcode, &
       expected_parameters, err_handler)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
-    PROCEDURE(parser_late_bind_fn) :: def_fn
+    TYPE(late_bind_fn_holder), INTENT(in) :: holder
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry), TARGET :: temp
     TYPE(eis_function_entry), POINTER :: temp_ptr
     CLASS(*), POINTER :: gptr
-    TYPE(late_bind_fn_holder) :: holder
     INTEGER(eis_i4) :: index
-
-    holder%contents => def_fn
 
     gptr => this%stored_items%get(name)
     temp_ptr => NULL()
@@ -384,7 +386,45 @@ CONTAINS
 
     CALL this%stored_items%store(name, temp)
 
+  END SUBROUTINE eir_add_emplaced_func_holder
+
+
+
+  SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, &
+      expected_parameters, err_handler)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_late_bind_fn) :: def_fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    TYPE(late_bind_fn_holder) :: holder
+
+    holder%contents => def_fn
+
+    CALL this%add_emplaced_func_holder(name, holder, errcode, &
+        expected_parameters, err_handler)
+
   END SUBROUTINE eir_add_emplaced_function
+
+
+
+  SUBROUTINE eir_add_emplaced_function_c(this, name, def_fn, errcode, &
+      expected_parameters, err_handler)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    PROCEDURE(parser_late_bind_interop_fn) :: def_fn
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    TYPE(late_bind_fn_holder) :: holder
+
+    holder%c_contents => def_fn
+
+    CALL this%add_emplaced_func_holder(name, holder, errcode, &
+        expected_parameters, err_handler)
+
+  END SUBROUTINE eir_add_emplaced_function_c
 
 
 
@@ -465,10 +505,11 @@ CONTAINS
 
 
 
-  SUBROUTINE eir_get_stored(this, index, fn, err_handler)
+  SUBROUTINE eir_get_stored(this, index, fn, fn_c, err_handler)
     CLASS(eis_registry) :: this
     INTEGER(eis_i4), INTENT(IN) :: index
     PROCEDURE(parser_late_bind_fn), POINTER, INTENT(OUT) :: fn
+    PROCEDURE(parser_late_bind_interop_fn), POINTER, INTENT(OUT) :: fn_c
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
 
@@ -477,6 +518,7 @@ CONTAINS
       SELECT TYPE(co => gptr)
         CLASS IS (late_bind_fn_holder)
           fn => co%contents
+          fn_c => co%c_contents
         CLASS DEFAULT
           fn => NULL()
       END SELECT

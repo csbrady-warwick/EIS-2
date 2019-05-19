@@ -1,5 +1,7 @@
 MODULE eis_constants
 
+  USE, INTRINSIC :: ISO_C_BINDING
+!  USE, INTRINSIC :: ISO_FORTRAN_ENV
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: INT8 = SELECTED_INT_KIND(2)
@@ -17,12 +19,19 @@ MODULE eis_constants
 #endif
   INTEGER, PARAMETER :: ASCII = SELECTED_CHAR_KIND('ASCII')
 
+  INTEGER, PARAMETER :: n_parsers_default = 4
+  INTEGER, PARAMETER :: n_stacks_default = 32
+
   INTEGER, PARAMETER :: eis_num = REAL64
+  INTEGER, PARAMETER :: eis_num_c = C_DOUBLE
   INTEGER, PARAMETER :: eis_i4 = INT32
   INTEGER, PARAMETER :: eis_i8 = INT64
   INTEGER, PARAMETER :: eis_error = eis_i8
+  INTEGER, PARAMETER :: eis_error_c = C_LONG_LONG
   INTEGER, PARAMETER :: eis_status = eis_i8
+  INTEGER, PARAMETER :: eis_status_c = C_LONG_LONG
   INTEGER, PARAMETER :: eis_bitmask = eis_i8
+  INTEGER, PARAMETER :: eis_bitmask_c = C_LONG_LONG
 
   REAL(eis_num), PARAMETER :: eis_tiny = TINY(1.0_eis_num)
   REAL(eis_num), PARAMETER :: eis_huge = HUGE(1.0_eis_num)

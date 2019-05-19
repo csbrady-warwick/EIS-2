@@ -73,8 +73,6 @@ MODULE eis_tree_mod
 
     simplified%cap_bits = stack%cap_bits
 
-    CALL display_tokens_inline(simplified)
-
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
       CALL copy_stack(simplified, stack)
@@ -166,7 +164,7 @@ MODULE eis_tree_mod
             tree%value%numerical_data = res
             IF (ALLOCATED(tree%co_value%text)) THEN
               DEALLOCATE(tree%co_value%text)
-              WRITE(rstring,'(G5.5)') res
+              WRITE(rstring,'(G10.3)') res
               ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
             END IF
             DEALLOCATE(tree%nodes)

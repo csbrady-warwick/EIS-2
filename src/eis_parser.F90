@@ -46,6 +46,25 @@ MODULE eis_parser_mod
   TYPE(eis_registry), SAVE :: global_registry
   LOGICAL, SAVE :: global_setup = .FALSE.
 
+  TYPE :: parser_holder
+    CLASS(eis_parser), POINTER :: contents => NULL()
+    CONTAINS
+    FINAL :: ph_destructor
+  END TYPE parser_holder
+
+  TYPE :: stack_holder
+    LOGICAL :: holds_stack = .FALSE.
+    INTEGER :: refcount = 1
+    CLASS(eis_parser), POINTER :: parser => NULL()
+    CLASS(eis_stack), POINTER :: contents => NULL()
+    CONTAINS
+    FINAL :: sh_destructor
+  END TYPE stack_holder
+
+  INTEGER :: interop_parser_count=0, interop_stack_count=0
+  TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: interop_parsers
+  TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: interop_stacks
+
   TYPE :: eis_parser
 
     PRIVATE
@@ -102,9 +121,103 @@ MODULE eis_parser_mod
   END TYPE eis_parser
 
   PRIVATE
-  PUBLIC :: eis_parser
+  PUBLIC :: eis_parser, stack_holder, parser_holder, interop_parser_count
+  PUBLIC :: interop_stack_count, interop_parsers, interop_stacks
+  PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
+  PUBLIC :: eis_add_interop_parser, eis_add_interop_stack
 
 CONTAINS
+
+  PURE ELEMENTAL SUBROUTINE ph_destructor(this)
+    TYPE(parser_holder), INTENT(INOUT) :: this
+    IF (ASSOCIATED(this%contents)) DEALLOCATE(this%contents)
+  END SUBROUTINE ph_destructor
+  PURE ELEMENTAL SUBROUTINE sh_destructor(this)
+    TYPE(stack_holder), INTENT(INOUT) :: this
+    IF (ASSOCIATED(this%contents) .AND. this%holds_stack) &
+        DEALLOCATE(this%contents)
+  END SUBROUTINE sh_destructor
+
+
+
+  FUNCTION eis_get_interop_parser(index)
+    INTEGER, INTENT(IN) :: index
+    TYPE(eis_parser), POINTER :: eis_get_interop_parser
+    eis_get_interop_parser => NULL()
+    IF (index < 1 .OR. index > interop_parser_count) RETURN
+    eis_get_interop_parser => interop_parsers(index)%contents
+  END FUNCTION eis_get_interop_parser
+
+
+
+  FUNCTION eis_get_interop_stack(index, parser)
+    INTEGER, INTENT(IN) :: index
+    TYPE(eis_parser), POINTER, OPTIONAL, INTENT(OUT) :: parser
+    TYPE(eis_stack), POINTER :: eis_get_interop_stack
+    eis_get_interop_stack => NULL()
+    IF (PRESENT(parser)) parser => NULL()
+    IF (index < 1 .OR. index > interop_stack_count) RETURN
+    eis_get_interop_stack => interop_stacks(index)%contents
+    IF (PRESENT(parser)) parser => interop_stacks(index)%parser
+  END FUNCTION eis_get_interop_stack
+
+
+
+  FUNCTION eis_add_interop_parser(parser)
+    TYPE(eis_parser), POINTER, INTENT(IN) :: parser
+    INTEGER :: eis_add_interop_parser
+    TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: temp
+
+    IF (.NOT. ALLOCATED(interop_parsers)) THEN
+      ALLOCATE(interop_parsers(n_parsers_default))
+      interop_parser_count = 1
+    ELSE
+      interop_parser_count = interop_parser_count + 1
+      IF (interop_parser_count > SIZE(interop_parsers)) THEN
+        ALLOCATE(temp(SIZE(interop_parsers)*2))
+        temp(1:SIZE(interop_parsers)) = interop_parsers
+        DEALLOCATE(interop_parsers)
+        CALL MOVE_ALLOC(temp, interop_parsers)
+      END IF
+    END IF
+    interop_parsers(interop_parser_count)%contents => parser
+    eis_add_interop_parser = interop_parser_count
+  END FUNCTION eis_add_interop_parser
+
+
+
+  FUNCTION eis_add_interop_stack(stack, parser_index, holds)
+
+    TYPE(eis_stack), POINTER, INTENT(IN) :: stack
+    INTEGER, INTENT(IN) :: parser_index
+    LOGICAL, INTENT(IN), OPTIONAL :: holds
+    INTEGER :: eis_add_interop_stack
+    TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: temp
+
+    eis_add_interop_stack = -1
+
+    IF (.NOT. ALLOCATED(interop_stacks)) THEN
+      ALLOCATE(interop_stacks(n_stacks_default))
+      interop_stack_count = 1
+    ELSE
+      interop_stack_count = interop_stack_count + 1
+      IF (interop_stack_count > SIZE(interop_stacks)) THEN
+        ALLOCATE(temp(SIZE(interop_stacks)*2))
+        temp(1:SIZE(interop_stacks)) = interop_stacks
+        DEALLOCATE(interop_stacks)
+        CALL MOVE_ALLOC(temp, interop_stacks)
+      END IF
+    END IF
+    interop_stacks(interop_stack_count)%contents => stack
+    interop_stacks(interop_stack_count)%parser => &
+        interop_parsers(parser_index)%contents
+    IF (PRESENT(holds)) &
+        interop_stacks(interop_stack_count)%holds_stack = holds
+    eis_add_interop_stack = interop_stack_count
+
+  END FUNCTION eis_add_interop_stack
+
+
 
   SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, &
       physics, language)
@@ -596,21 +709,30 @@ CONTAINS
     DEALLOCATE(current)
     DEALLOCATE(expression)
 
-    IF (should_simplify) CALL this%simplify(this%output, C_NULL_PTR, err)
+    IF (should_simplify) CALL this%simplify(this%output, err, &
+        user_params = C_NULL_PTR)
     IF (should_minify) CALL this%minify(this%output, err)
 
   END SUBROUTINE eip_tokenize
 
 
 
-  FUNCTION eip_evaluate_stack(this, stack, result, params, errcode, is_no_op)
+  FUNCTION eip_evaluate_stack(this, stack, result, errcode, user_params, &
+      is_no_op)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-    TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     INTEGER :: eip_evaluate_stack
+    TYPE(C_PTR) :: params
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
 
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
@@ -619,7 +741,7 @@ CONTAINS
     END IF
 
     IF (stack%has_deferred) THEN
-      CALL this%undefer(stack, params, errcode)
+      CALL this%undefer(stack, errcode, user_params = params)
       IF (errcode /= eis_err_none) RETURN
       stack%has_deferred = .FALSE.
     END IF
@@ -631,22 +753,29 @@ CONTAINS
 
 
 
-  FUNCTION eip_evaluate_string(this, str, result, params, errcode, is_no_op, &
-      simplify, minify)
+  FUNCTION eip_evaluate_string(this, str, result, errcode, user_params, &
+      is_no_op, simplify, minify)
     CLASS(eis_parser) :: this
     CHARACTER(LEN=*), INTENT(IN) :: str
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-    TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     LOGICAL, INTENT(IN), OPTIONAL :: simplify, minify
     INTEGER :: eip_evaluate_string
     TYPE(eis_stack) :: stack
+    TYPE(C_PTR) :: params
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
 
     CALL this%tokenize(str, stack, errcode, simplify, minify)
     IF (errcode == eis_err_none) THEN
-      eip_evaluate_string = this%evaluate(stack, result, params, errcode, &
-          is_no_op)
+      eip_evaluate_string = this%evaluate(stack, result, errcode, &
+          user_params = user_params, is_no_op = is_no_op)
       CALL deallocate_stack(stack)
     END IF
 
@@ -654,14 +783,21 @@ CONTAINS
 
 
 
-  SUBROUTINE eip_undefer(this, stack, params, errcode)
+  SUBROUTINE eip_undefer(this, stack, errcode, user_params)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT) :: stack
-    TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     INTEGER :: ipt, stored_params
     INTEGER(eis_bitmask) :: cap_bits
     CHARACTER(LEN=:), ALLOCATABLE :: str
+    TYPE(C_PTR) :: params
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
 
     cap_bits = 0_eis_bitmask
 
@@ -689,17 +825,25 @@ CONTAINS
     stack%cap_bits = IOR(stack%cap_bits, cap_bits)
 
     IF (this%should_minify) CALL this%minify(stack, errcode)
-    IF (this%should_simplify) CALL this%simplify(stack, params, errcode)
+    IF (this%should_simplify) CALL this%simplify(stack, errcode, &
+        user_params = params)
 
   END SUBROUTINE eip_undefer
 
 
 
-  SUBROUTINE eip_simplify(this, stack, params, errcode)
+  SUBROUTINE eip_simplify(this, stack, errcode, user_params)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT) :: stack
-    TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR) :: params
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
 
     CALL eis_simplify_stack(stack, params, errcode, this%err_handler)
 
@@ -728,11 +872,15 @@ CONTAINS
     TYPE(eis_tree_item), POINTER :: new_node, next_node
     INTEGER(eis_error) :: errcode
     INTEGER :: inode, nparams, sp
-    TYPE(eis_stack) :: temp_stack
+    TYPE(eis_stack), TARGET :: temp_stack
+    TYPE(eis_stack), POINTER :: emplace_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: results, params
+    REAL(eis_num_c), DIMENSION(:), ALLOCATABLE :: params_interop
     PROCEDURE(parser_late_bind_fn), POINTER :: late_bind_fn
+    PROCEDURE(parser_late_bind_interop_fn), POINTER :: late_bind_fn_c
     INTEGER(eis_status) :: status_code
     INTEGER :: rcount
+    INTEGER(C_INT) :: interop_stack_id
 
     status_code = 0_eis_bitmask
     errcode = 0_eis_error
@@ -755,7 +903,8 @@ CONTAINS
       DO inode = 1, nparams
         CALL initialise_stack(temp_stack)
         CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
-        rcount = this%evaluate(temp_stack, results, user_params, errcode)
+        rcount = this%evaluate(temp_stack, results, errcode, &
+            user_params = user_params)
         params(inode) = results(1)
         CALL deallocate_stack(temp_stack)
       END DO
@@ -764,47 +913,69 @@ CONTAINS
     END IF
 
     CALL this%registry%get_stored_emplacement(tree_node%value%value, &
-        late_bind_fn)
+        late_bind_fn, late_bind_fn_c)
 
-    CALL initialise_stack(temp_stack)
-    CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
-        errcode)
-
+    IF (ASSOCIATED(late_bind_fn)) THEN
+      CALL initialise_stack(temp_stack)
+      emplace_stack => temp_stack
+      CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
+          errcode)
+    ELSE
+      ALLOCATE(params_interop(nparams))
+      params_interop = REAL(params, eis_num_c)
+      CALL late_bind_fn_c(nparams, params_interop, user_params, &
+          interop_stack_id, status_code, errcode)
+      emplace_stack => eis_get_interop_stack(interop_stack_id) 
+      DEALLOCATE(params_interop)
+    END IF
     DEALLOCATE(params)
 
-    IF (temp_stack%has_emplaced) CALL this%emplace(temp_stack, user_params, &
-        errcode)
+    remaining_functions = .TRUE.
+    IF (.NOT. ASSOCIATED(emplace_stack)) RETURN
+    IF (.NOT. emplace_stack%init) RETURN
+    IF (emplace_stack%stack_point == 0) RETURN
+      
+    IF (emplace_stack%has_emplaced) CALL this%emplace(emplace_stack, errcode, &
+        user_params = user_params)
 
-    capbits = IOR(capbits, temp_stack%cap_bits)
+    capbits = IOR(capbits, emplace_stack%cap_bits)
     !If emplacement is not forbidden by status then build new node
     IF (IAND(status_code, eis_status_no_emplace) == 0) THEN
-      sp = temp_stack%stack_point + 1
+      sp = emplace_stack%stack_point + 1
       ALLOCATE(new_node)
-      CALL eis_build_node(temp_stack, sp, new_node)
+      CALL eis_build_node(emplace_stack, sp, new_node)
       DEALLOCATE(tree_node%nodes)
       tree_node = new_node
       DEALLOCATE(new_node)
+      remaining_functions = .FALSE.
     ELSE
       remaining_functions = .TRUE.
     END IF
 
-    CALL deallocate_stack(temp_stack)
+    CALL deallocate_stack(emplace_stack)
 
   END SUBROUTINE eip_emplace_node
 
 
 
-  SUBROUTINE eip_emplace(this, stack, user_params, errcode, destination)
+  SUBROUTINE eip_emplace(this, stack, errcode, user_params, destination)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT), TARGET :: stack
-    TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     CLASS(eis_stack), INTENT(INOUT), OPTIONAL, TARGET :: destination
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
     INTEGER(eis_bitmask) :: capbits
     LOGICAL :: remaining_functions
     CLASS(eis_stack), POINTER :: sptr
+    TYPE(C_PTR) :: params
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
 
     IF (.NOT. stack%has_emplaced) THEN
       IF (PRESENT(destination)) THEN
@@ -825,14 +996,17 @@ CONTAINS
     capbits = sptr%cap_bits
     sp = sptr%stack_point + 1
     CALL eis_build_node(stack, sp, root)
-    CALL eis_simple_dot(root)
-    CALL this%emplace_node(root, user_params, remaining_functions, capbits)
+    CALL this%emplace_node(root, params, remaining_functions, capbits)
     CALL deallocate_stack(sptr)
     CALL initialise_stack(sptr)
     CALL eis_tree_to_stack(root, sptr)
     sptr%cap_bits = capbits
     DEALLOCATE(root)
     sptr%has_emplaced = remaining_functions
+
+    IF (this%should_minify) CALL this%minify(sptr, errcode)
+    IF (this%should_simplify) CALL this%simplify(sptr, errcode, &
+        user_params = params)
 
   END SUBROUTINE eip_emplace
 

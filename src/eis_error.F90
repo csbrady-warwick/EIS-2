@@ -79,6 +79,7 @@ MODULE eis_error_mod
       CALL this%strings%store('err_bracketed_constant', 'Attempting to &
           &subscript a constant')
       CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
+      CALL this%strings%store('err_bad_stack', 'Invalid or unavailable stack')
       CALL this%strings%store('err_report_place', 'In block with text &
           &"{errtext}" starting at character position {charpos}: ')
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
@@ -112,6 +113,7 @@ MODULE eis_error_mod
       CALL this%strings%store('err_bracketed_constant', 'Попытка вызвать &
           &константу как функцию')
       CALL this%strings%store('err_extra_bracket', 'Посторонняя скобка')
+      CALL this%strings%store('err_bad_stack', 'Неверный или недоступный стек')
       CALL this%strings%store('err_report_place', 'В блоке с текстом &
           &«{errtext}», начинающимся с позиции символа {charpos} :')
       CALL this%strings%store('err_report_fail', 'Невозможно &
@@ -251,6 +253,9 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_extra_bracket) /= 0) THEN
       ok = this%strings%append('err_extra_bracket', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_bad_stack) /= 0) THEN
+      ok = this%strings%append('err_bad_stack', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &

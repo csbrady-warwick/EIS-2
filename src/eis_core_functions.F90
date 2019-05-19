@@ -16,10 +16,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_dummy(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -38,10 +38,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_uplus(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -58,10 +58,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_uminus(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -78,10 +78,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_bplus(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -98,10 +98,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_bminus(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -118,10 +118,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_times(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -138,10 +138,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_divide(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -159,10 +159,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_pow(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -179,10 +179,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_expo(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -199,10 +199,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_lt(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -221,10 +221,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_le(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -243,10 +243,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_gt(nparams, params, user_params, status_code, errcode)&
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -264,10 +264,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_ge(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -286,10 +286,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_eq(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -308,10 +308,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_neq(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -330,10 +330,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_and(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -353,10 +353,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_or(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -376,10 +376,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_abs(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -397,10 +397,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_floor(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -418,10 +418,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_ceil(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -439,10 +439,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_nint(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -460,10 +460,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_aint(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -481,10 +481,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_sqrt(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -507,10 +507,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_sin(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -528,10 +528,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_cos(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -549,10 +549,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_tan(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -570,10 +570,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_asin(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -596,10 +596,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_acos(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -622,10 +622,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_atan(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -643,10 +643,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_atan2(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -664,10 +664,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_sinh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -685,10 +685,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_cosh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -706,10 +706,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_tanh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -727,10 +727,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_exp(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -748,10 +748,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_loge(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -774,10 +774,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_log10(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -800,10 +800,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_log_base(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -826,10 +826,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_gauss(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
@@ -852,10 +852,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_semigauss(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res, t0
@@ -885,10 +885,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_supergauss(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res, t0
@@ -912,10 +912,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_asinh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res, t0
@@ -944,10 +944,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_acosh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res, t0
@@ -976,10 +976,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_atanh(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res, t0
@@ -1009,10 +1009,10 @@ MODULE eis_core_functions_mod
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_if(nparams, params, user_params, status_code, errcode) &
-      RESULT(res) BIND(C)
-    INTEGER(eis_i4), INTENT(IN) :: nparams
+      RESULT(res) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
