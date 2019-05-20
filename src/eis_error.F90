@@ -1,9 +1,9 @@
 MODULE eis_error_mod
 
-  USE eis_header
   USE eis_constants
-  USE eis_utils
+  USE eis_header
   USE eis_string_store_mod
+  USE eis_utils
   IMPLICIT NONE
 
   TYPE :: eis_error_item
@@ -186,7 +186,6 @@ MODULE eis_error_mod
     INTEGER, INTENT(IN) :: index
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_text
     INTEGER, INTENT(OUT) :: cloc_out
-    LOGICAL :: ok
 
     cloc_out = -1
     IF (ALLOCATED(err_text)) DEALLOCATE(err_text)
@@ -197,7 +196,7 @@ MODULE eis_error_mod
     IF (.NOT. ALLOCATED(this%errors(index)%errstring)) RETURN
     ALLOCATE(err_text, SOURCE = this%errors(index)%errstring)
 
-  END SUBROUTINE eeh_get_error_CAUSE
+  END SUBROUTINE eeh_get_error_cause
 
 
 
@@ -289,7 +288,7 @@ MODULE eis_error_mod
     CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp
     CHARACTER(LEN=9) :: posstr
     CHARACTER(LEN=19) :: format_str
-    INTEGER :: icount, charpos, nchar
+    INTEGER :: charpos, nchar
     TYPE(eis_string_store) :: errstr_store
     LOGICAL :: ok
 

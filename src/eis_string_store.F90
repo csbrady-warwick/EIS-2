@@ -1,9 +1,9 @@
 MODULE eis_string_store_mod
 
-  USE eis_named_store_mod
-  USE eis_constants
-  USE eis_utils
   USE, INTRINSIC :: ISO_FORTRAN_ENV
+  USE eis_constants
+  USE eis_named_store_mod
+  USE eis_utils
 
   IMPLICIT NONE
 

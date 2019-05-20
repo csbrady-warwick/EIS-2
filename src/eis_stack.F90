@@ -75,7 +75,6 @@ MODULE eis_stack_mod
     INTEGER, INTENT(IN) :: new_elements
     TYPE(eis_stack_element), ALLOCATABLE :: new_buffer(:)
     TYPE(eis_stack_co_element), ALLOCATABLE :: new_cobuffer(:)
-    INTEGER :: i
 
     IF (.NOT. stack%init) RETURN
     IF (new_elements < stack%stack_point) RETURN
@@ -124,7 +123,7 @@ MODULE eis_stack_mod
   SUBROUTINE append_stack(stack, append)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack, append
-    INTEGER :: i, n, old_size, old_stack_point
+    INTEGER :: i, n, old_stack_point
 
     old_stack_point = stack%stack_point
 
@@ -156,7 +155,7 @@ MODULE eis_stack_mod
 
     TYPE(eis_stack), INTENT(INOUT) :: dest, src
     INTEGER, INTENT(IN) :: insert_point
-    INTEGER :: i, n, old_size, old_stack_point
+    INTEGER :: i, n, old_stack_point
 
     IF (.NOT. dest%init .OR. .NOT. src%init) RETURN
 
@@ -206,7 +205,6 @@ MODULE eis_stack_mod
     TYPE(eis_stack_element), INTENT(IN) :: value
     TYPE(eis_stack_co_element), INTENT(IN), OPTIONAL :: co_value
     TYPE(eis_stack), INTENT(INOUT) :: stack
-    INTEGER :: i, old_size
 
     IF (stack%stack_point + 1 > stack%stack_size) THEN
       CALL grow_stack(stack, 2 * stack%stack_size)

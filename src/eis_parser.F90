@@ -26,14 +26,14 @@
 MODULE eis_parser_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
+  USE eis_core_functions_mod
+  USE eis_error_mod
+  USE eis_eval_stack_mod
   USE eis_header
   USE eis_raw_parser_mod
   USE eis_registry_mod
-  USE eis_core_functions_mod
   USE eis_stack_mod
   USE eis_tree_mod
-  USE eis_eval_stack_mod
-  USE eis_error_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: c_char_numeric = 1
@@ -117,6 +117,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_error_count => eip_get_error_count
     PROCEDURE, PUBLIC :: get_error_report => eip_get_error_report
     PROCEDURE, PUBLIC :: get_error_info => eip_get_error_info
+    PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
 
   END TYPE eis_parser
 
@@ -538,7 +539,7 @@ CONTAINS
     IF (work /= 0) THEN
       ! block is a parenthesis
       iblock%ptype = c_pt_parenthesis
-      iblock%value = work
+      iblock%value = INT(work, eis_i4)
       RETURN
     END IF
 
@@ -737,6 +738,7 @@ CONTAINS
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
       CALL this%err_handler%add_error(eis_err_evaluator, errcode)
+      eip_evaluate_stack = 0.0_eis_num
       RETURN
     END IF
 
@@ -869,7 +871,7 @@ CONTAINS
     TYPE(C_PTR), INTENT(IN) :: user_params
     LOGICAL, INTENT(INOUT) :: remaining_functions
     INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
-    TYPE(eis_tree_item), POINTER :: new_node, next_node
+    TYPE(eis_tree_item), POINTER :: new_node
     INTEGER(eis_error) :: errcode
     INTEGER :: inode, nparams, sp
     TYPE(eis_stack), TARGET :: temp_stack
@@ -1259,7 +1261,6 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
-    INTEGER :: ipoint, io, iu
     LOGICAL :: stack_empty
 
     cap_bits = 0_eis_bitmask
@@ -1566,5 +1567,16 @@ CONTAINS
     IF (ALLOCATED(ets)) DEALLOCATE(ets)
 
   END SUBROUTINE eip_get_error_info
+
+
+
+  SUBROUTINE eip_get_tokens(this, stack_in, str_out)
+    CLASS(eis_parser), INTENT(IN) :: this
+    CLASS(eis_stack), INTENT(IN) :: stack_in
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_out
+
+    CALL get_tokens(stack_in, str_out)
+
+  END SUBROUTINE eip_get_tokens
 
 END MODULE eis_parser_mod

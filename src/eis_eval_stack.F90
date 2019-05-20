@@ -2,8 +2,8 @@ MODULE eis_eval_stack_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
-  USE eis_header
   USE eis_error_mod
+  USE eis_header
 
   IMPLICIT NONE
 
@@ -59,7 +59,6 @@ MODULE eis_eval_stack_mod
     TYPE(C_PTR), INTENT(IN) :: user_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    INTEGER :: iel
 
     IF (ASSOCIATED(element%eval_fn)) THEN
       IF (.NOT. ALLOCATED(this%fn_call_vals)) THEN

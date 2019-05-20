@@ -1,10 +1,10 @@
 MODULE eis_registry_mod
 
+  USE eis_error_mod
   USE eis_header
-  USE eis_stack_mod
   USE eis_named_store_mod
   USE eis_ordered_store_mod
-  USE eis_error_mod
+  USE eis_stack_mod
 
   IMPLICIT NONE
 
@@ -121,10 +121,8 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: namespace
     LOGICAL, INTENT(IN), OPTIONAL :: only_final
     LOGICAL :: final_i
-    INTEGER :: dotloc, ind, strend
+    INTEGER :: dotloc, ind
     TYPE(string_holder) :: sh
-    CLASS(*), POINTER :: gptr
-    TYPE(eis_namespace), POINTER :: old
 
     final_i = .TRUE.
     IF (PRESENT(only_final)) final_i = only_final

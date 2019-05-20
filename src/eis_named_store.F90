@@ -121,7 +121,6 @@ CONTAINS
   SUBROUTINE nsil_unlink(this)
 
     CLASS(named_store_inner_list), INTENT(IN) :: this !< self pointer
-    INTEGER :: ifn
 
     IF (ASSOCIATED(this%list)) THEN
       CALL unlink_items(this%list)
@@ -166,7 +165,7 @@ CONTAINS
     CLASS(*), POINTER, INTENT(IN) :: item !< Item to add
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     TYPE(named_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER :: sz, ssz, iindex
+    INTEGER :: sz, iindex
 
     iindex = this%get_index(name)
 

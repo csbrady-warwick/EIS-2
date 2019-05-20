@@ -22,10 +22,10 @@ MODULE eis_constants
   INTEGER, PARAMETER :: n_parsers_default = 4
   INTEGER, PARAMETER :: n_stacks_default = 32
 
-  INTEGER, PARAMETER :: eis_num = REAL64
+  INTEGER, PARAMETER :: eis_num = C_DOUBLE
   INTEGER, PARAMETER :: eis_num_c = C_DOUBLE
-  INTEGER, PARAMETER :: eis_i4 = INT32
-  INTEGER, PARAMETER :: eis_i8 = INT64
+  INTEGER, PARAMETER :: eis_i4 = C_INT
+  INTEGER, PARAMETER :: eis_i8 = C_LONG_LONG
   INTEGER, PARAMETER :: eis_error = eis_i8
   INTEGER, PARAMETER :: eis_error_c = C_LONG_LONG
   INTEGER, PARAMETER :: eis_status = eis_i8

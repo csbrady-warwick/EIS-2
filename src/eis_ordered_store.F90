@@ -122,7 +122,6 @@ CONTAINS
     INTEGER(INT32) :: os_store
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER(INT32) :: sz
-    INTEGER(INT32) :: re_store_index
 
     IF (PRESENT(index)) THEN
       IF (ALLOCATED(this%items)) THEN

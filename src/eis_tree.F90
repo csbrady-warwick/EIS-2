@@ -2,10 +2,10 @@ MODULE eis_tree_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
+  USE eis_error_mod
+  USE eis_eval_stack_mod
   USE eis_header
   USE eis_stack_mod
-  USE eis_eval_stack_mod
-  USE eis_error_mod
   IMPLICIT NONE
 
   TYPE :: eis_tree_item
@@ -23,7 +23,6 @@ MODULE eis_tree_mod
 
   PURE ELEMENTAL SUBROUTINE eit_destructor(this)
     TYPE(eis_tree_item), INTENT(INOUT) :: this
-    INTEGER :: inode
 
     IF (ASSOCIATED(this%nodes)) DEALLOCATE(this%nodes)
     CALL deallocate_stack_element(this%value)
@@ -89,7 +88,7 @@ MODULE eis_tree_mod
     INTEGER, INTENT(INOUT) :: curindex
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
     TYPE(eis_tree_item), POINTER :: p
-    INTEGER :: iparam, pcount, curprime
+    INTEGER :: iparam, pcount
 
     curindex = curindex - 1
     current%value = stack%entries(curindex)
@@ -128,7 +127,6 @@ MODULE eis_tree_mod
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     INTEGER :: inode
     LOGICAL :: can_simplify
-    CHARACTER(LEN=:), ALLOCATABLE :: temp, temp2
     REAL(eis_num) :: res
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err

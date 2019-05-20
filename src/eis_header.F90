@@ -82,7 +82,7 @@ MODULE eis_header
     SUBROUTINE parser_late_bind_fn(nparams, params, parameters, stack_out, &
         status_code, errcode)
       IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
-      INTEGER(eis_i4), INTENT(IN) :: nparams
+      INTEGER, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: parameters
       TYPE(eis_stack), INTENT(INOUT) :: stack_out
