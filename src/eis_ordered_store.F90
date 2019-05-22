@@ -71,11 +71,11 @@ CONTAINS
   !> @brief
   !> Get the number of items in this store. Returns 0 if empty
   !> @param[in] this
-  !> @result item
+  !> @return item
   FUNCTION os_get_size(this) RESULT (sz)
 
     CLASS(ordered_store), INTENT(IN) :: this
-    INTEGER :: sz
+    INTEGER :: sz !<Number of items in the store
 
     sz = 0
     IF (.NOT. ALLOCATED(this%items)) RETURN
@@ -91,12 +91,12 @@ CONTAINS
   !> return NULL pointer if item is not present
   !> @param[in] this
   !> @param[in] index
-  !> @result item
+  !> @return item
   FUNCTION os_get(this, index) RESULT (item)
 
     CLASS(ordered_store), INTENT(IN) :: this
-    INTEGER(INT32), INTENT(IN) :: index
-    CLASS(*), POINTER :: item
+    INTEGER(INT32), INTENT(IN) :: index !< Index of the item to get
+    CLASS(*), POINTER :: item !< Returned item
 
     item => NULL()
     IF (.NOT. ALLOCATED(this%items)) RETURN
@@ -113,13 +113,16 @@ CONTAINS
   !> Add an item to the ordered store
   !> @param[in] this
   !> @param[in] item
-  !> @result os_store
+  !> @return os_store
   FUNCTION os_store(this, item, index)
 
     CLASS(ordered_store), INTENT(INOUT) :: this
-    CLASS(*), TARGET, INTENT(IN) :: item
+    CLASS(*), TARGET, INTENT(IN) :: item !< Item so store
+    !> Index to store the item at. Intended to overwrite an existing item
+    !> Not to allow storage in an arbitrary location. If index is not an 
+    !> existing item index then the item is simply added to the end of the list
     INTEGER, INTENT(IN), OPTIONAL :: index
-    INTEGER(INT32) :: os_store
+    INTEGER(INT32) :: os_store !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER(INT32) :: sz
 
@@ -154,7 +157,10 @@ CONTAINS
 
 
 
-  !> Delete all stored items on destruction
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Delete item on destruction
+  !> @param[in] this
   PURE ELEMENTAL SUBROUTINE os_destructor(this)
 
     TYPE(ordered_store), INTENT(INOUT) :: this

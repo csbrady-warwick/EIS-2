@@ -6,6 +6,9 @@ MODULE eis_stack_mod
 
   CONTAINS
 
+  !> @brief
+  !> Initialise a stack object
+  !> @param[in] stack - Stack to initialise
   SUBROUTINE initialise_stack(stack)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -22,7 +25,9 @@ MODULE eis_stack_mod
   END SUBROUTINE initialise_stack
 
 
-
+  !> @brief
+  !> Deallocate a stack object
+  !> @param[in] stack - Stack to deallocate
   SUBROUTINE deallocate_stack(stack)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -41,14 +46,18 @@ MODULE eis_stack_mod
   END SUBROUTINE deallocate_stack
 
 
-
+  !> @brief
+  !> Function to deallocate a stack element. Null operator at present
+  !> @param[inout] element - Stack element to deallocate
   PURE ELEMENTAL SUBROUTINE deallocate_stack_element(element)
     TYPE(eis_stack_element), INTENT(INOUT) :: element
 
   END SUBROUTINE deallocate_stack_element
 
 
-
+  !> @brief
+  !> Function to deallocate a stack coelement.
+  !> @param[inout] coelement - Stack coelement to deallocate
   PURE ELEMENTAL SUBROUTINE deallocate_stack_co_element(coelement)
     TYPE(eis_stack_co_element), INTENT(INOUT) :: coelement
 
@@ -57,7 +66,13 @@ MODULE eis_stack_mod
 
 
 
-
+  !> @brief
+  !> Function to copy a stack. If possible should just be
+  !> simple equality so that the user can just do simple equality
+  !> EIS core should always use this function just in case this
+  !> isn't possible
+  !> @param[in] stack - Source stack
+  !> @param[in] copy - Destination stack
   SUBROUTINE copy_stack(stack, copy)
 
     TYPE(eis_stack), INTENT(IN) :: stack
@@ -70,6 +85,11 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Reallocate a stack to have a new size. Cannot be shrunk to a size
+  !> below the number of elements in the stack
+  !> @param[inout] stack - Stack to grow or shrink
+  !> @param[in] new_elements - Number of elements to set the stack size to
   SUBROUTINE grow_stack(stack, new_elements)
     TYPE(eis_stack), INTENT(INOUT) :: stack
     INTEGER, INTENT(IN) :: new_elements
@@ -99,6 +119,9 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Reduce a stack to be as small as possible while still functioning
+  !> @param[inout] stack - Stack to minify
   SUBROUTINE minify_stack(stack)
     TYPE(eis_stack), INTENT(INOUT) :: stack
     INTEGER :: istack
@@ -120,6 +143,10 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Append one stack to the end of another stack.
+  !> @param[inout] stack - Stack to append to
+  !> @param[in] append - Stack to append to "stack"
   SUBROUTINE append_stack(stack, append)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack, append
@@ -150,7 +177,12 @@ MODULE eis_stack_mod
   END SUBROUTINE append_stack
 
 
-
+  !> @brief
+  !> Replace a single element of a stack with all of the elements of another
+  !> stack. The specified element is removed and replaced.
+  !> @param[inout] dest - Stack to replace the item in
+  !> @param[in] src - Stack to copy into "dest" at the specified point
+  !> @param[in] insert_point - Point in "dest" to replace with "src"
   SUBROUTINE replace_element(dest, src, insert_point)
 
     TYPE(eis_stack), INTENT(INOUT) :: dest, src
@@ -199,7 +231,13 @@ MODULE eis_stack_mod
   END SUBROUTINE replace_element
 
 
-
+  !> @brief
+  !> Push a single value onto the stack. Optionally also a covalue
+  !> @param[inout] dest - Stack to replace the item in
+  !> @param[in] stack - Stack to push the value on to
+  !> @param[in] value - Value to push on
+  !> @param[in] co_value - Covalue to push on. Optional, default no co_value
+  !> If stack cannot store co_values this is ignored if present
   SUBROUTINE push_to_stack(stack, value, co_value)
 
     TYPE(eis_stack_element), INTENT(IN) :: value
@@ -220,6 +258,12 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Pop a value off a stack and push it onto another stack.
+  !> If covalues are enabled in stack1 then they are also copied
+  !> @param[inout] stack1 - Stack to remove the value from
+  !> @param[inout] stack2 - Stack to add value to
+  !> @param[out] stack_empty - Is the stack empty when trying to pop
   SUBROUTINE pop_to_stack(stack1, stack2, stack_empty)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack1, stack2
@@ -241,6 +285,9 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Pop a value off a stack and ignore it
+  !> @param[inout] stack - Stack to remove the value from
   SUBROUTINE pop_to_null(stack)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -251,6 +298,12 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Pop a value off a stack and return it. If present and requested
+  !> covalues are also returned
+  !> @param[inout] stack - Stack to remove the value from
+  !> @param[out] value - Value at the top of the stack
+  !> @param[out] covalue - Covalue at the top of the stack
   SUBROUTINE pop_from_stack(stack, value, covalue)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -267,6 +320,14 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Check the value at a distance "offset" from the top of the stack and 
+  !> return value and covalue
+  !> @param[inout] stack - Stack to return the value from
+  !> @param[out] value - Value at the top of the stack
+  !> @param[in] offset - Offset from the top of the stack to snoop at.
+  !> 0 returns the item at the top of the stack
+  !> @param[out] covalue - Covalue at the top of the stack
   SUBROUTINE stack_snoop(stack, value, offset, covalue)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -283,6 +344,10 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Routine to initialise a stack element. Pure elemental routine
+  !> works on single elements and arrays
+  !> @param[inout] element - Element to initialise
   PURE ELEMENTAL SUBROUTINE initialise_stack_element(element)
 
     TYPE(eis_stack_element), INTENT(INOUT) :: element
@@ -295,6 +360,10 @@ MODULE eis_stack_mod
 
 
 
+  !> @brief
+  !> Routine to initialise a stack coelement. Pure elemental routine
+  !> works on single cielements and arrays
+  !> @param[inout] element - Coelement to initialise
   PURE ELEMENTAL SUBROUTINE initialise_stack_co_element(element)
 
     TYPE(eis_stack_co_element), INTENT(INOUT) :: element
@@ -302,6 +371,12 @@ MODULE eis_stack_mod
   END SUBROUTINE initialise_stack_co_element
 
 
+  !> @brief
+  !> Routine to return a textual version of the stack. Shows the stack in RPN
+  !> form
+  !> @param[in] token_list - Stack to visualise
+  !> @param[inout] str - Allocatable string. Will be allocated exactly the 
+  !> right size to hold the token stream
   SUBROUTINE get_tokens(token_list, str)
     TYPE(eis_stack), INTENT(IN) :: token_list
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
@@ -322,6 +397,9 @@ MODULE eis_stack_mod
   END SUBROUTINE get_tokens
 
 
+  !> @brief
+  !> Routine to automatically print the result of get_tokens to stdout
+  !> @param[in] token_list - Stack to visualise
   SUBROUTINE display_tokens_inline(token_list)
     TYPE(eis_stack), INTENT(IN) :: token_list
     CHARACTER(LEN=:), ALLOCATABLE :: str

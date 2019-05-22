@@ -6,8 +6,11 @@ MODULE eis_tree_mod
   USE eis_eval_stack_mod
   USE eis_header
   USE eis_stack_mod
+  USE eis_utils
   IMPLICIT NONE
 
+  !> @class
+  !> Type representing a parsed string stored as an AST rather than as a stack
   TYPE :: eis_tree_item
     TYPE(eis_stack_element) :: value
     TYPE(eis_stack_co_element) :: co_value
@@ -21,6 +24,10 @@ MODULE eis_tree_mod
 
   CONTAINS
 
+  !> @brief
+  !> Deallocate a tree. Pure elemental routine
+  !> works on both single items and arrays
+  !> @param[inout] this - Tree to deallocate
   PURE ELEMENTAL SUBROUTINE eit_destructor(this)
     TYPE(eis_tree_item), INTENT(INOUT) :: this
 
@@ -32,6 +39,22 @@ MODULE eis_tree_mod
 
 
 
+  !> @brief
+  !> Simplify a stack. Does this by converting to an AST and then recursively
+  !> coverting nodes to simple constants if all nodes beneath them are marked
+  !> as simplifyable
+  !> @param[inout] stack - Stack to simplify. If "stack_out" is not specified
+  !> then the simplified stack is stored back into "stack". If stack_out is
+  !> specified then "stack" is not changed
+  !> @param[in] params - Host code specified custom parameters. These are passed
+  !> to each function in the stack so that they can mark themselves
+  !> if they are conditionally simplifyable based on parameters. May be 
+  !> C_PTR_NULL
+  !> @param[inout] errcode - Error code returned by simplify operation
+  !> @param[inout] err_handler - Error handler object. Optional, default no
+  !> error reporting
+  !> @param[out] stack_out - Stack to hold result of simplified stack. Optional,
+  !> default is store simplified stack in "stack" variable
   SUBROUTINE eis_simplify_stack(stack, params, errcode, err_handler, stack_out)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
@@ -83,8 +106,14 @@ MODULE eis_tree_mod
 
 
 
+  !> @brief
+  !> Convert a stack to an AST recursively
+  !> @param[in] stack - stack that is being converted
+  !> @param[inout] curindex - stack position that is being considered
+  !> @param[inout] current - Pointer to the current tree node that is being 
+  !>built
   RECURSIVE SUBROUTINE eis_build_node(stack, curindex, current)
-    TYPE(eis_stack) :: stack
+    TYPE(eis_stack), INTENT(IN) :: stack
     INTEGER, INTENT(INOUT) :: curindex
     TYPE(eis_tree_item), POINTER, INTENT(INOUT) :: current
     TYPE(eis_tree_item), POINTER :: p
@@ -109,17 +138,19 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE move_tree_item(source, dest)
-    TYPE(eis_tree_item), INTENT(INOUT) :: source
-    TYPE(eis_tree_item), INTENT(OUT) :: dest
-
-    dest = source
-    source%nodes => NULL()
-
-  END SUBROUTINE move_tree_item
-
-
-
+  !> @brief
+  !> Simplify a tree given the head node. Does this by recursively
+  !> coverting nodes to simple constants if all nodes beneath them are marked
+  !> as simplifyable
+  !> @param[inout] tree - Tree to simplify. Tree is always simplified "inline"
+  !> and is changed to reflect the simplification
+  !> @param[in] params - Host code specified custom parameters. These are passed
+  !> to each function in the tree so that they can mark themselves
+  !> if they are conditionally simplifyable based on parameters. May be 
+  !> C_PTR_NULL
+  !> @param[inout] errcode - Error code returned by simplify operation
+  !> @param[inout] err_handler - Error handler object. Optional, default no
+  !> error reporting
   RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode, err_handler)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     TYPE(C_PTR), INTENT(IN) :: params
@@ -189,6 +220,10 @@ MODULE eis_tree_mod
 
 
 
+  !> @brief
+  !> Convert an AST back into a stack
+  !> @param[in] tree - AST to covert to stack
+  !> @param[inout] stack_in - stack to build the converted AST in
   RECURSIVE SUBROUTINE eis_tree_to_stack(tree, stack_in)
     TYPE(eis_tree_item), INTENT(IN) :: tree
     TYPE(eis_stack), INTENT(INOUT) :: stack_in
@@ -206,22 +241,15 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_simple_dot(root)
-    TYPE(eis_tree_item) :: root
-
-    OPEN(UNIT=10)
-    CALL eis_tree_to_dot(root, 10)
-    FLUSH(10)
-    CLOSE(10)
-
-  END SUBROUTINE eis_simple_dot
-
-
-
-  SUBROUTINE eis_visualise_stack(stack, lun)
+  !> @brief
+  !> Convert a stack into a string containing a dot representation
+  !> of the stack
+  !> @param[in] stack - Stack to visualise
+  !> @param[inout] str - String to hold the dot representation
+  SUBROUTINE eis_visualise_stack(stack, str)
 
     TYPE(eis_stack), INTENT(IN) :: stack
-    INTEGER, INTENT(IN) :: lun
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
 
@@ -231,7 +259,7 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_tree_to_dot(root, lun)
+      CALL eis_tree_to_dot(root, str)
       DEALLOCATE(root)
     END DO
 
@@ -239,27 +267,29 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_tree_to_dot(root, lun)
+  SUBROUTINE eis_tree_to_dot(root, str)
     TYPE(eis_tree_item) :: root
-    INTEGER, INTENT(IN) :: lun
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     INTEGER :: root_level
 
     root_level = 1
 
-    WRITE(lun,*) 'strict graph G {'
-    CALL dot_output(root, root_level)
-    WRITE(lun,*) '}'
+    CALL eis_append_string(str, 'strict graph G {')
+    CALL dot_output(root, str, root_level)
+    CALL eis_append_string(str, '}')
 
   END SUBROUTINE eis_tree_to_dot
 
 
 
-  RECURSIVE SUBROUTINE dot_output(node, id_in)
+  RECURSIVE SUBROUTINE dot_output(node, str, id_in)
 
     TYPE(eis_tree_item), INTENT(IN) :: node
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     INTEGER, INTENT(INOUT) :: id_in
     INTEGER :: inode, my_id
     CHARACTER(LEN=10) :: ds
+    CHARACTER(LEN=5) ::  val1, val2
 
     my_id = id_in
 
@@ -272,13 +302,17 @@ MODULE eis_tree_mod
         ds = "circle"
     END SELECT
 
-    WRITE(10, '(I4.4,A,A,A)') id_in, '[label="'//node%co_value%text &
-        //'"] [shape=', TRIM(ds),'];'
+    WRITE(val1, '(I5.5)') id_in
+    CALL eis_append_string(str, TRIM(val1) // '[label="' // node%co_value%text &
+        // '"] [shape=' // TRIM(ds) //'];')
+
     IF (ASSOCIATED(node%nodes)) THEN
       DO inode = SIZE(node%nodes), 1, -1
         id_in = id_in + 1
-        WRITE(10,'(I4.4,A,I4.4,A)') my_id,' -- ', id_in, ';'
-        CALL dot_output(node%nodes(inode), id_in)
+        WRITE(val1, '(I5.5)') my_id
+        WRITE(val2, '(I5.5)') id_in
+        CALL eis_append_string(str, val1 // ' -- ' // val2 // ';')
+        CALL dot_output(node%nodes(inode), str, id_in)
       END DO
     END IF
 

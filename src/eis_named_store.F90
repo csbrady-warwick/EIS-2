@@ -6,6 +6,7 @@ MODULE eis_named_store_mod
   INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
   INTEGER(INT64), PARAMETER :: default_bucket_count = 100
 
+  !>Item stored in a named store
   TYPE :: named_store_item
     CHARACTER(LEN=:), ALLOCATABLE :: name
     LOGICAL :: owns = .TRUE.
@@ -15,6 +16,7 @@ MODULE eis_named_store_mod
     FINAL :: nsi_destructor
   END TYPE named_store_item
 
+  !> Simple list holding all items in a single bucket of the hash table
   TYPE :: named_store_inner_list
     TYPE(named_store_item), DIMENSION(:), POINTER :: list => NULL()
     CONTAINS
@@ -25,6 +27,7 @@ MODULE eis_named_store_mod
     FINAL :: nsil_destructor
   END TYPE named_store_inner_list
 
+  !> Associative array implemented using hash table
   TYPE :: named_store
     PRIVATE
     TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: buckets
@@ -223,7 +226,7 @@ CONTAINS
   !> Implementation of djb2 hash
   !> @param[in] this
   !> @param[in] name
-  !> @result hash
+  !> @return hash
   FUNCTION ns_hash(this, name) RESULT(hash)
 
     CLASS(named_store), INTENT(IN) :: this !< self pointer
@@ -247,7 +250,7 @@ CONTAINS
   !> return NULL pointer if item is not present
   !> @param[in] this
   !> @param[in] name
-  !> @result item
+  !> @return item
   FUNCTION ns_get(this, name) RESULT (item)
 
     CLASS(named_store), INTENT(IN) :: this

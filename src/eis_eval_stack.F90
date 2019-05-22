@@ -26,13 +26,14 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Resize the backing store 
+  !> Resize the backing store. Will not become smaller than
+  !> the part of the stack that is in use
   !> @param[inout] this
   !> @param[in] n_elements
   SUBROUTINE ees_resize(this, n_elements, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    INTEGER, INTENT(IN) :: n_elements
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN) :: n_elements !< Number of elements to set the size to
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: newcount
 
@@ -52,13 +53,15 @@ MODULE eis_eval_stack_mod
   !> @brief
   !> Evaluate a single stack element
   !> @param[inout] this
-  !> @param[in] n_elements
+  !> @param[in] user_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
   SUBROUTINE ees_eval_element(this, element, user_params, status_code, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    TYPE(eis_stack_element), INTENT(IN) :: element
-    TYPE(C_PTR), INTENT(IN) :: user_params
-    INTEGER(eis_status), INTENT(INOUT) :: status_code
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_stack_element), INTENT(IN) :: element !< Element to be evaluated
+    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code supplied parameters
+    INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
     IF (ASSOCIATED(element%eval_fn)) THEN
       IF (.NOT. ALLOCATED(this%fn_call_vals)) THEN
@@ -84,8 +87,8 @@ MODULE eis_eval_stack_mod
   !> @param [inout] errcode
   SUBROUTINE ees_push(this, value, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    REAL(eis_num), INTENT(IN) :: value
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+    REAL(eis_num), INTENT(IN) :: value !< Value to push on the stack
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
     IF (.NOT. ALLOCATED(this%entries)) CALL this%resize(1, errcode)
     IF (this%stack_point == SIZE(this%entries)) &
@@ -106,8 +109,8 @@ MODULE eis_eval_stack_mod
   !> @param[inout] errcode
   SUBROUTINE ees_pop_scalar(this, value, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    REAL(eis_num), INTENT(OUT) :: value
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+    REAL(eis_num), INTENT(OUT) :: value !< Value to pop off the stack
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
     IF (this%stack_point > 0) THEN
       value = this%entries(this%stack_point)
@@ -129,9 +132,10 @@ MODULE eis_eval_stack_mod
   !> @param[inout] errcode
   SUBROUTINE ees_pop_vector(this, value_count, values, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    INTEGER, INTENT(IN) :: value_count
+    INTEGER, INTENT(IN) :: value_count !< Number of values to pop off the stack
+    !> Array to hold the popped values
     REAL(eis_num), DIMENSION(:), INTENT(OUT) :: values
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
     IF (this%stack_point >= value_count) THEN
       values(1:value_count) = this%entries(this%stack_point - value_count + 1 &
@@ -153,8 +157,9 @@ MODULE eis_eval_stack_mod
   !> @param[inout] errcode
   SUBROUTINE ees_trim_first(this, value, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
+    !> Value removed from the bottom of the stack
     REAL(eis_num), INTENT(OUT) :: value
-    INTEGER(eis_i8), INTENT(INOUT) :: errcode
+    INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
     IF (this%stack_point > 0) THEN
       value = this%entries(1)
@@ -170,18 +175,28 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Evaluate a stack to a set of results
+  !> Evaluate a stack to a set of results. Output array will must be allocatable
+  !> and if it is too small to hold the results then it will be reallocated to
+  !> be large enough to hold them
   !> @param[inout] this
   !> @param[in] stack
-  !> @param[in] result_vals
+  !> @param[inout] result_vals
+  !> @param[in] user_params
+  !> @param[inout] errcode
+  !> @param[inout] err_handler
+  !> @param[out] is_no_op
   FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode, &
       err_handler, is_no_op) RESULT(result_count)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
-    TYPE(eis_stack), INTENT(IN) :: stack
-    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_vals
-    TYPE(C_PTR), INTENT(IN) :: user_params
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
+    !> Array holding the results of the evaluation
+    REAL(eis_num), DIMENSION(:), INTENT(INOUT), ALLOCATABLE :: result_vals
+    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code user supplied parameters
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code
+    !< Error handler instance. Option, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Logical value for if expression is flagged as being a null operation.
+    !> Optional, default is not to return the null operation status
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     INTEGER(eis_error) :: err
     INTEGER(eis_status) :: stat_in, status

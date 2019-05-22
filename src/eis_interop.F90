@@ -8,20 +8,29 @@ MODULE eis_parser_interop
 
   CONTAINS
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Create a new interoperable parser
+  !> @return create_new_parser
   FUNCTION create_new_parser()
     TYPE(eis_parser), POINTER :: new
-    INTEGER :: create_new_parser
+    INTEGER :: create_new_parser !< Index of returned parser
 
     ALLOCATE(new)
-    create_new_parser = eis_add_interop_parser(new)
+    create_new_parser = eis_add_interop_parser(new, holds = .TRUE.)
 
   END FUNCTION create_new_parser
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Create a new interoperable stack
+  !> @param[in] parser_id
+  !> @return create_new_parser
   FUNCTION create_new_stack(parser_id)
-    INTEGER, INTENT(IN) :: parser_id
-    INTEGER :: create_new_stack
+    INTEGER, INTENT(IN) :: parser_id !< ID of parser to associate the stack with
+    INTEGER :: create_new_stack !< Index of created stack
     TYPE(eis_stack), POINTER :: new
 
     ALLOCATE(new)
@@ -31,6 +40,18 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to create a parser and return a unique id that
+  !> is used in future calls to the parser system
+  !> @param[in] should_simplify - Should this parser auto-simplify? True if != 0
+  !> @param[in] should_minify - Should the parser auto-minify? True if !=0
+  !> @param[in] no_import - Should the parser suppress import of namespaces.
+  !> True if != 0
+  !> @param[in] physics - Which if any physics modules should be automatically
+  !> imported into the global namespace
+  !> @param language - Which language should error messages be reported in 
+  !> @return parser_id - Unique ID of the created parser
   FUNCTION eis_create_parser(should_simplify, should_minify, no_import, &
       physics, language) BIND(C) RESULT(parser_id)
 
@@ -50,6 +71,15 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to create a stack associated with a parser
+  !> this stack can then be evaluated by ID as required
+  !> @param[in] parser_id - ID of parser to associate the stack with
+  !> @param[in] expression - String to evaluate to stack
+  !> @param[inout] capbits - Capability bits returned from parsing the stack
+  !> @param[inout] errcode - Error code
+  !> @return stack_id - Unique ID of the created parser
   FUNCTION eis_create_stack(parser_id, expression, cap_bits, errcode) &
       BIND(C) RESULT(stack_id)
 
@@ -79,6 +109,23 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to add a function associated with a name that can
+  !> be called from a parser expression
+  !> @param[in] parser_id - ID of parser to add the function to
+  !> @param[in] name - Name to associate function with in expression
+  !> @param[in] fn - Pointer to function to be called when the name is
+  !> encountered
+  !> @param[in] cap_bits - Capability bits
+  !> @param[in] expected params - Expected number of parameters for the function
+  !> if <0 then function will be variadic
+  !> @param[in] can_simplify - Should the function be simplified through
+  !> in general this should be 1 unless the function has different effects for
+  !> different host code parameters
+  !> @param[in] global - If 1 add the function to all parsers, if 0 only the
+  !> specified parser
+  !> @param[inout] errcode - Error code
   SUBROUTINE eis_add_function(parser_id, name, fn, cap_bits, &
       expected_params, can_simplify, global, errcode) BIND(C)
 
@@ -110,6 +157,21 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to add a variable associated with a name that can
+  !> be called from a parser expression
+  !> @param[in] parser_id - ID of parser to add the variable to
+  !> @param[in] name - Name to associate variable with in expression
+  !> @param[in] fn - Pointer to function to be called when the name is
+  !> encountered
+  !> @param[in] cap_bits - Capability bits
+  !> @param[in] can_simplify - Should the variable be simplified
+  !> in general this should be 1 unless the variable has different values for
+  !> different host code parameters
+  !> @param[in] global - If 1 add the function to all parsers, if 0 only the
+  !> specified parser
+  !> @param[inout] errcode - Error code
   SUBROUTINE eis_add_variable(parser_id, name, fn, cap_bits, &
       can_simplify, global, errcode) BIND(C)
 
@@ -140,6 +202,19 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to add a constant associated with a name that can
+  !> be called from a parser expression
+  !> @param[in] parser_id - ID of parser to add the variable to
+  !> @param[in] name - Name to associate variable with in expression
+  !> @param[in] value - Value to associate with name
+  !> @param[in] cap_bits - Capability bits
+  !> @param[in] can_simplify - Should the constant be simplified. 
+  !> Generally always 1
+  !> @param[in] global - If 1 add the function to all parsers, if 0 only the
+  !> specified parser
+  !> @param[inout] errcode - Error code
   SUBROUTINE eis_add_constant(parser_id, name, value, cap_bits, &
       can_simplify, global, errcode) BIND(C)
 
@@ -170,11 +245,32 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to evaluate a stored stack and return
+  !> the restul
+  !> @details
+  !> Unlike the Fortran version of this function this function takes
+  !> a number of expected return values and returns an error if the number of
+  !> actual return values is different to this value. The number of returned
+  !> results is MIN(res_len, results_from_eval).
+  !> @param[in] stack_id - ID of stored stack to evaluate
+  !> @param[in] res_len - Length of the expected result and number of elements
+  !> of the "result" array
+  !> @param[out] result - Array that will be populated with the results of the
+  !> evaluation. Array must be at least res_len elements long
+  !> @param[inout] errcode - Error code
+  !> @param[in] user_params - Pointer to C interoperable structure that is
+  !> passed to all function that are called as expression keys are evaluated
+  !> @param[out] is_no_op - Used with the special "where" directive to specify
+  !> that the where condition has not been satisfied and no changes should be
+  !> made
+  !> @return eis_evaluate_stack - Number of results actually returned
   FUNCTION eis_evaluate_stack(stack_id, res_len, result, errcode, &
       user_params, is_no_op) BIND(C)
 
     INTEGER(C_INT), VALUE :: stack_id, res_len
-    REAL(eis_num_c), DIMENSION(res_len) :: result
+    REAL(eis_num_c), DIMENSION(res_len), INTENT(OUT) :: result
     INTEGER(eis_error_c), INTENT(OUT) :: errcode
     TYPE(C_PTR), VALUE :: user_params
     INTEGER(C_INT), INTENT(OUT) :: is_no_op
@@ -215,7 +311,12 @@ MODULE eis_parser_interop
   END FUNCTION eis_evaluate_stack
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to get the number of errors caused by evaluating a
+  !> stack
+  !> @param[in] stack_id - ID of stored stack to evaluate
+  !> @return eis_get_error_count - Number of errors in the error handler
   FUNCTION eis_get_error_count(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
@@ -229,6 +330,22 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> C interoperable function to get the error report from a stack id
+  !> and an error id. The error ID is an integer between 1 and the result
+  !> from eis_get_error_count
+  !> @param[in] stack_id - ID of stored stack to evaluate
+  !> @param[in] error_id - ID of stored error
+  !> @param[in] buflen - Size of the output buffer
+  !> @param[out] string_out - char* array of at least length buflen
+  !> will hold the returned output buffer. Does not have a terminal
+  !> newline sequence. If it is not long enough to hold the error report
+  !> then it will copy as many characters as it can to fill the buffer. Always
+  !> finished with a null terminator character unless buflen = 0
+  !> @return eis_get_error_report - Length of the error report + 1. If you
+  !> allocate a string at least this long it will be able to hold the 
+  !> full error report and the null terminator character
   FUNCTION eis_get_error_report(stack_id, error_id, buflen, string_out) BIND(C)
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id, error_id, buflen
     TYPE(C_PTR), VALUE, INTENT(IN) :: string_out
@@ -239,13 +356,18 @@ MODULE eis_parser_interop
     parser => eis_get_interop_parser(stack_id)
     CALL parser%get_error_report(error_id, errstr)
     CALL f_c_string(errstr, buflen, string_out)
-    eis_get_error_report = LEN(errstr)
+    eis_get_error_report = LEN(errstr) + 1
     DEALLOCATE(errstr)
 
   END FUNCTION eis_get_error_report
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Increment the reference count for a stack. Use to indicate
+  !> that another part of your code wants to use a given stored stack
+  !> @param[in] stack_id - ID of stored stack to increment the reference of
   SUBROUTINE eis_stack_inc_ref(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
@@ -260,6 +382,15 @@ MODULE eis_parser_interop
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Decrement the reference count for a stack. Use to indicate
+  !> that another part of your code has finished using a given stack.
+  !> When the reference count reaches zero the stack will be deallocated
+  !> IF it was created by eis_create_stack. If it was created by a Fortran
+  !> code and given to the interoperable interface then it will not be 
+  !> deallocated even when the reference count reaches zero
+  !> @param[in] stack_id - ID of stored stack to decrement the reference of
   SUBROUTINE eis_stack_dec_ref(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id

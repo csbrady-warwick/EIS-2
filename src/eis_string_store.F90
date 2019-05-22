@@ -7,12 +7,18 @@ MODULE eis_string_store_mod
 
   IMPLICIT NONE
 
+  !>@class
+  !>Class holding the string within the string store
+  !>If compiled with support is UCS4 string
   TYPE :: string_holder
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: text
     CONTAINS
     FINAL :: sh_destructor
   END TYPE string_holder
 
+  !>@class
+  !>String store. Maps a key string to a stored string
+  !> key string is always ASCII, stored string is UCS4 if available
   TYPE :: eis_string_store
     PRIVATE
     TYPE(named_store) :: strings
@@ -46,16 +52,31 @@ MODULE eis_string_store_mod
 
 CONTAINS
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Deallocates the item held in the store
+  !> Not strictly needed per standard but here for
+  !> future use and clarity
+  !> @param[inout] this
   SUBROUTINE sh_destructor(this)
     TYPE(string_holder), INTENT(INOUT) :: this
     IF (ALLOCATED(this%text)) DEALLOCATE(this%text)
   END SUBROUTINE sh_destructor
 
 
+
 #ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Stores a string using a named key. String is UCS4
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[in] text
   SUBROUTINE ess_store_string_ucs4(this, key, text)
     CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> Key associated with string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
     TYPE(string_holder) :: temp
 
@@ -67,9 +88,17 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Stores a string using a named key. String is ASCII
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[in] text
   SUBROUTINE ess_store_string_ascii(this, key, text)
     CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> Key associated with string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    !> String to store
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: text
     TYPE(string_holder) :: temp
 
@@ -81,11 +110,27 @@ CONTAINS
 
 
 #ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Retrieves a string from the store and returns it
+  !> in a UCS4 string. The string must be allocatable.
+  !> If the string is unallocated on entry then it is allocated to be large
+  !> enough to hold the returned string. If the string is allocated and large
+  !> enough to hold the returned string then it is set to the returned string
+  !> but the size is not changed. If the string is allocated but is too small
+  !> to hold the returned string then it is reallocated large enough to hold
+  !> the returned string.
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[inout] text
+  !> @return ess_get_string_ucs4
   FUNCTION ess_get_string_ucs4(this, key, text)
     CLASS(eis_string_store), INTENT(IN) :: this
+    !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    !> Variable to hold returned string
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: text
-    LOGICAL :: ess_get_string_ucs4
+    LOGICAL :: ess_get_string_ucs4 !< Was key found in store
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
@@ -118,11 +163,27 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Retrieves a string from the store and returns it
+  !> in an ASCII string. The string must be allocatable.
+  !> If the string is unallocated on entry then it is allocated to be large
+  !> enough to hold the returned string. If the string is allocated and large
+  !> enough to hold the returned string then it is set to the returned string
+  !> but the size is not changed. If the string is allocated but is too small
+  !> to hold the returned string then it is reallocated large enough to hold
+  !> the returned string.
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[inout] text
+  !> @return ess_get_string_ascii
   FUNCTION ess_get_string_ascii(this,key, text)
     CLASS(eis_string_store), INTENT(IN) :: this
+    !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    !> Variable to hold returned string
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
-    LOGICAL :: ess_get_string_ascii
+    LOGICAL :: ess_get_string_ascii !< Was key found in store
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
@@ -156,11 +217,30 @@ CONTAINS
 
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Retrieves a string from the store and appends it to an existing UCS4
+  !> string. The string must be allocatable.
+  !> If the string is unallocated on entry then it is allocated to be large
+  !> enough to hold the returned string. If the string is allocated then it will
+  !> always be reallocated to be large enough to hold exactly the combination of
+  !> the existing string and the new string. No TRIM or ADJUST operation is
+  !> applied so if the existing content of "text" is smaller than the length of
+  !> "text" the rest of the original "text" will appear as spaces in the 
+  !> combined string.
+  !> So for example combining 'test   ' with 'test2' will yield 'test   test2'
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[inout] text
+  !> @param[in] newline
   FUNCTION ess_append_string_ucs4(this, key, text, newline)
     CLASS(eis_string_store), INTENT(IN) :: this
+    !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
+    !> Text variable to append with output
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: text
+    !> Logical flag to combine strings with a newline character between them.
+    !> Optional, default .TRUE. (put newline between strings)
     LOGICAL, INTENT(IN), OPTIONAL :: newline
     LOGICAL :: ess_append_string_ucs4
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: retreived
@@ -173,7 +253,22 @@ CONTAINS
   END FUNCTION ess_append_string_ucs4
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Retrieves a string from the store and appends it to an existing ASCII
+  !> string. The string must be allocatable.
+  !> If the string is unallocated on entry then it is allocated to be large
+  !> enough to hold the returned string. If the string is allocated then it will
+  !> always be reallocated to be large enough to hold exactly the combination of
+  !> the existing string and the new string. No TRIM or ADJUST operation is
+  !> applied so if the existing content of "text" is smaller than the length of
+  !> "text" the rest of the original "text" will appear as spaces in the 
+  !> combined string.
+  !> So for example combining 'test   ' with 'test2' will yield 'test   test2'
+  !> @param[inout] this
+  !> @param[in] key
+  !> @param[inout] text
+  !> @param[in] newline
   FUNCTION ess_append_string_ascii(this, key, text, newline)
     CLASS(eis_string_store), INTENT(IN) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
@@ -190,9 +285,20 @@ CONTAINS
   END FUNCTION ess_append_string_ascii
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to do formatted replacement of text based on keys stored in this
+  !> store
+  !> @details
+  !> This routine takes a string that contains replacement keys of the form
+  !> "{key}" and replaces them with the text associated with they key "key"
+  !> stored in this store
+  !> @param[in] this
+  !> @param[inout] text
   SUBROUTINE ess_format_fill_aa(this, text)
     CLASS(eis_string_store), INTENT(IN) :: this
+    !> String containing the text with replacement keys in. Returns completed 
+    !> text
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp, temp_o
     INTEGER :: istr, rstr

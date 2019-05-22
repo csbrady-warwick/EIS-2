@@ -27,9 +27,25 @@ MODULE eis_utils
 
   CONTAINS
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to append a new string to the end of an existing string
+  !> optionally with a suitable newline sequence between between them.
+  !> Both strings must be ASCII kind
+  !> @details
+  !> The old string is reallocated to be exactly as LEN(str_old) + LEN(str_new)
+  !> If str_old is not allocated then it becomes a copy of str_new.
+  !> @param[inout] str_old
+  !> @param[in] str_new
+  !> @param[in] newline
   SUBROUTINE eis_append_string_aa(str_old, str_new, newline)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str_old
+    !> New string to append to the existing string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str_new
+    !> Logical flag. If .TRUE. then the strings are combined with a newline
+    !> sequence between them. If .FALSE. then they are directly combined.
+    !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: newline
     CHARACTER(KIND=ASCII) :: prototype
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp
@@ -56,9 +72,25 @@ MODULE eis_utils
 
 
 #ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to append a new string to the end of an existing string
+  !> optionally with a suitable newline sequence between between them.
+  !> Both strings must be UCS4 kind
+  !> @details
+  !> The old string is reallocated to be exactly as LEN(str_old) + LEN(str_new)
+  !> If str_old is not allocated then it becomes a copy of str_new.
+  !> @param[inout] str_old
+  !> @param[in] str_new
+  !> @param[in] newline
   SUBROUTINE eis_append_string_uu(str_old, str_new, newline)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: str_old
+    !> New string to append to the existing string
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: str_new
+    !> Logical flag. If .TRUE. then the strings are combined with a newline
+    !> sequence between them. If .FALSE. then they are directly combined.
+    !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: newline
     CHARACTER(KIND=UCS4) :: prototype
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: temp
@@ -84,9 +116,25 @@ MODULE eis_utils
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to append a new string to the end of an existing string
+  !> optionally with a suitable newline sequence between between them.
+  !> str_old is UCS4, str_new is ASCII
+  !> @details
+  !> The old string is reallocated to be exactly as LEN(str_old) + LEN(str_new)
+  !> If str_old is not allocated then it becomes a copy of str_new.
+  !> @param[inout] str_old
+  !> @param[in] str_new
+  !> @param[in] newline
   SUBROUTINE eis_append_string_ua(str_old, str_new, newline)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: str_old
+    !> New string to append to the existing string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str_new
+    !> Logical flag. If .TRUE. then the strings are combined with a newline
+    !> sequence between them. If .FALSE. then they are directly combined.
+    !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: newline
     CHARACTER(KIND=UCS4) :: prototype
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: temp, temp_src
@@ -114,10 +162,25 @@ MODULE eis_utils
   END SUBROUTINE eis_append_string_ua
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to append a new string to the end of an existing string
+  !> optionally with a suitable newline sequence between between them.
+  !> str_old is ASCII, str_new is UCS4
+  !> @details
+  !> The old string is reallocated to be exactly as LEN(str_old) + LEN(str_new)
+  !> If str_old is not allocated then it becomes a copy of str_new.
+  !> @param[inout] str_old
+  !> @param[in] str_new
+  !> @param[in] newline
   SUBROUTINE eis_append_string_au(str_old, str_new, newline)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str_old
+    !> New string to append to the existing string
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: str_new
+    !> Logical flag. If .TRUE. then the strings are combined with a newline
+    !> sequence between them. If .FALSE. then they are directly combined.
+    !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: newline
     CHARACTER(KIND=ASCII) :: prototype
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp, temp_src
@@ -145,8 +208,13 @@ MODULE eis_utils
   END SUBROUTINE eis_append_string_au
 #endif
 
-  !>Function to copy a C string into a Fortran string
-  !>If the destination string passed is too short then it truncates
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to copy a C string into a Fortran string
+  !> If the destination string passed is too short then it truncates
+  !> @param[in] c_string
+  !> @param[in] c_str_size
+  !> @param[out] f_string
   PURE SUBROUTINE c_f_copy_string(c_string, c_str_size, f_string)
 
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(*), INTENT(IN) :: c_string
@@ -163,9 +231,19 @@ MODULE eis_utils
 
 
 
-  !>Function to produce a Fortran string from a C string
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Take a C string as a simple character array and copy it into a normal
+  !> Fortran string. Fortran output string must be allocatable and will be
+  !> allocated to be exactly large enough to hold the input C string.
+  !> Malformed C strings that lack a null terminator will cause this function
+  !> to hang
+  !> @param[in] c_string
+  !> @param[out] f_string
   SUBROUTINE c_f_string_array(c_string, f_string)
+    !> Input C string as an array of character
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(*), INTENT(IN) :: c_string
+    !> Output string. Must be allocatable
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: f_string
     INTEGER :: c_end, istr
 
@@ -187,9 +265,19 @@ MODULE eis_utils
 
 
 
-  !>Function to produce a Fortran string from a C string
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Take a C string as a C pointer and copy it into a normal
+  !> Fortran string. Fortran output string must be allocatable and will be
+  !> allocated to be exactly large enough to hold the input C string.
+  !> Malformed C strings that lack a null terminator will cause this function
+  !> to hang
+  !> @param[in] c_string
+  !> @param[out] f_string
   SUBROUTINE c_f_string_ptr(c_string, f_string)
+    !> Input C string as an array of character
     TYPE(C_PTR), INTENT(IN) :: c_string
+    !> Output string. Must be allocatable
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: f_string
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), POINTER :: c_string_arr
     INTEGER :: c_end, istr
@@ -213,9 +301,20 @@ MODULE eis_utils
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Copy a Fortran string into a C string, specifying the maximum length of
+  !> the C string. Up to "len_c_string-1" characters are copied from f_string
+  !> to c_string and then appended with a null terminator character
+  !> @param[in] f_string
+  !> @param[in] len_c_string
+  !> @param[out] c_string
   SUBROUTINE f_c_string_array(f_string, len_c_string, c_string)
+    !> Fortran source string
     CHARACTER(LEN=*), INTENT(IN) :: f_string
+    !> Maximum length of the C string including the null terminator
     INTEGER, INTENT(IN) :: len_c_string
+    !> C output string
     CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(len_c_string), INTENT(OUT) :: &
         c_string
     INTEGER :: copylen, istr
@@ -230,9 +329,20 @@ MODULE eis_utils
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Copy a Fortran string into a C pointer, specifying the maximum length of
+  !> the C string. Up to "len_c_string-1" characters are copied from f_string
+  !> to c_string and then appended with a null terminator character
+  !> @param[in] f_string
+  !> @param[in] len_c_string
+  !> @param[out] c_string
   SUBROUTINE f_c_string_ptr(f_string, len_c_string, c_string)
+    !> Fortran source string
     CHARACTER(LEN=*), INTENT(IN) :: f_string
+    !> @param[in] len_c_string
     INTEGER, INTENT(IN) :: len_c_string
+    !> @param[out] c_string
     TYPE(C_PTR), INTENT(IN) :: c_string
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), POINTER :: c_string_arr
 

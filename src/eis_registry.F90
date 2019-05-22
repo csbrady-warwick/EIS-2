@@ -8,18 +8,27 @@ MODULE eis_registry_mod
 
   IMPLICIT NONE
 
+  !>@class
+  !> Type holding pointer to the two kinds of functions used for emplaced
+  !> variables and functions
   TYPE :: late_bind_fn_holder
     PROCEDURE(parser_late_bind_interop_fn), POINTER, NOPASS :: c_contents &
        => NULL()
     PROCEDURE(parser_late_bind_fn), POINTER, NOPASS :: contents => NULL()
   END TYPE late_bind_fn_holder
 
+  !>@class
+  !> Type holding a string
   TYPE :: string_holder
     CHARACTER(LEN=:), ALLOCATABLE :: text
     CONTAINS
     FINAL :: sh_destructor
   END TYPE string_holder
 
+  !>@class
+  !>Type representing a namespace. Holds the list of all namespaces within
+  !> a given namespace and the list of all functions, constants and variables
+  !> stored in a given namespace
   TYPE :: eis_namespace
     PRIVATE
     TYPE(named_store) :: namespaces
@@ -31,6 +40,9 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: get => ern_get_item
   END TYPE eis_namespace
 
+  !>@class
+  !> Type holding the information needed to construct an instance of a 
+  !> function, constant or variable
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     LOGICAL :: can_simplify = .TRUE.
@@ -44,6 +56,8 @@ MODULE eis_registry_mod
     LOGICAL :: defer = .FALSE.
   END TYPE eis_function_entry
 
+  !> Registry for all valid functions, constants and variables for a given
+  !> parser. Stores all variables except unary operators in a namespace object
   TYPE :: eis_registry
     PRIVATE
     TYPE(eis_namespace) :: stored_items
@@ -74,17 +88,41 @@ MODULE eis_registry_mod
 
 CONTAINS
 
+  !>Note that the following terms will be used in this file
+  !> item - A function, variable, constant, operator etc.
+  !> stack - the combined set of items that makes up a parsed expression
+  !> capability bits - A user specified bitmask for the 
+  !> capabilities of an item. Capability bits are combined
+  !> by bitwise OR and the result is stored for the stack
+  !> Use for .e.g indicating that a stack can be time varying or space varying
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Deallocates string held in string holder on destruction
+  !> not needed per standard but implemented for completeness
+  !> @param[inout] this
   SUBROUTINE sh_destructor(this)
     TYPE(string_holder), INTENT(INOUT) :: this
     IF (ALLOCATED(this%text)) DEALLOCATE(this%text)
   END SUBROUTINE sh_destructor
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to a namespace
+  !> @details
+  !> This function takes an unlimited polymorphic pointer
+  !> and a name to store it under. If the name contains a dot
+  !> then it separates the name on the dot recursively creating
+  !> new levels of namespace as it goes until it can finally
+  !> store the object
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] item
   RECURSIVE SUBROUTINE ern_add_item(this, name, item)
     CLASS(eis_namespace), INTENT(INOUT) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    CLASS(*), INTENT(IN) :: item
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to store item under
+    CLASS(*), INTENT(IN) :: item !< Item to store
     CLASS(*), POINTER :: gptr
     TYPE(eis_namespace), POINTER :: new, old
     INTEGER :: dotloc
@@ -115,11 +153,24 @@ CONTAINS
   END SUBROUTINE ern_add_item
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Include a namespace in the list of namespaces to search
+  !> @details
+  !> Specifies that a given namespace should be tested automatically
+  !> when an item is looked up by name. This has the effect of putting the
+  !> item in the global namespace. The lookup order is currently
+  !> 1) the global namespace
+  !> 2) included namespaces in the order they were included in
+  !> this behaviour is not guaranteed to be preserved in future releases.
+  !> Note that namspaces are not recursively included by default
+  !> @param[inout] this
+  !> @param[in] namespace
+  !> @param[in] only final
   RECURSIVE SUBROUTINE ern_include_namespace(this, namespace, only_final)
     CLASS(eis_namespace), INTENT(INOUT) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: namespace
-    LOGICAL, INTENT(IN), OPTIONAL :: only_final
+    CHARACTER(LEN=*), INTENT(IN) :: namespace !< Namespace to include
+    LOGICAL, INTENT(IN), OPTIONAL :: only_final !< Reserved for future use
     LOGICAL :: final_i
     INTEGER :: dotloc, ind
     TYPE(string_holder) :: sh
@@ -142,12 +193,28 @@ CONTAINS
   END SUBROUTINE ern_include_namespace
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get an item from a namespace
+  !> @details
+  !> Items are looked up using the specified name. If the name includes dots
+  !> then the string is split on the dots and is used to specify a namespace to
+  !> search in. If no dots are present then the global namespace and any
+  !> included namespaces are considered
+  !>The lookup order is currently
+  !> 1) the global namespace
+  !> 2) included namespaces in the order they were included in
+  !> this behaviour is not guaranteed to be preserved in future releases.
+  !> Note that namspaces are not recursively included by default
+  !> @param[inout] this
+  !> @param[in] name
+  !> @return item
   RECURSIVE FUNCTION ern_get_item(this, name) RESULT(item)
     CLASS(eis_namespace), INTENT(INOUT) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name of item to look up
+    CLASS(*), POINTER :: item !< Returned item
     INTEGER :: dotloc, ins_count, c_ins
-    CLASS(*), POINTER :: item, gptr
+    CLASS(*), POINTER :: gptr
     CLASS(string_holder), POINTER :: txt
     CLASS(eis_namespace), POINTER :: old
 
@@ -182,27 +249,48 @@ CONTAINS
   END FUNCTION ern_get_item
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Tell this registry object's namespace store to include a namespace
+  !> @param[inout] this
+  !> @param[in] namespace
   SUBROUTINE eir_include_namespace(this, namespace)
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: namespace
+    CHARACTER(LEN=*), INTENT(IN) :: namespace !< namespace to include
 
     CALL this%stored_items%include_namespace(namespace)
 
   END SUBROUTINE eir_include_namespace
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{constant} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] can_simplify
+  !> @param[in] cap_bits
+  !> @param[in] defer
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_constant(this, name, value, errcode, can_simplify, &
       cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    REAL(eis_num), INTENT(IN) :: value
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with constant
+    REAL(eis_num), INTENT(IN) :: value !< Value of constant
+    !> Error code for store operation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Can this constant be simplified out by the simplifier? Almost always
+    !> .TRUE. for a constant. Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> \glos{capbits} (capability bits} for this constant. Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Should the definition of this constant be \glos{defer}red.
+    !> Optional, default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
 
     TYPE(eis_function_entry) :: temp
@@ -219,16 +307,37 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{variable} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] can_simplify
+  !> @param[in] cap_bits
+  !> @param[in] defer
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_variable(this, name, fn, errcode, can_simplify, &
       cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with constant
+    !> Eval function to be called when evaluating
     PROCEDURE(parser_eval_fn) :: fn
+    !> Error code for store operation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Can this variable be simplified out by the simplifier?
+    !> Normally only .FALSE. if a variable will change value based on
+    !> host code provided user_params
+    !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> \glos{capbits} (capability bits} for this constant. Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Should the definition of this constant be \glos{defer}red.
+    !> Optional, default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
 
@@ -244,17 +353,43 @@ CONTAINS
 
 
 
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{function} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[in] expected_parameters
+  !> @param[inout] errcode
+  !> @param[in] can_simplify
+  !> @param[in] cap_bits
+  !> @param[in] defer
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
       can_simplify, cap_bits, defer, err_handler)
 
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
+    !> Eval function to be called when evaluating
     PROCEDURE(parser_eval_fn) :: fn
+    !> Expected number of parameters for this function. If <0 function will
+    !> accept any number of parameters and fn will be called with the number
+    !> actually provided (variadic function)
     INTEGER, INTENT(IN) :: expected_parameters
+    !> Error code for store operation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Can this function be simplified out by the simplifier?
+    !> Normally only .FALSE. if a function will change behavior based on
+    !> host code provided user_params
+    !> Optional, default .TRUE.
     LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
+    !> \glos{capbits} (capability bits} for this constant. Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Should the definition of this function be \glos{defer}red.
+    !> Optional, default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
 
@@ -271,17 +406,41 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an \glos{operator} to the list of known names for this registry
+  !> Currently this is not exposed to the host code
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[in] associativity
+  !> @param[in[ precedence
+  !> @param[inout] errcode
+  !> @param[in] can_simplify
+  !> @param[in] unary
+  !> @param[in] cap_bits
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
       errcode, can_simplify, unary, cap_bits, err_handler)
 
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with operator
+    !> Eval function to be called when evaluating
     PROCEDURE(parser_eval_fn) :: fn
-    INTEGER, INTENT(IN) :: associativity, precedence
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN) :: associativity !<Associativity of operator
+    INTEGER, INTENT(IN) :: precedence !< Precedence of operator
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code for store
+    !> Can this function be simplified out by the simplifier?
+    !> Normally only .FALSE. if a function will change behavior based on
+    !> host code provided user_params
+    !> Optional, default .TRUE.
     LOGICAL, OPTIONAL :: can_simplify
+    !> Is this a unary or binary operator. .TRUE. is unary, .FALSE. is binary
+    !> Optional, default = .FALSE. (binary operator)
     LOGICAL, OPTIONAL :: unary
+    !> \glos{capbits} (capability bits} for this constant. Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
@@ -308,12 +467,26 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{stack_variable} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] stack
+  !> @param[inout] errcode
+  !> @param[in] defer
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_stack_var(this, name, stack, errcode, defer, err_handler)
     CLASS(eis_registry) :: this
+    !> Name to associate with stack variable
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Existing stack to associate with name
     TYPE(eis_stack), INTENT(IN) :: stack
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code for store
+    !> Should the definition of this function be \glos{defer}red.
+    !> Optional, default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry), TARGET :: temp
     TYPE(eis_function_entry), POINTER :: temp_ptr
@@ -347,14 +520,26 @@ CONTAINS
   END SUBROUTINE eir_add_stack_var
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @internal
+  !> @brief
+  !> Inner function to deal with both Fortran style and C style
+  !> emplaced functions
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] holder
+  !> @param[inout] errcode
+  !> @param[in] expected_parameters
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_emplaced_func_holder(this, name, holder, errcode, &
       expected_parameters, err_handler)
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    TYPE(late_bind_fn_holder), INTENT(in) :: holder
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to store under
+    TYPE(late_bind_fn_holder), INTENT(in) :: holder !< Holder type
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code from store
+    !> Number of expected parameters. Optional, default 0
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    !> Optional error handler
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry), TARGET :: temp
     TYPE(eis_function_entry), POINTER :: temp_ptr
@@ -387,14 +572,26 @@ CONTAINS
   END SUBROUTINE eir_add_emplaced_func_holder
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to add a Fortran style emplaced function or variable
+  !> emplaced variables are implemented as zero parameter functions
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_parameters
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, &
       expected_parameters, err_handler)
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    PROCEDURE(parser_late_bind_fn) :: def_fn
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name associated with emplacement
+    PROCEDURE(parser_late_bind_fn) :: def_fn !< Definting function (Fortran)
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code from store
+    !> Number of expected parameters for the emplacement. <0 is variadic
+    !> function, 0 is used for constant. Optional, default 0
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    !> Error handler object. Optional, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(late_bind_fn_holder) :: holder
 
@@ -406,14 +603,26 @@ CONTAINS
   END SUBROUTINE eir_add_emplaced_function
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to add a C style emplaced function or variable
+  !> emplaced variables are implemented as zero parameter functions
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_parameters
+  !> @param[inout] err_handler
   SUBROUTINE eir_add_emplaced_function_c(this, name, def_fn, errcode, &
       expected_parameters, err_handler)
     CLASS(eis_registry) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    PROCEDURE(parser_late_bind_interop_fn) :: def_fn
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name associated with emplacement
+    PROCEDURE(parser_late_bind_interop_fn) :: def_fn !< Definting function (C)
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code from store
+    !> Number of expected parameters for the emplacement. <0 is variadic
+    !> function, 0 is used for constant. Optional, default 0
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
+    !> Error handler object. Optional, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(late_bind_fn_holder) :: holder
 
@@ -425,15 +634,29 @@ CONTAINS
   END SUBROUTINE eir_add_emplaced_function_c
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to fill a parser block used by the Shunting Yard Algorithm
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] block_in
+  !> @param[inout] coblock_in
+  !> @param[in] unary_ops
+  !> @param[out] cap_bits
+  !> @param[inout] err_handler
   SUBROUTINE eir_fill_block(this, name, block_in, coblock_in, unary_ops, &
       cap_bits, err_handler)
 
     CLASS(eis_registry) :: this
+    !> Name extracted from the parsed string. This will be looked up
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Core block information to be returned on succesful lookup
     TYPE(eis_stack_element), INTENT(INOUT) :: block_in
+    !> Extra block information to be returned on succesful lookup
     TYPE(eis_stack_co_element), INTENT(INOUT) :: coblock_in
+    !> Is it possible that "name" could describe a unary operator
     LOGICAL, INTENT(IN) :: unary_ops
+    !> Capability bits associated with the name
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
@@ -473,12 +696,24 @@ CONTAINS
   END SUBROUTINE eir_fill_block
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to copy in a stack variable to a given point in an existing stack
+  !> either append at the end or at the specified insertion point
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[inout] output
+  !> @param[inout] err_handler
+  !> @param[in] insert_point
   SUBROUTINE eir_copy_in(this, index, output, err_handler, insert_point)
     CLASS(eis_registry) :: this
-    INTEGER(eis_i4), INTENT(IN) :: index
-    TYPE(eis_stack), INTENT(INOUT) :: output
+    INTEGER(eis_i4), INTENT(IN) :: index !< Index number of stack to retrieve
+    TYPE(eis_stack), INTENT(INOUT) :: output !< Stack into which to insert
+    !> Error handler, optional default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Insertion point. Item at the location is replaced with the content of
+    !> the requested stack. Optional. Default is insert at end of stack with
+    !> no replacement
     INTEGER, INTENT(IN), OPTIONAL :: insert_point
     CLASS(*), POINTER :: gptr
     TYPE(eis_stack), POINTER :: temp
@@ -502,12 +737,22 @@ CONTAINS
   END SUBROUTINE eir_copy_in
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to retrieve the stored emplacement function by index
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] fn
+  !> @param[out] fn_c
+  !> @param[inout] err_handler
   SUBROUTINE eir_get_stored(this, index, fn, fn_c, err_handler)
     CLASS(eis_registry) :: this
-    INTEGER(eis_i4), INTENT(IN) :: index
+    INTEGER(eis_i4), INTENT(IN) :: index !< Index of stored function
+    !> Returned Fortran type emplacement function
     PROCEDURE(parser_late_bind_fn), POINTER, INTENT(OUT) :: fn
+    !> Returned C type emplacement function
     PROCEDURE(parser_late_bind_interop_fn), POINTER, INTENT(OUT) :: fn_c
+    !> Error handler. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
 
@@ -519,6 +764,7 @@ CONTAINS
           fn_c => co%c_contents
         CLASS DEFAULT
           fn => NULL()
+          fn_c => NULL()
       END SELECT
     END IF
 

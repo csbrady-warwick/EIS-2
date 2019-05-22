@@ -8,9 +8,9 @@ MODULE eis_raw_parser_mod
 
   !>@brief
   !>Compare two strings for equality
-  !>@param[in] str1
-  !>@param[in] str2
-  !>@return strcmp
+  !>@param[in] str1 - First string to test for equality
+  !>@param[in] str2 - Second string to test for equality
+  !>@return strcmp - Logical result for string equality
   FUNCTION strcmp(str1, str2)
     CHARACTER(LEN=*), INTENT(IN) :: str1, str2
     LOGICAL :: strcmp
@@ -25,8 +25,11 @@ MODULE eis_raw_parser_mod
 
   !> @brief
   !> Turn a string into a real
-  !> @param[in] str_in
-  !> @param[inout] err
+  !> @param[in] str_in - String to test for being a real
+  !> @param[inout] err - Error code for conversion test
+  !> result will have the eis_err_bad_value bit set if
+  !> str_in cannot be parsed as a real
+  !> @return parse_string_as_real - Number that str_in can be parsed to
   FUNCTION parse_string_as_real(str_in, err)
 
     CHARACTER(*), INTENT(IN) :: str_in
@@ -44,10 +47,14 @@ MODULE eis_raw_parser_mod
   END FUNCTION parse_string_as_real
 
 
+
   !> @brief
   !> Turn a string into an integer
-  !> @param[in] str_in
-  !> @param[inout] err
+  !> @param[in] str_in - String to test for being an integer
+  !> @param[inout] err - Error code for conversion test
+  !> result will have the eis_err_bad_value bit set if
+  !> str_in cannot be parsed as a real
+  !> @return parse_string_as_integer - Number that str_in can be parsed to
   FUNCTION parse_string_as_integer(str_in, err)
 
     CHARACTER(*), INTENT(IN) :: str_in

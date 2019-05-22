@@ -6,35 +6,58 @@ MODULE eis_error_mod
   USE eis_utils
   IMPLICIT NONE
 
+  !> Type representing an error
   TYPE :: eis_error_item
+    !> String representation of the source of the error
     CHARACTER(LEN=:), ALLOCATABLE :: errstring
+    !> Numerical representation of the type of the error
     INTEGER(eis_error) :: errcode = eis_err_none
+    !> Character offset from start of the string of the error
     INTEGER :: charindex = -1
   END TYPE eis_error_item
 
+  !>Error handler class
   TYPE :: eis_error_handler
     PRIVATE
+    !> Held list of errors
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: errors
+    !> Object holding the error report strings in the specified language
     TYPE(eis_string_store) :: strings
+    !>Is this error handler initialised
     LOGICAL :: is_init = .FALSE.
+    !> Language code
     INTEGER :: language = -1
     CONTAINS
-    PROCEDURE, PUBLIC:: add_error => eeh_add_error
-    PROCEDURE, PUBLIC :: flush_errors => eeh_flush
+    PROCEDURE, PUBLIC:: add_error => eeh_add_error !< Add an error
+    PROCEDURE, PUBLIC :: flush_errors => eeh_flush !< Delete all stored errors
+    !> Return number of errors
     PROCEDURE, PUBLIC :: get_error_count => eeh_get_count
+    !> Return string describing error for a stored error item
     PROCEDURE, PUBLIC :: get_error_string => eeh_get_error_string
+    !> Return string describing error for a given error code
     PROCEDURE, PUBLIC :: get_error_string_from_code &
         => eeh_get_error_string_from_code
+    !> Return string describing the cause of an error
     PROCEDURE, PUBLIC :: get_error_cause => eeh_get_error_cause
+    !> Return entire error report
     PROCEDURE, PUBLIC :: get_error_report => eeh_get_error_report
+    !> Print error report to screen
     PROCEDURE, PUBLIC :: print_error_string => eeh_print_err
+    !> Initialise error handler
     PROCEDURE, PUBLIC :: init => eeh_init
   END TYPE eis_error_handler
 
   CONTAINS
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Initialise the error handler with a specific language for error messages
+  !> @param[inout] this
+  !> @param[in] language
   SUBROUTINE eeh_init(this, language)
-    CLASS(eis_error_handler), INTENT(INOUT) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
+    !> Optional language code. Will be constant of form eis_lang_ + ISO 639-1
+    !> language code
     INTEGER, INTENT(IN), OPTIONAL :: language
     INTEGER :: language_i
 
@@ -124,12 +147,24 @@ MODULE eis_error_mod
   END SUBROUTINE eeh_init
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Initialise the error handler with a specific language for error messages
+  !> @param[inout] this
+  !> @param[in] err_source
+  !> @param[in] errcode
+  !> @param[in] errstring
+  !> @param[in] charindex
   SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, charindex)
 
-    CLASS(eis_error_handler), INTENT(INOUT) :: this
-    INTEGER(eis_error), INTENT(IN) :: err_source, errcode
+    CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
+    !> Type code for source of error (tokenize, evalaute etc.)
+    INTEGER(eis_error), INTENT(IN) :: err_source
+    !> Type code for type of error
+    INTEGER(eis_error), INTENT(IN) ::  errcode
+    !> String describing parser key that causes the error
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: errstring
+    !> Character location of key in error
     INTEGER, OPTIONAL, INTENT(IN) :: charindex
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz
@@ -159,7 +194,10 @@ MODULE eis_error_mod
   END SUBROUTINE eeh_add_error
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Delete all stored errors
+  !> @param[inout] this
   SUBROUTINE eeh_flush(this)
     CLASS(eis_error_handler), INTENT(INOUT) :: this
     IF (ALLOCATED(this%errors)) DEALLOCATE(this%errors)
@@ -167,7 +205,11 @@ MODULE eis_error_mod
 
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Return the number of stored errors
+  !> @param[in] this
+  !> @return eeh_get_count
   FUNCTION eeh_get_count(this)
     CLASS(eis_error_handler), INTENT(IN) :: this
     INTEGER :: eeh_get_count
@@ -180,11 +222,20 @@ MODULE eis_error_mod
   END FUNCTION eeh_get_count
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Return information about the key in the parsed string that is the cause of
+  !> the errors
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[inout] err_text
+  !> @param[out] cloc_out
   SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out)
-    CLASS(eis_error_handler) :: this
-    INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_text
+    CLASS(eis_error_handler), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: index !< Error index code
+    !>Error text for the returned error text
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_text 
+    !>Character location for the returned error (in the original string)
     INTEGER, INTENT(OUT) :: cloc_out
 
     cloc_out = -1
@@ -199,12 +250,22 @@ MODULE eis_error_mod
   END SUBROUTINE eeh_get_error_cause
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Return information about the type of error specified by a given error code
+  !> error is returned in the specified language
+  !> @param[in] this
+  !> @param[in] errcode
+  !> @param[inout] err_string
+  !> @param[inout] err_source
   SUBROUTINE eeh_get_error_string_from_code(this, errcode, err_string, &
       err_source)
-    CLASS(eis_error_handler) :: this
-    INTEGER(eis_error), INTENT(IN) :: errcode
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string, err_source
+    CLASS(eis_error_handler), INTENT(IN) :: this
+    INTEGER(eis_error), INTENT(IN) :: errcode !< Error code to look up
+    !> Error type string in specified language
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string
+    !> Error source string in specified language
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_source
     LOGICAL :: ok
 
     IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
@@ -264,10 +325,21 @@ MODULE eis_error_mod
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Return information about the type of error stored in a given stored error
+  !> error is returned in the specified language
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[inout] err_string
+  !> @param[inout] err_source
   SUBROUTINE eeh_get_error_string(this, index, err_string, err_source)
-    CLASS(eis_error_handler) :: this
-    INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string, err_source
+    CLASS(eis_error_handler), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: index !< Error index code
+    !> Error type string in specified language
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string
+    !> Error source string in specified language
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_source
 
     IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
     IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
@@ -281,9 +353,16 @@ MODULE eis_error_mod
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a full human readable error report for a given stored error
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[inout] report
   SUBROUTINE eeh_get_error_report(this, index, report)
     CLASS(eis_error_handler), INTENT(IN) :: this
-    INTEGER, INTENT(IN) :: index
+    INTEGER, INTENT(IN) :: index !< Error report index
+    !> Error report string
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
     CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp
     CHARACTER(LEN=9) :: posstr
@@ -335,9 +414,15 @@ MODULE eis_error_mod
   END SUBROUTINE eeh_get_error_report
 
 
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Print the error report to stdout
+  !> @param[in] this
+  !> @param[in] index
   SUBROUTINE eeh_print_err(this, index)
     CLASS(eis_error_handler), INTENT(IN) :: this
-    INTEGER, INTENT(IN) :: index
+    INTEGER, INTENT(IN) :: index !< Error report index
     CHARACTER(LEN=:), ALLOCATABLE :: report
 
     CALL this%get_error_report(index, report)

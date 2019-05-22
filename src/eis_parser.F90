@@ -36,22 +36,31 @@ MODULE eis_parser_mod
   USE eis_tree_mod
   IMPLICIT NONE
 
+  !> Character is part of a numerical value
   INTEGER, PARAMETER :: c_char_numeric = 1
+  !> Character is part of an alphanumeric value
   INTEGER, PARAMETER :: c_char_alpha = 2
+  !> character is a delimiter
   INTEGER, PARAMETER :: c_char_delimiter = 3
+  !> character is a space
   INTEGER, PARAMETER :: c_char_space = 4
+  !> character is an opcode/special character
   INTEGER, PARAMETER :: c_char_opcode = 5
+  !> character is of unknown type
   INTEGER, PARAMETER :: c_char_unknown = 1024
 
   TYPE(eis_registry), SAVE :: global_registry
   LOGICAL, SAVE :: global_setup = .FALSE.
 
+  !>Type holding a pointer to a parser for interoperability interface
   TYPE :: parser_holder
     CLASS(eis_parser), POINTER :: contents => NULL()
+    LOGICAL :: holds = .FALSE.
     CONTAINS
     FINAL :: ph_destructor
   END TYPE parser_holder
 
+  !>Type holding a pointer to a stack for interoperability interface
   TYPE :: stack_holder
     LOGICAL :: holds_stack = .FALSE.
     INTEGER :: refcount = 1
@@ -65,6 +74,7 @@ MODULE eis_parser_mod
   TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: interop_parsers
   TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: interop_stacks
 
+  !> Type representing a maths parser
   TYPE :: eis_parser
 
     PRIVATE
@@ -118,6 +128,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_error_report => eip_get_error_report
     PROCEDURE, PUBLIC :: get_error_info => eip_get_error_info
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
+    PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
 
   END TYPE eis_parser
 
@@ -131,7 +142,7 @@ CONTAINS
 
   PURE ELEMENTAL SUBROUTINE ph_destructor(this)
     TYPE(parser_holder), INTENT(INOUT) :: this
-    IF (ASSOCIATED(this%contents)) DEALLOCATE(this%contents)
+    IF (ASSOCIATED(this%contents) .AND. this%holds) DEALLOCATE(this%contents)
   END SUBROUTINE ph_destructor
   PURE ELEMENTAL SUBROUTINE sh_destructor(this)
     TYPE(stack_holder), INTENT(INOUT) :: this
@@ -140,9 +151,15 @@ CONTAINS
   END SUBROUTINE sh_destructor
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a pointer to an interoperable parser
+  !> @param[in] index
+  !> @return eis_get_interop_parser
   FUNCTION eis_get_interop_parser(index)
+    !> Parser index to retrieve
     INTEGER, INTENT(IN) :: index
+    !> Pointer to parser
     TYPE(eis_parser), POINTER :: eis_get_interop_parser
     eis_get_interop_parser => NULL()
     IF (index < 1 .OR. index > interop_parser_count) RETURN
@@ -150,10 +167,19 @@ CONTAINS
   END FUNCTION eis_get_interop_parser
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a pointer to an interoperable stack
+  !> optionally also pointer to the parser that generated that stack
+  !> @param[in] index
+  !> @param[out] parser
+  !> @return eis_get_interop_stack
   FUNCTION eis_get_interop_stack(index, parser)
+    !> Stack index to retreive
     INTEGER, INTENT(IN) :: index
+    !> Pointer to parser that generated the stack (optional)
     TYPE(eis_parser), POINTER, OPTIONAL, INTENT(OUT) :: parser
+    !> Pointer to requested stack
     TYPE(eis_stack), POINTER :: eis_get_interop_stack
     eis_get_interop_stack => NULL()
     IF (PRESENT(parser)) parser => NULL()
@@ -164,8 +190,17 @@ CONTAINS
 
 
 
-  FUNCTION eis_add_interop_parser(parser)
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Create an interoperable parser reference from a parser
+  !> @param[in] parser
+  !> @param[in] holds
+  !> @return eis_add_interop_parser
+  FUNCTION eis_add_interop_parser(parser, holds)
+    !> Parser to make interoperable
     TYPE(eis_parser), POINTER, INTENT(IN) :: parser
+    LOGICAL, INTENT(IN), OPTIONAL :: holds
+    !> Index of parser after storage
     INTEGER :: eis_add_interop_parser
     TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: temp
 
@@ -182,15 +217,26 @@ CONTAINS
       END IF
     END IF
     interop_parsers(interop_parser_count)%contents => parser
+    IF (PRESENT(holds)) interop_parsers(interop_parser_count)%holds = holds
     eis_add_interop_parser = interop_parser_count
   END FUNCTION eis_add_interop_parser
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a pointer to an interoperable parser
+  !> @param[in] index
+  !> @param[in] parser_index
+  !> @param[in] holds
+  !> @return eis_get_interop_stack
   FUNCTION eis_add_interop_stack(stack, parser_index, holds)
-
+    !> Stack to make interoperable
     TYPE(eis_stack), POINTER, INTENT(IN) :: stack
+    !> Index of the interoperable parser that generated the stack
     INTEGER, INTENT(IN) :: parser_index
+    !> Whether or not the interoperability layer holds the canonical
+    !> reference to the stack
     LOGICAL, INTENT(IN), OPTIONAL :: holds
     INTEGER :: eis_add_interop_stack
     TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: temp
@@ -219,7 +265,20 @@ CONTAINS
   END FUNCTION eis_add_interop_stack
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Initialise a parser
+  !> @param[inout] this - Self pointer
+  !> @param[in] should_simplify - Should the parser autosimplify. Optional,
+  !> default .TRUE.
+  !> @param[in] should_minify - Should the parser autominify. Optional,
+  !> default .FALSE
+  !> @param[in] no_import - Should the parser not import default namepaces
+  !> Optional, default .FALSE.
+  !> @param[in] physics - What (if any) physics module should be loaded
+  !> Optional, default no physics
+  !> @param[in] language - What language should errors be reported in
+  !> Optional, default english
   SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, &
       physics, language)
 
@@ -480,11 +539,18 @@ CONTAINS
   END SUBROUTINE eip_init
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to determine the type of a character
+  !> @details
+  !> Determines whether a character is a part of a number, a string, an operator
+  !> etc.
+  !> @param[in] chr
+  !> @return char_tytpe
   FUNCTION char_type(chr)
 
-    CHARACTER, INTENT(IN) :: chr
-    INTEGER :: char_type
+    CHARACTER, INTENT(IN) :: chr !< Character to test
+    INTEGER :: char_type !< Type code for character
 
     char_type = c_char_unknown
 
@@ -508,12 +574,47 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to identify the type of a parenthesis. Currently only identifies
+  !> left and right round brackets. May expand in future
+  !> @param[in] name
+  !> @return as_parenthesis
+  FUNCTION as_parenthesis(name)
+
+    CHARACTER(LEN=*), INTENT(IN) :: name !< String to test
+    INTEGER :: as_parenthesis !< Code for bracket type. 0 if not bracket
+
+    as_parenthesis = 0
+
+    IF (strcmp(name, '(')) THEN
+      as_parenthesis = c_paren_left_bracket
+
+    ELSE IF (strcmp(name, ')')) THEN
+      as_parenthesis = c_paren_right_bracket
+    END IF
+
+  END FUNCTION as_parenthesis
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to load a given block with information from the registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[out] iblock
+  !> @param[out] icoblock
+  !> @param[out] cap_bits
   SUBROUTINE eip_load_block(this, name, iblock, icoblock, cap_bits)
 
-    CLASS(eis_parser) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to look up in registry
+    !> Block to fill with registry information
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
+    !> Coblock to fill with registry information
     TYPE(eis_stack_co_element), INTENT(OUT) :: icoblock
+    !> Capability bits for the block retreived from the registry
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
@@ -582,31 +683,32 @@ CONTAINS
 
 
 
-  FUNCTION as_parenthesis(name)
-
-    CHARACTER(LEN=*), INTENT(IN) :: name
-    INTEGER :: as_parenthesis
-
-    as_parenthesis = 0
-
-    IF (strcmp(name, '(')) THEN
-      as_parenthesis = c_paren_left_bracket
-
-    ELSE IF (strcmp(name, ')')) THEN
-      as_parenthesis = c_paren_right_bracket
-    END IF
-
-  END FUNCTION as_parenthesis
-
-
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to tokenize an expression to a stack
+  !> @param[inout] this
+  !> @param[in] expression_in
+  !> @param[inout] output
+  !> @param[inout] err
+  !> @param[in] simplify
+  !> @param[in] minify
   SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify)
 
     CLASS(eis_parser) :: this
+    !> Expression to convert to stack
     CHARACTER(LEN=*), INTENT(IN) :: expression_in
+    !> Stack to contain the output. If stack is not empty then new values
+    !> are pushed to the end of the stack. This will usually cause multi valued
+    !> results
     TYPE(eis_stack), INTENT(INOUT), TARGET :: output
+    !> Error code for errors during tokenize
     INTEGER(eis_error), INTENT(INOUT) :: err
-    LOGICAL, INTENT(IN), OPTIONAL :: simplify, minify
+    !> Should the stack be simplified after generation. Optional, default value
+    !> set in call to "init"
+    LOGICAL, INTENT(IN), OPTIONAL :: simplify
+    !> Should the stack be minified after generation. Optional, default value
+    !> set in call to "init"
+    LOGICAL, INTENT(IN), OPTIONAL :: minify
     LOGICAL :: maybe_e, should_simplify, should_minify
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
@@ -717,15 +819,30 @@ CONTAINS
   END SUBROUTINE eip_tokenize
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to evaluate a stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
+  !> @param[in] user_params
+  !> @param[out] is_no_op
+  !> @return eip_evaluate_stack
   FUNCTION eip_evaluate_stack(this, stack, result, errcode, user_params, &
       is_no_op)
     CLASS(eis_parser) :: this
-    CLASS(eis_stack), INTENT(INOUT) :: stack
+    CLASS(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
+    !> Allocatable array holding all the results from the evaluation.
+    !> Will only be reallocated if it is too small to hold all the results
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    !> Error code returned by the evaluation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    !> Logical determining if the stack should be a null operation. Currently
+    !> related to the "where" construct
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
+    !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_stack
     TYPE(C_PTR) :: params
 
@@ -754,16 +871,40 @@ CONTAINS
   END FUNCTION eip_evaluate_stack
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to evaluate a string straight to a result
+  !> @param[inout] this
+  !> @param[in] str
+  !> @param[inout] errcode
+  !> @param[in] user_params
+  !> @param[out] is_no_op
+  !> @return eip_evaluate_string
   FUNCTION eip_evaluate_string(this, str, result, errcode, user_params, &
       is_no_op, simplify, minify)
     CLASS(eis_parser) :: this
+    !> String to evaluate as maths
     CHARACTER(LEN=*), INTENT(IN) :: str
+    !> Allocatable array holding all the results from the evaluation.
+    !> Will only be reallocated if it is too small to hold all the results
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    !> Error code from the combined tokenization, optinally simplification and
+    !> evaluation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    !> Logical determining if the stack should be a null operation. Currently
+    !> related to the "where" construct
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
-    LOGICAL, INTENT(IN), OPTIONAL :: simplify, minify
+    !> Logical determining if the expression should be simplified before
+    !> evaluation. Not usually beneficial for single direct string to value
+    !> evaluations. Optional, default same as set during init
+    LOGICAL, INTENT(IN), OPTIONAL :: simplify
+    !> Logical determining if the expression should be minified before
+    !> evaluation. Not usually beneficial for single direct string to value
+    !> evaluations. Optional, default same as set during init
+    LOGICAL, INTENT(IN), OPTIONAL :: minify
+    !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_string
     TYPE(eis_stack) :: stack
     TYPE(C_PTR) :: params
@@ -785,10 +926,27 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to resolve deferred elements in a stack that have now been given
+  !> final values. 
+  !> @details
+  !>This will happen automatically if a stack is marked as having
+  !> deferred elements when the stack is evaluated. Undeferring is a permanent
+  !> action that changes the stack so that it is now evaluatable. The resultant
+  !> stack will be simplified and minified after undeferring using the default
+  !> values for this stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
+  !> @param[in] user_params
   SUBROUTINE eip_undefer(this, stack, errcode, user_params)
     CLASS(eis_parser) :: this
+    !> Stack to undefer
     CLASS(eis_stack), INTENT(INOUT) :: stack
+    !> Error code from undefering stage
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Optional host code parameters that might be needed during
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     INTEGER :: ipt, stored_params
     INTEGER(eis_bitmask) :: cap_bits
@@ -834,10 +992,22 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to simplify a stack. This ignores the default parser settings
+  !> and always simplifies the stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
+  !> @param[in] user_params
   SUBROUTINE eip_simplify(this, stack, errcode, user_params)
     CLASS(eis_parser) :: this
+    !> Stack to simplify
     CLASS(eis_stack), INTENT(INOUT) :: stack
+    !> Error code from the simplification step
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Optional host code parameters. Can be used by stack elements
+    !> to determine if they can be simplified or not
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
     TYPE(C_PTR) :: params
 
@@ -853,9 +1023,19 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to minify a stack. This ignores the default parser settings
+  !> and always minify the stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
+  !> @param[in] user_params
   SUBROUTINE eip_minify(this, stack, errcode)
     CLASS(eis_parser) :: this
+    !> Stack to minify
     CLASS(eis_stack), INTENT(INOUT) :: stack
+    !> Error code from the simplification step
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
     CALL minify_stack(stack)
@@ -864,12 +1044,31 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to emplace a single node of an AST.
+  !> @details
+  !> This function goes down to the bottom of an AST and then goes upwards
+  !> When it encounters a node that needs emplacement on the way up all of
+  !> the parameters to that function (if any) are evaluated and their values
+  !> are passed to the emplacement function. The entire node and it's children
+  !> are replaced with the stack returned from the emplacement function. The
+  !> parameter "remaining_functions" is set to true if any functions need
+  !> emplacement but cannot be emplaced
+  !> @param[inout] this 
+  !> @param[inout] tree_name
+  !> @param[in] user_params
+  !> @param[out] remaining_functions
+  !> @param[inout] capbits
   RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, user_params, &
       remaining_functions, capbits)
     CLASS(eis_parser) :: this
-    TYPE(eis_tree_item), INTENT(INOUT) :: tree_node
-    TYPE(C_PTR), INTENT(IN) :: user_params
+    TYPE(eis_tree_item), INTENT(INOUT) :: tree_node !< Node to operate on
+    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code specified parameters
+    !> Logical determining if there are remaining unemplaced functions below
+    !> this node
     LOGICAL, INTENT(INOUT) :: remaining_functions
+    !> Capability bits for this node.
     INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
     TYPE(eis_tree_item), POINTER :: new_node
     INTEGER(eis_error) :: errcode
@@ -959,12 +1158,29 @@ CONTAINS
   END SUBROUTINE eip_emplace_node
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to emplace all functions in a stack
+  !> @details
+  !> Function emplaces all emplaceable functions in a stack. If the
+  !> "destination" parameter is specified then the original stack is left
+  !> unaltered and the emplaced stack is built in the destination parameter
+  !> This allows multiple eplacements with different "user_params" to produce
+  !> different stacks
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
+  !> @param[in] user_params
+  !> @param[out] destination
   SUBROUTINE eip_emplace(this, stack, errcode, user_params, destination)
     CLASS(eis_parser) :: this
-    CLASS(eis_stack), INTENT(INOUT), TARGET :: stack
+    CLASS(eis_stack), INTENT(INOUT), TARGET :: stack !< Stack to emplace
+    !> Error code from emplacement
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Host code specified parameters. Optional, default C_PTR_NULL
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    !> Destination for final emplaced stack. Optional, default is build in 
+    !> "stack"
     CLASS(eis_stack), INTENT(INOUT), OPTIONAL, TARGET :: destination
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
@@ -1013,16 +1229,36 @@ CONTAINS
   END SUBROUTINE eip_emplace
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a deferred function to the parser. A non-deferred version
+  !> must be added before any stacks using the function are evaluated
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] expected_params
+  !> @param[in] can_simplify
+  !> @param[in] global
   SUBROUTINE eip_add_function_defer(this, name, errcode,  cap_bits, &
       expected_params, can_simplify, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register function with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Error code from storing the function
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this function
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Number of expected parameters for this function. Optional, default -1
+    !> (variadic function)
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
 
     CALL this%add_function(name, eis_dummy, errcode, cap_bits, &
         expected_params, can_simplify, .TRUE., global)
@@ -1030,17 +1266,43 @@ CONTAINS
   END SUBROUTINE eip_add_function_defer
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a function to the parser
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] expected_params
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
   SUBROUTINE eip_add_function_now(this, name, fn, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register function with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Function to call when the expression is evaluated
     PROCEDURE(parser_eval_fn) :: fn
+    !> Error code from storing the function
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this function
+    !> Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Number of expected parameters for this function. Optional, default -1
+    !> (variadic function)
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL :: global
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -1065,14 +1327,33 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a deferred variable to the parser. A non-deferred version
+  !> must be added before any stacks using the variable are evaluated
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] global
   SUBROUTINE eip_add_variable_defer(this, name, errcode, cap_bits, &
       can_simplify, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
 
     CALL this%add_variable(name, eis_dummy, errcode, cap_bits, can_simplify, &
         .TRUE., global)
@@ -1081,15 +1362,39 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
   SUBROUTINE eip_add_variable_now(this, name, fn, errcode, cap_bits, &
       can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Function to call when the expression is evaluated
     PROCEDURE(parser_eval_fn) :: fn
+    !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
     LOGICAL :: is_global
 
     is_global = .FALSE.
@@ -1107,14 +1412,33 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a deferred constant to the parser. A non-deferred version
+  !> must be added before any stacks using the variable are evaluated
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] global
   SUBROUTINE eip_add_constant_defer(this, name, errcode, cap_bits, &
       can_simplify, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, global
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
 
     CALL this%add_constant(name, 0.0_eis_num, errcode, cap_bits, can_simplify, &
         .TRUE., global)
@@ -1123,15 +1447,39 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
   SUBROUTINE eip_add_constant_now(this, name, value, errcode, cap_bits, &
       can_simplify, defer, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Value to associate with the name
     REAL(eis_num), INTENT(IN) :: value
+    !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this constant
+    !> Optional, default 0
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
-    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify, defer, global
+    !> Whether this constant can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this constant should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_constant_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
     LOGICAL :: is_global
 
     is_global = .FALSE.
@@ -1149,11 +1497,25 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a deferred stack variable to the parser. A non-deferred version
+  !> must be added before any stacks using the variable are evaluated
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] errcode
+  !> @param[in] can_simplify
+  !> @param[in] global
   SUBROUTINE eip_add_stack_variable_defer(this, name, errcode, global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> use the stack variable
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL :: global
     TYPE(eis_stack) :: stack
 
@@ -1162,15 +1524,32 @@ CONTAINS
   END SUBROUTINE eip_add_stack_variable_defer
 
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] stack
+  !> @param[inout] errcode
+  !> @param[in] defer
+  !> @param[in] global
   SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode, defer, &
       global)
 
     CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> use the stack variable
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Stack to associate with the name
     TYPE(eis_stack), INTENT(IN) :: stack
+    !> Error code from storing the stack variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    LOGICAL, INTENT(IN), OPTIONAL :: defer, global
+    !> Whether this stack variable should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_stack_variable_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this stack_variable to the global list for all
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
     LOGICAL :: is_global
         
     is_global = .FALSE.
@@ -1187,12 +1566,24 @@ CONTAINS
   END SUBROUTINE eip_add_stack_variable_stack
 
 
-
+  !> @brief
+  !> Add a stack variable from a string expression to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] string
+  !> @param[inout] errcode
+  !> @param[in] global
   SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode, global)
 
     CLASS(eis_parser) :: this
-    CHARACTER(LEN=*), INTENT(IN) :: name, string
+    !> Name to associated with the stack variable
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Parseable string to make into stack variable
+    CHARACTER(LEN=*), INTENT(IN) :: string
+    !> Error code from the parse and the store of the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Whether to add this stack_variable to the global list for all
+    !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL :: global
     LOGICAL :: is_global
     TYPE(eis_stack) :: stack
@@ -1214,14 +1605,26 @@ CONTAINS
   END SUBROUTINE eip_add_stack_variable_string
 
 
-
+  !> @brief
+  !> Add an emplaced function to the parser. Emplaced functions
+  !> cannot be added globally or deferred
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_params
   SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode, &
       expected_params)
 
     CLASS(eis_parser) :: this
+    !> Name to associated with the emplaced function
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Function to be called when emplacing the function
     PROCEDURE(parser_late_bind_fn) :: def_fn
+    !> Error code associated with the storing of the emplaced function
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Number of parameters expected for the emplaced function. Optional, 
+    !> default = -1 (variadic function)
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
@@ -1232,11 +1635,22 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Add an emplaced variable to the parser. Emplaced variables
+  !> cannot be added globally or deferred
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_params
   SUBROUTINE eip_add_emplaced_variable(this, name, def_fn, errcode)
 
     CLASS(eis_parser) :: this
+    !> Name to associated with the emplaced variable
     CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Function to be called when emplacing the variable
     PROCEDURE(parser_late_bind_fn) :: def_fn
+    !> Error code associated with the storing of the emplaced variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
@@ -1246,18 +1660,34 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Function to tokenize a single text chunk into a element and a co-element
+  !> and populate appropriate objects with that information
+  !> This subroutine tokenizes input in normal infix maths notation
+  !> It uses Dijkstra's shunting yard algorithm to convert to RPN
+  !> @param[inout] this
+  !> @param[in] current
+  !> @param[inout] iblock
+  !> @param[inout] icoblock
+  !> @param[inout] cap_bits
+  !> @param[in] charindex
+  !> @param[inout] err
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
       cap_bits, charindex, err)
 
-    ! This subroutine tokenizes input in normal infix maths notation
-    ! It uses Dijkstra's shunting yard algorithm to convert to RPN
-
     CLASS(eis_parser) :: this
+    !> Text to parse
     CHARACTER(LEN=*), INTENT(IN) :: current
+    !> Element to fill with information
     TYPE(eis_stack_element), INTENT(INOUT) :: iblock
+    !> Co-element to fill with information
     TYPE(eis_stack_co_element), INTENT(INOUT) :: icoblock
+    !> Cap bits from evaluating this element
     INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
+    !> Character index for "current" in the original string
+    !> used for error reporting
     INTEGER, INTENT(IN) :: charindex
+    !> Error code from parsing this element
     INTEGER(eis_error), INTENT(INOUT) :: err
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
@@ -1522,20 +1952,32 @@ CONTAINS
   END SUBROUTINE eip_print_errors
 
 
-
+  !> @brief
+  !> Get the number of errors reported on this parser
+  !> @param[inout] this
+  !> @return count
   FUNCTION eip_get_error_count(this) RESULT(count)
     CLASS(eis_parser), INTENT(IN) :: this
-    INTEGER :: count
+    INTEGER :: count !< Number of errors reported
 
     count = this%err_handler%get_error_count()
 
   END FUNCTION eip_get_error_count
 
 
-
+  !> @brief
+  !> Get the error report on a specified error
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] report
   SUBROUTINE eip_get_error_report(this, index, report)
     CLASS(eis_parser), INTENT(IN) :: this
+    !> Index of error to get report on. Must be between 1 and
+    !> the result of eip_get_error_count
     INTEGER, INTENT(IN) :: index
+    !> Allocatable string variable containing the error report
+    !> will be reallocated to be exactly long enough to store
+    !> the error report whether allocated or not
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
 
     CALL this%err_handler%get_error_report(index, report)
@@ -1543,14 +1985,34 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Get error information for a single error. This contains the 
+  !> same information as the error report but is not formatted for use
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] error_cause
+  !> @param[out] error_cause_location
+  !> @param[out] error_phase
+  !> @param[out] error_type
   SUBROUTINE eip_get_error_info(this, index, error_cause, &
       error_cause_location, error_phase, error_type)
 
     CLASS(eis_parser), INTENT(IN) :: this
+    !> Index of error to get report on. Must be between 1 and
+    !> the result of eip_get_error_count
     INTEGER, INTENT(IN) :: index
-    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_cause, &
-        error_phase, error_type
+    !> Reports the string representation of the part of the string that
+    !> caused the error. Optional, default is not return this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_cause
+    !> Reports the character offset location of the cause of the error
+    !> Optional, default is not report this info
     INTEGER, INTENT(INOUT), OPTIONAL :: error_cause_location
+    !> Reports the string representation of where in the parsing phase the
+    !> error occured. Optional, default is not report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_phase
+    !> Reports the string representation of the type of error that was
+    !> encountered during the parsing. Optional, default is no report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_type
     CHARACTER(LEN=:), ALLOCATABLE :: ec, eps, ets
     INTEGER :: ecl
 
@@ -1569,14 +2031,35 @@ CONTAINS
   END SUBROUTINE eip_get_error_info
 
 
-
+  !> @brief
+  !> Get a string representation of a stack
+  !> @param[in] this
+  !> @param[in] stack_in
+  !> @param[out] str_out
   SUBROUTINE eip_get_tokens(this, stack_in, str_out)
     CLASS(eis_parser), INTENT(IN) :: this
-    CLASS(eis_stack), INTENT(IN) :: stack_in
+    CLASS(eis_stack), INTENT(IN) :: stack_in !< Stack input
+    !> String equivalent of the stack (RPN notation)
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_out
 
     CALL get_tokens(stack_in, str_out)
 
   END SUBROUTINE eip_get_tokens
+
+
+  !> @brief
+  !> Get a string representation of the AST version of the stack
+  !> @param[in] this
+  !> @param[in] stack_in
+  !> @param[out] str_out
+  SUBROUTINE eip_visualize_stack(this, stack_in, str_out)
+    CLASS(eis_parser), INTENT(IN) :: this
+    CLASS(eis_stack), INTENT(IN) :: stack_in !< Stack input
+    !> String to hold the output of the stack as a dot file
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_out
+
+    CALL eis_visualise_stack(stack_in, str_out)
+
+  END SUBROUTINE eip_visualize_stack
 
 END MODULE eis_parser_mod
