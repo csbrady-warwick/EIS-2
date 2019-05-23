@@ -2,6 +2,7 @@ MODULE eis_string_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
   USE eis_constants
+  USE eis_header
   USE eis_named_store_mod
   USE eis_utils
 
@@ -24,6 +25,7 @@ MODULE eis_string_store_mod
     TYPE(named_store) :: strings
 
     CONTAINS
+    PROCEDURE :: parse_key_string => ess_parse_key_string
 #ifdef UNICODE
     PROCEDURE :: store_string_ucs4 => ess_store_string_ucs4
     PROCEDURE :: get_string_ucs4 => ess_get_string_ucs4
@@ -44,6 +46,8 @@ MODULE eis_string_store_mod
     PROCEDURE, PUBLIC :: append => ess_append_string_ascii
     PROCEDURE, PUBLIC :: format_fill => ess_format_fill_aa
 #endif
+
+    PROCEDURE, PUBLIC :: load_from_ascii_file => ess_load_from_ascii_file
     
   END TYPE eis_string_store
 
@@ -335,5 +339,112 @@ CONTAINS
     IF (ALLOCATED(temp)) DEALLOCATE(temp)
 
   END SUBROUTINE ess_format_fill_aa
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to add keys to a store from an external file
+  !> data should be stored in the form "key=value"
+  !> @details
+  !> Lines can optionally be comments by having the first non whitespace
+  !> character be a hash "#" character. Lines can also have a comment appended
+  !> to the end of them by putting in a # character. Lines can be continued
+  !> by adding a "\" character as the last character on the line
+  !> @param[in] this
+  !> @param[in] filename
+  !> @param[inout] errcode
+  SUBROUTINE ess_load_from_ascii_file(this, filename, errcode)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: filename
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, PARAMETER :: buff_size = 1024*1024 !1MB default buffer
+    CHARACTER(LEN=buff_size) :: buffer, buff2
+    INTEGER(eis_i8) :: flen, flen_remain
+    INTEGER :: lun, buf_this_time, bpos, bpos_last
+    CHARACTER(LEN=:), ALLOCATABLE :: line
+    LOGICAL :: continue_line, file_exists
+
+    lun = eis_get_lun()
+    IF (lun < 0) THEN
+      errcode = IOR(errcode, eis_err_no_luns)
+      RETURN
+    END IF
+    INQUIRE(FILE=filename, exist = file_exists)
+    IF (.NOT. file_exists) THEN
+      errcode = IOR(errcode, eis_err_no_file)
+      RETURN
+    END IF
+    OPEN(UNIT=lun, FILE=filename, STATUS='OLD', ACCESS='STREAM')
+    INQUIRE(UNIT=lun, SIZE = flen)
+    flen_remain = flen
+    DO WHILE(flen_remain > 0)
+      buf_this_time = MIN(buff_size, flen_remain)
+      READ(lun) buffer(1:buf_this_time)
+      bpos_last = 1
+      bpos = SCAN(buffer, NEW_LINE(buffer))
+      DO WHILE (bpos > 0)
+        CALL eis_append_string(line, buffer(bpos_last:bpos_last + bpos-2))
+        continue_line = .FALSE.
+        IF (line(LEN(line):LEN(line)) == '\') THEN
+          IF (LEN(line) >= 2) THEN
+            IF (line(LEN(line)-1:LEN(line)-1) /= '\') THEN
+              continue_line = .TRUE.
+            END IF
+          ELSE
+            continue_line = .TRUE.
+          END IF
+        END IF
+        IF (.NOT. continue_line) THEN
+          CALL this%parse_key_string(line)
+          DEALLOCATE(line)
+          bpos_last = bpos_last + bpos
+          bpos = SCAN(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
+        END IF
+      END DO
+      CALL eis_append_string(line, buffer(bpos_last:buf_this_time))
+      flen_remain = flen_remain - buf_this_time
+    END DO
+    CALL this%parse_key_string(line)
+    DEALLOCATE(line)
+    CLOSE(lun)
+
+  END SUBROUTINE ess_load_from_ascii_file
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to take a single string of the form
+  !> "key=value", split it into key and value components
+  !> and store them in the store
+  !> @param[in] this
+  !> @param[in] string
+  SUBROUTINE ess_parse_key_string(this, string)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: string
+    CHARACTER(LEN=:), ALLOCATABLE :: trstr
+    INTEGER :: eqpos, hashpos
+
+    CALL eis_append_string(trstr, TRIM(ADJUSTL(string)))
+
+    IF (trstr(1:1) == '#') RETURN
+
+    eqpos = SCAN(trstr, '=')
+    hashpos = SCAN(trstr, '#')
+
+    !No line terminal comment
+    IF (hashpos < 1) hashpos = LEN(trstr) + 1
+    !Malformed string without an equals. Not much we can do
+    IF (eqpos < 1) RETURN
+    !Malformed string with a comment before the equals sign. Not much we can do
+    IF (hashpos < eqpos) RETURN
+    !Everything before the equals is a key, everything between the equals and 
+    !an optional #comment is the value
+    CALL this%store(trstr(1:eqpos-1), trstr(eqpos+1:hashpos-1))
+
+    DEALLOCATE(trstr)
+
+  END SUBROUTINE ess_parse_key_string
 
 END MODULE eis_string_store_mod

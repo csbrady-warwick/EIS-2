@@ -25,8 +25,7 @@ MODULE eis_error_mod
     TYPE(eis_string_store) :: strings
     !>Is this error handler initialised
     LOGICAL :: is_init = .FALSE.
-    !> Language code
-    INTEGER :: language = -1
+    CHARACTER(LEN=:), ALLOCATABLE :: language_pack
     CONTAINS
     PROCEDURE, PUBLIC:: add_error => eeh_add_error !< Add an error
     PROCEDURE, PUBLIC :: flush_errors => eeh_flush !< Delete all stored errors
@@ -53,27 +52,50 @@ MODULE eis_error_mod
   !> @brief
   !> Initialise the error handler with a specific language for error messages
   !> @param[inout] this
-  !> @param[in] language
-  SUBROUTINE eeh_init(this, language)
+  !> @param[out] errcode
+  !> @param[in] language_pack
+  SUBROUTINE eeh_init(this, errcode, language_pack)
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
-    !> Optional language code. Will be constant of form eis_lang_ + ISO 639-1
-    !> language code
-    INTEGER, INTENT(IN), OPTIONAL :: language
-    INTEGER :: language_i
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    !> Optional filename for a language pack. This will described the required
+    !> errors in a "key=value" form. See the manual for a description of the
+    !> keys needed
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: language_pack
+    LOGICAL :: same_language, lang_default
 
-    IF (PRESENT(language)) THEN
-      language_i = language
+    IF (ALLOCATED(this%language_pack)) THEN
+      IF (PRESENT(language_pack)) THEN
+        same_language = TRIM(language_pack) == TRIM(this%language_pack)
+      ELSE
+        same_language = .FALSE.
+        DEALLOCATE(this%language_pack)
+        ALLOCATE(this%language_pack, SOURCE = language_pack)
+      END IF
     ELSE
-      language_i = eis_lang_en
+      IF (PRESENT(language_pack)) THEN
+        same_language = .FALSE.
+        ALLOCATE(this%language_pack, SOURCE = language_pack)
+      ELSE
+        same_language = .TRUE.
+      END IF
     END IF
 
-    IF (this%is_init .AND. language_i== this%language) RETURN
+    IF (this%is_init .AND. same_language) RETURN
     this%is_init = .TRUE.
-    this%language = language_i
 
-    !All non-English translations are from machine translation
-    !IF you wish to supply an improved translation, please contact the authors
-    IF (this%language == eis_lang_en) THEN
+    lang_default = .FALSE.
+    IF (PRESENT(language_pack)) THEN
+      errcode = eis_err_none
+      CALL this%strings%load_from_ascii_file(language_pack, errcode)
+      IF (errcode /= eis_err_none) THEN
+        PRINT *,'Error loading language pack for error handler. Default to &
+            &English'
+        lang_default = .TRUE.
+        DEALLOCATE(this%language_pack)
+      END IF
+    END IF
+
+    IF (.NOT. PRESENT(language_pack) .OR. lang_default) THEN
       CALL this%strings%store('err_src_parse','Error when parsing text to &
           &stack')
       CALL this%strings%store('err_src_simplify','Error when simplifying stack')
@@ -108,40 +130,6 @@ MODULE eis_error_mod
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
           &error. To see the location of the error do not minify the stack. &
           &Errors are :')
-    ELSE IF (this%language == eis_lang_ru) THEN
-      CALL this%strings%store('err_src_parse','Ошибка при разборе текста в &
-          &стек')
-      CALL this%strings%store('err_src_simplify','Ошибка при упрощении стека')
-      CALL this%strings%store('err_src_emplace','Ошибка при «emplacing» &
-          &функции')
-      CALL this%strings%store('err_src_evaluate','Ошибка при оценке стека')
-      CALL this%strings%store('err_src_undefined', 'Ошибка в неуказанной части &
-          &парсера. (Это, вероятно, ошибка в коде парсера)')
-
-      CALL this%strings%store('err_bad_value', 'Выражение неверно')
-      CALL this%strings%store('err_malformed', 'Выражение было искажено')
-      CALL this%strings%store('err_wrong_parameters', 'Неправильное количество &
-          &параметров было использовано при вызове функции')
-      CALL this%strings%store('err_maths_domain', 'Запрошена математически &
-          &неверная операция')
-      CALL this%strings%store('err_not_found', 'Указанный блок не найден в &
-          &списке известных ключей')
-      CALL this%strings%store('err_has_emplaced', 'В указанном стеке есть &
-          &неразрешенные «emplaced» элементы')
-      CALL this%strings%store('err_has_deferred', 'Указанный стек имеет &
-          &неразрешенные «deferred» элементы')
-      CALL this%strings%store('err_where', 'Указанный стек использует &
-          &конструкцию «where», но при оценке не проверяется на нулевые &
-          &операции')
-      CALL this%strings%store('err_bracketed_constant', 'Попытка вызвать &
-          &константу как функцию')
-      CALL this%strings%store('err_extra_bracket', 'Посторонняя скобка')
-      CALL this%strings%store('err_bad_stack', 'Неверный или недоступный стек')
-      CALL this%strings%store('err_report_place', 'В блоке с текстом &
-          &«{errtext}», начинающимся с позиции символа {charpos} :')
-      CALL this%strings%store('err_report_fail', 'Невозможно &
-          &сообщить источник ошибки. Чтобы увидеть расположение &
-          &ошибки, не минимизируйте стек. Ошибки:')
     END IF
 
   END SUBROUTINE eeh_init

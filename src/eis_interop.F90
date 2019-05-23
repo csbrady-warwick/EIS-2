@@ -44,28 +44,42 @@ MODULE eis_parser_interop
   !> @brief
   !> C interoperable function to create a parser and return a unique id that
   !> is used in future calls to the parser system
+  !> @param[inout] errcode - Error code from initialising the parser
+  !> @param[in] language - Filename of language pack to use. NULL if none
   !> @param[in] should_simplify - Should this parser auto-simplify? True if != 0
   !> @param[in] should_minify - Should the parser auto-minify? True if !=0
   !> @param[in] no_import - Should the parser suppress import of namespaces.
   !> True if != 0
   !> @param[in] physics - Which if any physics modules should be automatically
   !> imported into the global namespace
-  !> @param language - Which language should error messages be reported in 
   !> @return parser_id - Unique ID of the created parser
-  FUNCTION eis_create_parser(should_simplify, should_minify, no_import, &
-      physics, language) BIND(C) RESULT(parser_id)
+  FUNCTION eis_create_parser(errcode, language, should_simplify, &
+      should_minify, no_import, physics) BIND(C) RESULT(parser_id)
 
+   INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+   TYPE(C_PTR), VALUE, INTENT(IN) :: language
    INTEGER(C_INT), VALUE, INTENT(IN) :: should_simplify, should_minify
-   INTEGER(C_INT), VALUE, INTENT(IN) :: no_import, physics, language
+   INTEGER(C_INT), VALUE, INTENT(IN) :: no_import, physics
    INTEGER(C_INT) :: parser_id
+   CHARACTER(LEN=:), ALLOCATABLE :: language_f
 
    parser_id = create_new_parser()
-   CALL interop_parsers(parser_id)%contents%init(&
-       should_simplify = (should_simplify /= 0), &
-       should_minify = (should_minify /= 0), &
-       no_import = (no_import /= 0), &
-       physics = INT(physics), &
-       language = INT(language))
+   IF (C_ASSOCIATED(language)) THEN
+     CALL c_f_string(language, language_f)
+     CALL interop_parsers(parser_id)%contents%init(errcode, &
+         should_simplify = (should_simplify /= 0), &
+         should_minify = (should_minify /= 0), &
+         no_import = (no_import /= 0), &
+         physics = INT(physics), &
+         language_pack = language_f)
+     DEALLOCATE(language_f)
+   ELSE
+     CALL interop_parsers(parser_id)%contents%init(errcode, &
+         should_simplify = (should_simplify /= 0), &
+         should_minify = (should_minify /= 0), &
+         no_import = (no_import /= 0), &
+         physics = INT(physics))
+   END IF
 
   END FUNCTION eis_create_parser
 

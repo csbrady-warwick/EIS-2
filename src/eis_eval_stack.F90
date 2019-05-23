@@ -210,7 +210,7 @@ MODULE eis_eval_stack_mod
       IF (stack%entries(istack)%ptype == c_pt_constant) THEN
         CALL this%push(stack%entries(istack)%numerical_data, errcode)
       ELSE
-        err = errcode
+        err = eis_err_none
         stat_in = status
         CALL this%eval_element(stack%entries(istack), user_params, stat_in, &
             err)

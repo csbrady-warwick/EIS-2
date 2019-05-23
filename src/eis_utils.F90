@@ -7,6 +7,7 @@ MODULE eis_utils
   PRIVATE
 
   PUBLIC :: eis_append_string, c_f_string, f_c_string
+  PUBLIC :: eis_get_lun
 
   INTERFACE eis_append_string
     MODULE PROCEDURE  eis_append_string_aa
@@ -350,5 +351,29 @@ MODULE eis_utils
     CALL f_c_string(f_string, len_c_string, c_string_arr)
 
   END SUBROUTINE f_c_string_ptr
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the lowest free logical unit number in the range 100-1000
+  !> This function is rendered obsolete by the F2008 NEWUNIT function
+  !> Returns -1 if no free lun can be found
+  !> @return eis_get_lun
+  FUNCTION eis_get_lun()
+    !> Lowest LUN found
+    INTEGER :: eis_get_lun
+    INTEGER, PARAMETER :: lun_min = 100, lun_max = 1000
+    LOGICAL :: is_open
+    INTEGER :: ilun
+    eis_get_lun = -1
+    DO ilun = lun_min, lun_max
+      INQUIRE(UNIT = ilun, OPENED = is_open)
+      IF (.NOT. is_open) THEN
+        eis_get_lun = ilun
+        EXIT
+      END IF
+    END DO
+ END FUNCTION eis_get_lun 
 
 END MODULE eis_utils

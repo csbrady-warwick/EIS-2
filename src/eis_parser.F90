@@ -269,6 +269,7 @@ CONTAINS
   !> @brief
   !> Initialise a parser
   !> @param[inout] this - Self pointer
+  !> @param[inout] errcode - Error code from initialising parser
   !> @param[in] should_simplify - Should the parser autosimplify. Optional,
   !> default .TRUE.
   !> @param[in] should_minify - Should the parser autominify. Optional,
@@ -277,14 +278,16 @@ CONTAINS
   !> Optional, default .FALSE.
   !> @param[in] physics - What (if any) physics module should be loaded
   !> Optional, default no physics
-  !> @param[in] language - What language should errors be reported in
-  !> Optional, default english
-  SUBROUTINE eip_init(this, should_simplify, should_minify, no_import, &
-      physics, language)
+  !> @param[in] language_pack - Use a language pack to report errors in
+  !> a different language. Optional, default use English errors
+  SUBROUTINE eip_init(this, errcode, should_simplify, should_minify, &
+      no_import, physics, language_pack)
 
     CLASS(eis_parser) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
-    INTEGER, INTENT(IN), OPTIONAL :: physics, language
+    INTEGER, INTENT(IN), OPTIONAL :: physics
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: language_pack
     INTEGER(eis_error) :: err
     REAL(eis_num), PARAMETER :: pi = 3.141592653589793238462643383279503_eis_num
     REAL(eis_num) :: c
@@ -296,7 +299,7 @@ CONTAINS
     IF (PRESENT(physics)) this%physics_units = physics
     IF (PRESENT(no_import)) no_import_l = no_import
 
-    CALL this%err_handler%init(language = language)
+    CALL this%err_handler%init(errcode, language_pack = language_pack)
 
     this%is_init = .TRUE.
 
@@ -723,7 +726,7 @@ CONTAINS
     should_simplify = this%should_simplify
     IF (PRESENT(simplify)) should_simplify = simplify
 
-    IF (.NOT. this%is_init) CALL this%init()
+    IF (.NOT. this%is_init) CALL this%init(err)
     IF (.NOT. output%init) CALL initialise_stack(output)
 
     IF (expression_in(1:6) == 'where(') THEN

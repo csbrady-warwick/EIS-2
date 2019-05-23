@@ -21,10 +21,6 @@ MODULE eis_header
   INTEGER, PARAMETER :: eis_physics_si = 1 !< SI system
   INTEGER, PARAMETER :: eis_physics_cgs_gauss = 2 !< CGS Gaussian units
 
-  !Language constants
-  INTEGER, PARAMETER :: eis_lang_en = 1 !< English
-  INTEGER, PARAMETER :: eis_lang_ru = 2 !< Russian
-
   INTEGER(eis_error), PARAMETER :: eis_err_none = 0 !< No error
   INTEGER(eis_error), PARAMETER :: eis_err_parser = 2**0 !< Error in parser
   !> Error in simplify
@@ -55,6 +51,10 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_bad_stack = 2**14
   !> Stack returned more results through interoperable interface than expected
   INTEGER(eis_error), PARAMETER :: eis_err_extra_results = 2**15
+  !> String handler couldn't find a LUN when loading a file
+  INTEGER(eis_error), PARAMETER :: eis_err_no_luns = 2**16 
+  !> String handler couldn't find a specified file
+  INTEGER(eis_error), PARAMETER :: eis_err_no_file = 2**17
 
   !> No status specified
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
