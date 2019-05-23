@@ -12,16 +12,6 @@ LIBDIR = lib
 INCDIR = include
 MODDIR = modules
 
-GIT_WORK_TREE = "."
-PACK_PREFIX = sdf
-PACK_SOURCE_CODE = 1
-PACK_GIT_DIFF = 1
-PACK_GIT_DIFF_FROM_ORIGIN = 1
-GENERATE_CHECKSUM = 1
-F77_OUTPUT = 0
-PACK_OPTS = $(GIT_WORK_TREE) sdf $(PACK_SOURCE_CODE) $(PACK_GIT_DIFF) \
-    $(PACK_GIT_DIFF_FROM_ORIGIN) $(GENERATE_CHECKSUM) $(F77_OUTPUT)
-
 CPU = p7
 AR  = ar
 
@@ -170,19 +160,6 @@ ifeq ($(strip $(COMPILER)),hector)
   MODFLAG := -em -I/usr/include -I$(MODDIR) -I$(OBJDIR)
   MODULEFLAG := $(MODFLAG) -J$(MODDIR)
   FC = ftn
-endif
-
-# Don't compile encoded source if MODE=debug or ENC=no
-# Do compile encoded source if MODE=debug and ENC=yes
-ifeq ($(strip $(ENC)),no)
-  ENCODED_SOURCE = sdf_source_info_dummy.o
-else
-  ENCODED_SOURCE = sdf_source_info.o
-  ifneq ($(strip $(ENC)),yes)
-    ifeq ($(strip $(MODE)),debug)
-      ENCODED_SOURCE = sdf_source_info_dummy.o
-    endif
-  endif
 endif
 
 # utils
