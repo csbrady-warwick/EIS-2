@@ -1,0 +1,22 @@
+eis_constants.o:eis_constants.F90
+eis_core_functions.o: eis_core_functions.F90 eis_constants.o eis_parser_header.o
+eis_error.o: eis_error.F90 eis_constants.o eis_header.o eis_key_value_store.o \
+  eis_utils.o
+eis_eval_stack.o: eis_eval_stack.F90 eis_constants.o eis_error.o \
+  eis_parser_header.o
+eis_header.o: eis_header.F90 eis_constants.o
+eis_interop.o: eis_interop.F90 eis_parser_header.o eis_parser.o 
+eis_named_store.o: eis_named_store.F90
+eis_ordered_store.o: eis_ordered_store.F90
+eis_parser.o: eis_parser.F90 eis_core_functions.o eis_error.o eis_eval_stack.o \
+  eis_parser_header.o eis_raw_parser.o eis_registry.o eis_stack.o eis_tree.o
+eis_parser_header.o: eis_parser_header.F90 eis_header.o eis_constants.o
+eis_raw_parser.o: eis_raw_parser.F90 eis_constants.o eis_header.o
+eis_registry.o: eis_registry.F90 eis_error.o eis_parser_header.o \
+  eis_named_store.o eis_ordered_store.o eis_stack.o
+eis_stack.o: eis_stack.F90 eis_parser_header.o eis_utils.o
+eis_key_value_store.o: eis_key_value_store.F90 eis_constants.o eis_header.o \
+  eis_named_store.o eis_utils.o
+eis_tree.o: eis_tree.F90 eis_constants.o eis_error.o eis_eval_stack.o \
+  eis_parser_header.o eis_stack.o eis_utils.o
+eis_utils.o: eis_utils.F90 eis_constants.o

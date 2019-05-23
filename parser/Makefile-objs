@@ -1,0 +1,6 @@
+SRCFILES := eis_constants.F90 eis_error.F90 eis_header.F90 eis_named_store.F90 \
+  eis_parser.F90 eis_registry.F90 eis_key_value_store.F90 eis_utils.F90 \
+  eis_core_functions.F90  eis_eval_stack.F90  eis_interop.F90  \
+  eis_ordered_store.F90  eis_raw_parser.F90  eis_stack.F90 eis_tree.F90 \
+  eis_parser_header.F90
+OBJS := $(SRCFILES:.F90=.o)

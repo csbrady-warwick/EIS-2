@@ -200,7 +200,7 @@ FC_INFO := $(shell ${FC} --version 2>/dev/null \
 include Makefile-objs
 
 # target name
-LIB = $(LIBDIR)/libeis.a
+LIB = $(LIBDIR)/libeis_parser.a
 
 VPATH = $(SRCDIR):$(OBJDIR):$(LIBDIR):$(MODDIR)
 

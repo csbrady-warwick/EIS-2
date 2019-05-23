@@ -162,7 +162,7 @@ MODULE eis_tree_mod
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err
     INTEGER(eis_status) :: status
-    CHARACTER(LEN=10) :: rstring
+    CHARACTER(LEN=22) :: rstring
 
     status = eis_status_none
 
@@ -193,7 +193,7 @@ MODULE eis_tree_mod
             tree%value%numerical_data = res
             IF (ALLOCATED(tree%co_value%text)) THEN
               DEALLOCATE(tree%co_value%text)
-              WRITE(rstring,'(G10.3)') res
+              WRITE(rstring,'(G22.17)') res
               ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
             END IF
             DEALLOCATE(tree%nodes)

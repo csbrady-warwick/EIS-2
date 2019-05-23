@@ -5,6 +5,10 @@
   /*Definition of an EIS evaluator function*/
   typedef double (*parser_eval_fn)(int, double*, void*, long long*, long long*);
 
+  /*Language constants*/
+  const int eis_lang_en = 1;
+  const int eis_lang_ru = 2;
+
   const int eis_physics_none = 0;
   const int eis_physics_si = 1;
   const int eis_physics_cgs_gauss = 2;
@@ -27,18 +31,16 @@
   const EIS_ERROR eis_err_extra_bracket = 0x2000;
   const EIS_ERROR eis_err_bad_stack = 0x4000;
   const EIS_ERROR eis_err_extra_results = 0x8000;
-  const EIS_ERROR eis_err_no_luns = 0x10000;
-  const EIS_ERROR eis_err_no_file = 0x20000;
 
   /*Definitions of the routines in the interoperable interface*/
-  extern int eis_create_parser(long long*, char*, int, int, int, int);
+  extern int eis_create_parser(int, int, int, int, int);
   extern int eis_create_stack (int, void*, long long *, long long *);
   extern int eis_evaluate_stack(int, int, double*, long long *, void*, int*);
   extern void eis_add_function(int, void*, parser_eval_fn, long long, int, int,
       int, long long *);
   extern void eis_add_variable(int, void*, parser_eval_fn, long long, int,
       int, long long *);
-  extern void eis_add_constant(int, void*, double, long long, int, 
+  extern void eis_add_constant(int, void*, double, long long, int,
       int, long long *);
   extern int eis_get_error_count(int);
   extern int eis_get_error_report(int, int, int, char*);

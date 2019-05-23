@@ -4,6 +4,7 @@ MODULE eis_eval_stack_mod
   USE eis_constants
   USE eis_error_mod
   USE eis_header
+  USE eis_parser_header
 
   IMPLICIT NONE
 
