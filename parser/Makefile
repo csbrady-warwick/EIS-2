@@ -11,6 +11,7 @@ OBJDIR = obj
 LIBDIR = lib
 INCDIR = include
 MODDIR = modules
+COMDIR = ../common/include
 
 GIT_WORK_TREE = "."
 PACK_PREFIX = sdf
@@ -47,7 +48,7 @@ ifeq ($(strip $(COMPILER)),pgi)
     FFLAGS += -Mprof=func,lines
   endif
   FFLAGS += -Mnodefaultunit -Ktrap=fp -Mdclchk -tp $(CPU) -mcmodel=medium
-  MODFLAG := -I/usr/include -I$(OBJDIR) -I$(MODDIR)
+  MODFLAG := -I/usr/include -I$(OBJDIR) -I$(MODDIR) -I$(COMDIR)
   MODULEFLAG := $(MODFLAG) -module $(MODDIR)
   FC = pgf90
 endif
@@ -73,7 +74,7 @@ ifeq ($(strip $(COMPILER)),intel)
     FFLAGS += -p
   endif
   FFLAGS += -fpe0 -mcmodel=medium -heap-arrays 64
-  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
+  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR) -I$(COMDIR)
   MODULEFLAG := $(MODFLAG) -module $(MODDIR)
   FC = ifort
 endif
@@ -117,7 +118,7 @@ ifeq ($(strip $(COMPILER)),gfortran)
     FFLAGS += -p
   endif
   FFLAGS += -frecord-marker=4
-  MODFLAG := -I$(MODDIR) -I$(OBJDIR)
+  MODFLAG := -I$(MODDIR) -I$(OBJDIR) -I$(COMDIR)
   ifneq ($(wildcard /usr/include/.),)
     MODFLAG := -I/usr/include $(MODFLAG)
   endif
@@ -152,7 +153,7 @@ ifeq ($(strip $(COMPILER)),ibm)
     #FFLAGS = -O0 -qarch=qp -qtune=qp
     #FFLAGS = -qthreaded -qsmp=noauto -qsmp=omp # Hybrid stuff
   endif
-  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
+  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR) -I$(COMDIR)
   MODULEFLAG := $(MODFLAG) -qmoddir=$(MODDIR)
   FC = xlf2003
 
@@ -167,7 +168,7 @@ ifeq ($(strip $(COMPILER)),hector)
   ifeq ($(strip $(MODE)),debug)
     FFLAGS = -O0 -g -ea -ec -eC -eD -eI -en -hfp_trap -Ktrap=fp -m0 -M1438,7413
   endif
-  MODFLAG := -em -I/usr/include -I$(MODDIR) -I$(OBJDIR)
+  MODFLAG := -em -I/usr/include -I$(MODDIR) -I$(OBJDIR) -I$(COMDIR)
   MODULEFLAG := $(MODFLAG) -J$(MODDIR)
   FC = ftn
 endif
@@ -221,7 +222,7 @@ $(LIB): $(OBJDIR) $(MODDIR) $(INCDIR) $(LIBDIR) $(OBJS)
 	$(AR) -crs $@ $(addprefix $(OBJDIR)/,$(OBJS))
 	$(RANLIB) $@
 	@cp $(MODDIR)/eis_parser_mod.mod $(INCDIR)
-	@cp $(MODDIR)/eis_header.mod $(INCDIR)
+	@cp $(MODDIR)/eis_parser_header.mod $(INCDIR)
 
 $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)
