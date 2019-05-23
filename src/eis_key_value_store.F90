@@ -1,4 +1,4 @@
-MODULE eis_string_store_mod
+MODULE eis_key_value_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
   USE eis_constants
@@ -18,41 +18,41 @@ MODULE eis_string_store_mod
   END TYPE string_holder
 
   !>@class
-  !>String store. Maps a key string to a stored string
+  !>Key_value store. Maps a key string to a stored string
   !> key string is always ASCII, stored string is UCS4 if available
-  TYPE :: eis_string_store
+  TYPE :: eis_key_value_store
     PRIVATE
     TYPE(named_store) :: strings
 
     CONTAINS
-    PROCEDURE :: parse_key_string => ess_parse_key_string
+    PROCEDURE :: parse_key_string => ekv_parse_key_string
 #ifdef UNICODE
-    PROCEDURE :: store_string_ucs4 => ess_store_string_ucs4
-    PROCEDURE :: get_string_ucs4 => ess_get_string_ucs4
-    PROCEDURE :: store_string_ascii => ess_store_string_ascii
-    PROCEDURE :: get_string_ascii => ess_get_string_ascii
-    PROCEDURE :: append_string_ucs4 => ess_append_string_ucs4
-    PROCEDURE :: append_string_ascii => ess_append_string_ascii
-    PROCEDURE :: format_fill_ucs4 => ess_format_fill_ucs4
-    PROCEDURE :: format_fill_ascii => ess_format_fill_ascii
+    PROCEDURE :: store_string_ucs4 => ekv_store_string_ucs4
+    PROCEDURE :: get_string_ucs4 => ekv_get_string_ucs4
+    PROCEDURE :: store_string_ascii => ekv_store_string_ascii
+    PROCEDURE :: get_string_ascii => ekv_get_string_ascii
+    PROCEDURE :: append_string_ucs4 => ekv_append_string_ucs4
+    PROCEDURE :: append_string_ascii => ekv_append_string_ascii
+    PROCEDURE :: format_fill_ucs4 => ekv_format_fill_ucs4
+    PROCEDURE :: format_fill_ascii => ekv_format_fill_ascii
 
     GENERIC, PUBLIC :: store => store_string_ucs4, store_string_ascii
     GENERIC, PUBLIC :: get => get_string_ucs4, get_string_ascii
     GENERIC, PUBLIC :: append => append_string_ucs4, append_string_ascii
     GENERIC, PUBLIC :: format_fill => format_fill_uu, format_fill_aa
 #else
-    PROCEDURE, PUBLIC :: store => ess_store_string_ascii
-    PROCEDURE, PUBLIC :: get => ess_get_string_ascii
-    PROCEDURE, PUBLIC :: append => ess_append_string_ascii
-    PROCEDURE, PUBLIC :: format_fill => ess_format_fill_aa
+    PROCEDURE, PUBLIC :: store => ekv_store_string_ascii
+    PROCEDURE, PUBLIC :: get => ekv_get_string_ascii
+    PROCEDURE, PUBLIC :: append => ekv_append_string_ascii
+    PROCEDURE, PUBLIC :: format_fill => ekv_format_fill_aa
 #endif
 
-    PROCEDURE, PUBLIC :: load_from_ascii_file => ess_load_from_ascii_file
+    PROCEDURE, PUBLIC :: load_from_ascii_file => ekv_load_from_ascii_file
     
-  END TYPE eis_string_store
+  END TYPE eis_key_value_store
 
   PRIVATE
-  PUBLIC :: eis_string_store
+  PUBLIC :: eis_key_value_store
 
 CONTAINS
 
@@ -76,8 +76,8 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] key
   !> @param[in] text
-  SUBROUTINE ess_store_string_ucs4(this, key, text)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+  SUBROUTINE ekv_store_string_ucs4(this, key, text)
+    CLASS(eis_key_value_store), INTENT(INOUT) :: this
     !> Key associated with string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     !> String to store
@@ -87,7 +87,7 @@ CONTAINS
     ALLOCATE(temp%text, SOURCE = text)
     CALL this%strings%store(key, temp)
 
-  END SUBROUTINE ess_store_string_ucs4
+  END SUBROUTINE ekv_store_string_ucs4
 #endif
 
 
@@ -98,8 +98,8 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] key
   !> @param[in] text
-  SUBROUTINE ess_store_string_ascii(this, key, text)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+  SUBROUTINE ekv_store_string_ascii(this, key, text)
+    CLASS(eis_key_value_store), INTENT(INOUT) :: this
     !> Key associated with string
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     !> String to store
@@ -110,7 +110,7 @@ CONTAINS
     temp%text = text
     CALL this%strings%store(key, temp)
 
-  END SUBROUTINE ess_store_string_ascii
+  END SUBROUTINE ekv_store_string_ascii
 
 
 #ifdef UNICODE
@@ -127,14 +127,14 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] key
   !> @param[inout] text
-  !> @return ess_get_string_ucs4
-  FUNCTION ess_get_string_ucs4(this, key, text)
-    CLASS(eis_string_store), INTENT(IN) :: this
+  !> @return ekv_get_string_ucs4
+  FUNCTION ekv_get_string_ucs4(this, key, text)
+    CLASS(eis_key_value_store), INTENT(IN) :: this
     !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     !> Variable to hold returned string
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: text
-    LOGICAL :: ess_get_string_ucs4 !< Was key found in store
+    LOGICAL :: ekv_get_string_ucs4 !< Was key found in store
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
@@ -148,8 +148,8 @@ CONTAINS
       END SELECT
     END IF
 
-    ess_get_string_ucs4 = ASSOCIATED(temp)
-    IF (ess_get_string_ucs4) THEN
+    ekv_get_string_ucs4 = ASSOCIATED(temp)
+    IF (ekv_get_string_ucs4) THEN
       IF (.NOT. ALLOCATED(text)) THEN
         ALLOCATE(text, SOURCE = temp%text)
       ELSE
@@ -162,7 +162,7 @@ CONTAINS
       END IF
     END IF
 
-  END FUNCTION ess_get_string_ucs4
+  END FUNCTION ekv_get_string_ucs4
 #endif
 
 
@@ -180,14 +180,14 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] key
   !> @param[inout] text
-  !> @return ess_get_string_ascii
-  FUNCTION ess_get_string_ascii(this,key, text)
-    CLASS(eis_string_store), INTENT(IN) :: this
+  !> @return ekv_get_string_ascii
+  FUNCTION ekv_get_string_ascii(this,key, text)
+    CLASS(eis_key_value_store), INTENT(IN) :: this
     !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     !> Variable to hold returned string
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
-    LOGICAL :: ess_get_string_ascii !< Was key found in store
+    LOGICAL :: ekv_get_string_ascii !< Was key found in store
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
@@ -201,8 +201,8 @@ CONTAINS
       END SELECT
     END IF
 
-    ess_get_string_ascii = ASSOCIATED(temp)
-    IF (ess_get_string_ascii) THEN
+    ekv_get_string_ascii = ASSOCIATED(temp)
+    IF (ekv_get_string_ascii) THEN
       IF (.NOT. ALLOCATED(text)) THEN
         ALLOCATE(CHARACTER(LEN=LEN(temp%text), KIND = ASCII)::text)
         text = temp%text
@@ -217,7 +217,7 @@ CONTAINS
       END IF
     END IF
 
-  END FUNCTION ess_get_string_ascii
+  END FUNCTION ekv_get_string_ascii
 
 
 
@@ -237,8 +237,8 @@ CONTAINS
   !> @param[in] key
   !> @param[inout] text
   !> @param[in] newline
-  FUNCTION ess_append_string_ucs4(this, key, text, newline)
-    CLASS(eis_string_store), INTENT(IN) :: this
+  FUNCTION ekv_append_string_ucs4(this, key, text, newline)
+    CLASS(eis_key_value_store), INTENT(IN) :: this
     !> Key to retrieve
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     !> Text variable to append with output
@@ -246,15 +246,15 @@ CONTAINS
     !> Logical flag to combine strings with a newline character between them.
     !> Optional, default .TRUE. (put newline between strings)
     LOGICAL, INTENT(IN), OPTIONAL :: newline
-    LOGICAL :: ess_append_string_ucs4
+    LOGICAL :: ekv_append_string_ucs4
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: retreived
 
-    ess_append_string_ucs4 = this%get(key, retreived)
-    IF (.NOT. ess_append_string_ucs4) RETURN
+    ekv_append_string_ucs4 = this%get(key, retreived)
+    IF (.NOT. ekv_append_string_ucs4) RETURN
 
     CALL eis_append_string(text, retreived, newline = newline)
 
-  END FUNCTION ess_append_string_ucs4
+  END FUNCTION ekv_append_string_ucs4
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -273,20 +273,20 @@ CONTAINS
   !> @param[in] key
   !> @param[inout] text
   !> @param[in] newline
-  FUNCTION ess_append_string_ascii(this, key, text, newline)
-    CLASS(eis_string_store), INTENT(IN) :: this
+  FUNCTION ekv_append_string_ascii(this, key, text, newline)
+    CLASS(eis_key_value_store), INTENT(IN) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: key
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
     LOGICAL, INTENT(IN), OPTIONAL :: newline
-    LOGICAL :: ess_append_string_ascii
+    LOGICAL :: ekv_append_string_ascii
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: retreived
 
-    ess_append_string_ascii = this%get(key, retreived)
-    IF (.NOT. ess_append_string_ascii) RETURN
+    ekv_append_string_ascii = this%get(key, retreived)
+    IF (.NOT. ekv_append_string_ascii) RETURN
 
     CALL eis_append_string(text, retreived, newline = newline)
 
-  END FUNCTION ess_append_string_ascii
+  END FUNCTION ekv_append_string_ascii
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -299,8 +299,8 @@ CONTAINS
   !> stored in this store
   !> @param[in] this
   !> @param[inout] text
-  SUBROUTINE ess_format_fill_aa(this, text)
-    CLASS(eis_string_store), INTENT(IN) :: this
+  SUBROUTINE ekv_format_fill_aa(this, text)
+    CLASS(eis_key_value_store), INTENT(IN) :: this
     !> String containing the text with replacement keys in. Returns completed 
     !> text
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: text
@@ -338,7 +338,7 @@ CONTAINS
     IF (ALLOCATED(temp_o)) DEALLOCATE(temp_o)
     IF (ALLOCATED(temp)) DEALLOCATE(temp)
 
-  END SUBROUTINE ess_format_fill_aa
+  END SUBROUTINE ekv_format_fill_aa
 
 
 
@@ -354,15 +354,15 @@ CONTAINS
   !> @param[in] this
   !> @param[in] filename
   !> @param[inout] errcode
-  SUBROUTINE ess_load_from_ascii_file(this, filename, errcode)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+  SUBROUTINE ekv_load_from_ascii_file(this, filename, errcode)
+    CLASS(eis_key_value_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, PARAMETER :: buff_size = 1024*1024 !1MB default buffer
     CHARACTER(LEN=buff_size) :: buffer, buff2
     INTEGER(eis_i8) :: flen, flen_remain
     INTEGER :: lun, buf_this_time, bpos, bpos_last
-    CHARACTER(LEN=:), ALLOCATABLE :: line
+    CHARACTER(LEN=:), ALLOCATABLE :: line, temp
     LOGICAL :: continue_line, file_exists
 
     lun = eis_get_lun()
@@ -384,7 +384,8 @@ CONTAINS
       bpos_last = 1
       bpos = SCAN(buffer, NEW_LINE(buffer))
       DO WHILE (bpos > 0)
-        CALL eis_append_string(line, buffer(bpos_last:bpos_last + bpos-2))
+        CALL eis_append_string(line, buffer(bpos_last:bpos_last + bpos-2), &
+            newline = .FALSE.)
         continue_line = .FALSE.
         IF (line(LEN(line):LEN(line)) == '\') THEN
           IF (LEN(line) >= 2) THEN
@@ -398,18 +399,23 @@ CONTAINS
         IF (.NOT. continue_line) THEN
           CALL this%parse_key_string(line)
           DEALLOCATE(line)
-          bpos_last = bpos_last + bpos
-          bpos = SCAN(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
+        ELSE
+          ALLOCATE(temp, SOURCE = line(1:LEN(line) - 1))
+          DEALLOCATE(line)
+          CALL MOVE_ALLOC(temp, line)
         END IF
+        bpos_last = bpos_last + bpos
+        bpos = SCAN(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
       END DO
-      CALL eis_append_string(line, buffer(bpos_last:buf_this_time))
+      CALL eis_append_string(line, buffer(bpos_last:buf_this_time), &
+          newline = .FALSE.)
       flen_remain = flen_remain - buf_this_time
     END DO
     CALL this%parse_key_string(line)
     DEALLOCATE(line)
     CLOSE(lun)
 
-  END SUBROUTINE ess_load_from_ascii_file
+  END SUBROUTINE ekv_load_from_ascii_file
 
 
 
@@ -420,8 +426,8 @@ CONTAINS
   !> and store them in the store
   !> @param[in] this
   !> @param[in] string
-  SUBROUTINE ess_parse_key_string(this, string)
-    CLASS(eis_string_store), INTENT(INOUT) :: this
+  SUBROUTINE ekv_parse_key_string(this, string)
+    CLASS(eis_key_value_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: string
     CHARACTER(LEN=:), ALLOCATABLE :: trstr
     INTEGER :: eqpos, hashpos
@@ -445,6 +451,6 @@ CONTAINS
 
     DEALLOCATE(trstr)
 
-  END SUBROUTINE ess_parse_key_string
+  END SUBROUTINE ekv_parse_key_string
 
-END MODULE eis_string_store_mod
+END MODULE eis_key_value_store_mod

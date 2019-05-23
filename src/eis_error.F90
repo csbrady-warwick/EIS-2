@@ -2,7 +2,7 @@ MODULE eis_error_mod
 
   USE eis_constants
   USE eis_header
-  USE eis_string_store_mod
+  USE eis_key_value_store_mod
   USE eis_utils
   IMPLICIT NONE
 
@@ -22,7 +22,7 @@ MODULE eis_error_mod
     !> Held list of errors
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: errors
     !> Object holding the error report strings in the specified language
-    TYPE(eis_string_store) :: strings
+    TYPE(eis_key_value_store) :: strings
     !>Is this error handler initialised
     LOGICAL :: is_init = .FALSE.
     CHARACTER(LEN=:), ALLOCATABLE :: language_pack
@@ -356,7 +356,7 @@ MODULE eis_error_mod
     CHARACTER(LEN=9) :: posstr
     CHARACTER(LEN=19) :: format_str
     INTEGER :: charpos, nchar
-    TYPE(eis_string_store) :: errstr_store
+    TYPE(eis_key_value_store) :: errstr_store
     LOGICAL :: ok
 
     IF (ALLOCATED(report)) DEALLOCATE(report)
