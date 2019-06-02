@@ -382,7 +382,7 @@ CONTAINS
       buf_this_time = MIN(buff_size, flen_remain)
       READ(lun) buffer(1:buf_this_time)
       bpos_last = 1
-      bpos = SCAN(buffer, NEW_LINE(buffer))
+      bpos = INDEX(buffer, NEW_LINE(buffer))
       DO WHILE (bpos > 0)
         CALL eis_append_string(line, buffer(bpos_last:bpos_last + bpos-2), &
             newline = .FALSE.)
@@ -404,8 +404,8 @@ CONTAINS
           DEALLOCATE(line)
           CALL MOVE_ALLOC(temp, line)
         END IF
-        bpos_last = bpos_last + bpos
-        bpos = SCAN(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
+        bpos_last = bpos_last + bpos + LEN(NEW_LINE(buffer)) - 1
+        bpos = INDEX(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
       END DO
       CALL eis_append_string(line, buffer(bpos_last:buf_this_time), &
           newline = .FALSE.)

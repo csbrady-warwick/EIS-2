@@ -1,4 +1,4 @@
-# Choose compiler (intel, pgi, g95 or gfortran) using COMPILER= when
+# Choose compiler (intel, pgi or gfortran) using COMPILER= when
 # invoking make or get the default of pgi
 COMPILER ?= pgi
 
@@ -116,22 +116,6 @@ ifeq ($(strip $(COMPILER)),gfortran)
   FC = gfortran
 endif
 
-# g95
-# ========
-ifeq ($(strip $(COMPILER)),g95)
-  FFLAGS = -O3
-  ifeq (debug,$(findstring debug,$(MODE)))
-    FFLAGS = -O0 -g -Wall -Wimplicit-none -ftrace=full -fbounds-check -fzero
-  endif
-  ifeq (prof,$(findstring prof,$(MODE)))
-    FFLAGS += -p
-  endif
-  FFLAGS += -fPIC -Wno=155 $(M64_FLAG)
-  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
-  MODULEFLAG := $(MODFLAG) -fmod=$(MODDIR)
-  FC = g95
-endif
-
 # IBM Bluegene
 # ============
 ifeq ($(strip $(COMPILER)),ibm)
@@ -150,9 +134,9 @@ ifeq ($(strip $(COMPILER)),ibm)
   D = -WF,-D
 endif
 
-# HECToR
+# Cray
 # ========
-ifeq ($(strip $(COMPILER)),hector)
+ifeq ($(strip $(COMPILER)),cray)
   FFLAGS = -O3
   ifeq ($(strip $(MODE)),debug)
     FFLAGS = -O0 -g -ea -ec -eC -eD -eI -en -hfp_trap -Ktrap=fp -m0 -M1438,7413
