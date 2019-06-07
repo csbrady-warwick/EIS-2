@@ -138,6 +138,8 @@ MODULE eis_eval_stack_mod
     REAL(eis_num), DIMENSION(:), INTENT(OUT) :: values
     INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
+    IF (value_count <= 0) RETURN
+
     IF (this%stack_point >= value_count) THEN
       values(1:value_count) = this%entries(this%stack_point - value_count + 1 &
           :this%stack_point)

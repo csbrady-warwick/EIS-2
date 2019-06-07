@@ -52,7 +52,7 @@ MODULE eis_registry_mod
     INTEGER :: ptype = c_pt_null
     INTEGER :: associativity = c_assoc_null
     INTEGER :: precedence = 0
-    INTEGER :: expected_parameters = -1
+    INTEGER :: expected_parameters = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     LOGICAL :: defer = .FALSE.
   END TYPE eis_function_entry
