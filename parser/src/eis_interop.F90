@@ -110,7 +110,7 @@ MODULE eis_parser_interop
       stack_id = -1
       RETURN
     END IF
-    
+
     stack_id = create_new_stack(INT(parser_id))
     CALL c_f_string(expression, fstring)
     f_errcode = 0_eis_error
@@ -275,19 +275,19 @@ MODULE eis_parser_interop
   !> @param[out] result - Array that will be populated with the results of the
   !> evaluation. Array must be at least res_len elements long
   !> @param[inout] errcode - Error code
-  !> @param[in] user_params - Pointer to C interoperable structure that is
+  !> @param[in] host_params - Pointer to C interoperable structure that is
   !> passed to all function that are called as expression keys are evaluated
   !> @param[out] is_no_op - Used with the special "where" directive to specify
   !> that the where condition has not been satisfied and no changes should be
   !> made
   !> @return eis_evaluate_stack - Number of results actually returned
   FUNCTION eis_evaluate_stack(stack_id, res_len, result, errcode, &
-      user_params, is_no_op) BIND(C)
+      host_params, is_no_op) BIND(C)
 
     INTEGER(C_INT), VALUE :: stack_id, res_len
     REAL(eis_num_c), DIMENSION(res_len), INTENT(OUT) :: result
     INTEGER(eis_error_c), INTENT(OUT) :: errcode
-    TYPE(C_PTR), VALUE :: user_params
+    TYPE(C_PTR), VALUE :: host_params
     INTEGER(C_INT), INTENT(OUT) :: is_no_op
     INTEGER(C_INT) :: eis_evaluate_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: f_result
@@ -305,7 +305,7 @@ MODULE eis_parser_interop
     END IF
 
     returned_results =  interop_stacks(stack_id)%parser%evaluate(&
-        interop_stacks(stack_id)%contents, f_result, f_errcode, user_params, &
+        interop_stacks(stack_id)%contents, f_result, f_errcode, host_params, &
         f_is_no_op)
 
     errcode = IOR(errcode, INT(f_errcode, eis_error_c))

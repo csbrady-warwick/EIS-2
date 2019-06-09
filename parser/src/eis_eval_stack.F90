@@ -54,13 +54,13 @@ MODULE eis_eval_stack_mod
   !> @brief
   !> Evaluate a single stack element
   !> @param[inout] this
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[inout] status_code
   !> @param[inout] errcode
-  SUBROUTINE ees_eval_element(this, element, user_params, status_code, errcode)
+  SUBROUTINE ees_eval_element(this, element, host_params, status_code, errcode)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack_element), INTENT(IN) :: element !< Element to be evaluated
-    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code supplied parameters
+    TYPE(C_PTR), INTENT(IN) :: host_params !< Host code supplied parameters
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
@@ -73,7 +73,7 @@ MODULE eis_eval_stack_mod
       END IF
       CALL this%pop(element%actual_params, this%fn_call_vals, errcode)
       CALL this%push(element%eval_fn(element%actual_params, &
-          this%fn_call_vals, user_params, status_code, errcode), errcode)
+          this%fn_call_vals, host_params, status_code, errcode), errcode)
     END IF
 
   END SUBROUTINE ees_eval_element
@@ -184,17 +184,17 @@ MODULE eis_eval_stack_mod
   !> @param[inout] this
   !> @param[in] stack
   !> @param[inout] result_vals
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[inout] errcode
   !> @param[inout] err_handler
   !> @param[out] is_no_op
-  FUNCTION ees_evaluate(this, stack, result_vals, user_params, errcode, &
+  FUNCTION ees_evaluate(this, stack, result_vals, host_params, errcode, &
       err_handler, is_no_op) RESULT(result_count)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
     !> Array holding the results of the evaluation
     REAL(eis_num), DIMENSION(:), INTENT(INOUT), ALLOCATABLE :: result_vals
-    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code user supplied parameters
+    TYPE(C_PTR), INTENT(IN) :: host_params !< Host code user supplied parameters
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code
     !< Error handler instance. Option, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
@@ -215,7 +215,7 @@ MODULE eis_eval_stack_mod
       ELSE
         err = eis_err_none
         stat_in = status
-        CALL this%eval_element(stack%entries(istack), user_params, stat_in, &
+        CALL this%eval_element(stack%entries(istack), host_params, stat_in, &
             err)
         status = IOR(status, stat_in)
         IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN

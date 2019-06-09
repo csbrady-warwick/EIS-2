@@ -330,7 +330,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Can this variable be simplified out by the simplifier?
     !> Normally only .FALSE. if a variable will change value based on
-    !> host code provided user_params
+    !> host code provided host_params
     !> Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
     !> \glos{capbits} (capability bits} for this constant. Optional, default 0
@@ -382,7 +382,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Can this function be simplified out by the simplifier?
     !> Normally only .FALSE. if a function will change behavior based on
-    !> host code provided user_params
+    !> host code provided host_params
     !> Optional, default .TRUE.
     LOGICAL, OPTIONAL, INTENT(IN) :: can_simplify
     !> \glos{capbits} (capability bits} for this constant. Optional, default 0
@@ -433,7 +433,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code for store
     !> Can this function be simplified out by the simplifier?
     !> Normally only .FALSE. if a function will change behavior based on
-    !> host code provided user_params
+    !> host code provided host_params
     !> Optional, default .TRUE.
     LOGICAL, OPTIONAL :: can_simplify
     !> Is this a unary or binary operator. .TRUE. is unary, .FALSE. is binary

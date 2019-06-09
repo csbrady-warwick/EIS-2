@@ -5,12 +5,12 @@ MODULE eis_parser_header
 
   INTERFACE
     !> Function definition for the parser evaluator function
-    FUNCTION parser_eval_fn(nparams, params, user_params, status_code, &
+    FUNCTION parser_eval_fn(nparams, params, host_params, status_code, &
         errcode) BIND(C)
       IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status
       INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-      TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
+      TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn

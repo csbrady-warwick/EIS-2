@@ -817,7 +817,7 @@ CONTAINS
     DEALLOCATE(expression)
 
     IF (should_simplify) CALL this%simplify(this%output, err, &
-        user_params = C_NULL_PTR)
+        host_params = C_NULL_PTR)
     IF (should_minify) CALL this%minify(this%output, err)
 
   END SUBROUTINE eip_tokenize
@@ -829,10 +829,10 @@ CONTAINS
   !> @param[inout] this
   !> @param[inout] stack
   !> @param[inout] errcode
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[out] is_no_op
   !> @return eip_evaluate_stack
-  FUNCTION eip_evaluate_stack(this, stack, result, errcode, user_params, &
+  FUNCTION eip_evaluate_stack(this, stack, result, errcode, host_params, &
       is_no_op)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
@@ -842,7 +842,7 @@ CONTAINS
     !> Error code returned by the evaluation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
-    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     !> Logical determining if the stack should be a null operation. Currently
     !> related to the "where" construct
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
@@ -850,8 +850,8 @@ CONTAINS
     INTEGER :: eip_evaluate_stack
     TYPE(C_PTR) :: params
 
-    IF (PRESENT(user_params)) THEN
-      params = user_params
+    IF (PRESENT(host_params)) THEN
+      params = host_params
     ELSE
       params = C_NULL_PTR
     END IF
@@ -864,7 +864,7 @@ CONTAINS
     END IF
 
     IF (stack%has_deferred) THEN
-      CALL this%undefer(stack, errcode, user_params = params)
+      CALL this%undefer(stack, errcode, host_params = params)
       IF (errcode /= eis_err_none) RETURN
       stack%has_deferred = .FALSE.
     END IF
@@ -881,10 +881,10 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] str
   !> @param[inout] errcode
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[out] is_no_op
   !> @return eip_evaluate_string
-  FUNCTION eip_evaluate_string(this, str, result, errcode, user_params, &
+  FUNCTION eip_evaluate_string(this, str, result, errcode, host_params, &
       is_no_op, simplify, minify)
     CLASS(eis_parser) :: this
     !> String to evaluate as maths
@@ -896,7 +896,7 @@ CONTAINS
     !> evaluation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
-    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     !> Logical determining if the stack should be a null operation. Currently
     !> related to the "where" construct
     LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
@@ -913,8 +913,8 @@ CONTAINS
     TYPE(eis_stack) :: stack
     TYPE(C_PTR) :: params
 
-    IF (PRESENT(user_params)) THEN
-      params = user_params
+    IF (PRESENT(host_params)) THEN
+      params = host_params
     ELSE
       params = C_NULL_PTR
     END IF
@@ -922,7 +922,7 @@ CONTAINS
     CALL this%tokenize(str, stack, errcode, simplify, minify)
     IF (errcode == eis_err_none) THEN
       eip_evaluate_string = this%evaluate(stack, result, errcode, &
-          user_params = user_params, is_no_op = is_no_op)
+          host_params = host_params, is_no_op = is_no_op)
       CALL deallocate_stack(stack)
     END IF
 
@@ -943,22 +943,22 @@ CONTAINS
   !> @param[inout] this
   !> @param[inout] stack
   !> @param[inout] errcode
-  !> @param[in] user_params
-  SUBROUTINE eip_undefer(this, stack, errcode, user_params)
+  !> @param[in] host_params
+  SUBROUTINE eip_undefer(this, stack, errcode, host_params)
     CLASS(eis_parser) :: this
     !> Stack to undefer
     CLASS(eis_stack), INTENT(INOUT) :: stack
     !> Error code from undefering stage
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Optional host code parameters that might be needed during
-    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     INTEGER :: ipt, stored_params
     INTEGER(eis_bitmask) :: cap_bits
     CHARACTER(LEN=:), ALLOCATABLE :: str
     TYPE(C_PTR) :: params
 
-    IF (PRESENT(user_params)) THEN
-      params = user_params
+    IF (PRESENT(host_params)) THEN
+      params = host_params
     ELSE
       params = C_NULL_PTR
     END IF
@@ -990,7 +990,7 @@ CONTAINS
 
     IF (this%should_minify) CALL this%minify(stack, errcode)
     IF (this%should_simplify) CALL this%simplify(stack, errcode, &
-        user_params = params)
+        host_params = params)
 
   END SUBROUTINE eip_undefer
 
@@ -1003,8 +1003,8 @@ CONTAINS
   !> @param[inout] this
   !> @param[inout] stack
   !> @param[inout] errcode
-  !> @param[in] user_params
-  SUBROUTINE eip_simplify(this, stack, errcode, user_params)
+  !> @param[in] host_params
+  SUBROUTINE eip_simplify(this, stack, errcode, host_params)
     CLASS(eis_parser) :: this
     !> Stack to simplify
     CLASS(eis_stack), INTENT(INOUT) :: stack
@@ -1012,11 +1012,11 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Optional host code parameters. Can be used by stack elements
     !> to determine if they can be simplified or not
-    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     TYPE(C_PTR) :: params
 
-    IF (PRESENT(user_params)) THEN
-      params = user_params
+    IF (PRESENT(host_params)) THEN
+      params = host_params
     ELSE
       params = C_NULL_PTR
     END IF
@@ -1034,7 +1034,7 @@ CONTAINS
   !> @param[inout] this
   !> @param[inout] stack
   !> @param[inout] errcode
-  !> @param[in] user_params
+  !> @param[in] host_params
   SUBROUTINE eip_minify(this, stack, errcode)
     CLASS(eis_parser) :: this
     !> Stack to minify
@@ -1061,14 +1061,14 @@ CONTAINS
   !> emplacement but cannot be emplaced
   !> @param[inout] this 
   !> @param[inout] tree_name
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[out] remaining_functions
   !> @param[inout] capbits
-  RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, user_params, &
+  RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, host_params, &
       remaining_functions, capbits)
     CLASS(eis_parser) :: this
     TYPE(eis_tree_item), INTENT(INOUT) :: tree_node !< Node to operate on
-    TYPE(C_PTR), INTENT(IN) :: user_params !< Host code specified parameters
+    TYPE(C_PTR), INTENT(IN) :: host_params !< Host code specified parameters
     !> Logical determining if there are remaining unemplaced functions below
     !> this node
     LOGICAL, INTENT(INOUT) :: remaining_functions
@@ -1092,7 +1092,7 @@ CONTAINS
 
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
-        CALL this%emplace_node(tree_node%nodes(inode), user_params, &
+        CALL this%emplace_node(tree_node%nodes(inode), host_params, &
             remaining_functions, capbits)
       END DO
     END IF
@@ -1109,7 +1109,7 @@ CONTAINS
         CALL initialise_stack(temp_stack)
         CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
         rcount = this%evaluate(temp_stack, results, errcode, &
-            user_params = user_params)
+            host_params = host_params)
         params(inode) = results(1)
         CALL deallocate_stack(temp_stack)
       END DO
@@ -1123,12 +1123,12 @@ CONTAINS
     IF (ASSOCIATED(late_bind_fn)) THEN
       CALL initialise_stack(temp_stack)
       emplace_stack => temp_stack
-      CALL late_bind_fn(nparams, params, user_params, temp_stack, status_code, &
+      CALL late_bind_fn(nparams, params, host_params, temp_stack, status_code, &
           errcode)
     ELSE
       ALLOCATE(params_interop(nparams))
       params_interop = REAL(params, eis_num_c)
-      CALL late_bind_fn_c(nparams, params_interop, user_params, &
+      CALL late_bind_fn_c(nparams, params_interop, host_params, &
           interop_stack_id, status_code, errcode)
       emplace_stack => eis_get_interop_stack(interop_stack_id) 
       DEALLOCATE(params_interop)
@@ -1141,7 +1141,7 @@ CONTAINS
     IF (emplace_stack%stack_point == 0) RETURN
       
     IF (emplace_stack%has_emplaced) CALL this%emplace(emplace_stack, errcode, &
-        user_params = user_params)
+        host_params = host_params)
 
     capbits = IOR(capbits, emplace_stack%cap_bits)
     !If emplacement is not forbidden by status then build new node
@@ -1169,20 +1169,20 @@ CONTAINS
   !> Function emplaces all emplaceable functions in a stack. If the
   !> "destination" parameter is specified then the original stack is left
   !> unaltered and the emplaced stack is built in the destination parameter
-  !> This allows multiple eplacements with different "user_params" to produce
+  !> This allows multiple eplacements with different "host_params" to produce
   !> different stacks
   !> @param[inout] this
   !> @param[inout] stack
   !> @param[inout] errcode
-  !> @param[in] user_params
+  !> @param[in] host_params
   !> @param[out] destination
-  SUBROUTINE eip_emplace(this, stack, errcode, user_params, destination)
+  SUBROUTINE eip_emplace(this, stack, errcode, host_params, destination)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT), TARGET :: stack !< Stack to emplace
     !> Error code from emplacement
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code specified parameters. Optional, default C_PTR_NULL
-    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     !> Destination for final emplaced stack. Optional, default is build in 
     !> "stack"
     CLASS(eis_stack), INTENT(INOUT), OPTIONAL, TARGET :: destination
@@ -1193,8 +1193,8 @@ CONTAINS
     CLASS(eis_stack), POINTER :: sptr
     TYPE(C_PTR) :: params
 
-    IF (PRESENT(user_params)) THEN
-      params = user_params
+    IF (PRESENT(host_params)) THEN
+      params = host_params
     ELSE
       params = C_NULL_PTR
     END IF
@@ -1228,7 +1228,7 @@ CONTAINS
 
     IF (this%should_minify) CALL this%minify(sptr, errcode)
     IF (this%should_simplify) CALL this%simplify(sptr, errcode, &
-        user_params = params)
+        host_params = params)
 
   END SUBROUTINE eip_emplace
 
