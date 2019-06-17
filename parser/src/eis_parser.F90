@@ -1745,7 +1745,8 @@ CONTAINS
     !If previous block was an operator than almost anything else is valid
     !except a separator or a right bracket
     IF (this%last_block_type == eis_pt_operator .AND. &
-        (iblock%ptype == eis_pt_separator .OR. (iblock%ptype == c_pt_parenthesis &
+        (iblock%ptype == eis_pt_separator &
+        .OR. (iblock%ptype == eis_pt_parenthesis &
         .AND. iblock%value == eis_paren_right_bracket))) THEN
       err = IOR(err, eis_err_malformed)
       CALL this%err_handler%add_error(eis_err_parser, err, &

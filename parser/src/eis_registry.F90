@@ -9,6 +9,10 @@ MODULE eis_registry_mod
 
   IMPLICIT NONE
 
+  INTEGER, PARAMETER :: eis_reg_index_none     = 0
+  INTEGER, PARAMETER :: eis_reg_index_stack    = 1
+  INTEGER, PARAMETER :: eis_reg_index_emplaced = 2
+
   !>@class
   !> Type holding pointer to the two kinds of functions used for emplaced
   !> variables and functions
@@ -33,7 +37,7 @@ MODULE eis_registry_mod
   TYPE :: eis_namespace
     PRIVATE
     TYPE(named_store) :: namespaces
-    TYPE(named_store) :: generieis_store
+    TYPE(named_store) :: generic_store
     TYPE(ordered_store) :: included_namespaces
     CONTAINS
     PROCEDURE, PUBLIC :: store => ern_add_item
@@ -47,6 +51,7 @@ MODULE eis_registry_mod
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     LOGICAL :: can_simplify = .TRUE.
+    INTEGER :: index_type = eis_reg_index_none
     INTEGER(eis_i4) :: value = 0_eis_i4
     REAL(eis_num) :: numerical_data = 0.0_eis_num
     INTEGER :: ptype = eis_pt_null
@@ -64,7 +69,7 @@ MODULE eis_registry_mod
     TYPE(eis_namespace) :: stored_items
     TYPE(named_store) :: uop_table !< Contains named unary operators
     TYPE(ordered_store) :: stack_variable_registry
-    TYPE(ordered_store) :: stack_function_registry !< Contains deferred stacks
+    TYPE(ordered_store) :: emplaced_registry !< Contains deferred stacks
 
     CONTAINS
 
@@ -130,11 +135,11 @@ CONTAINS
 
     dotloc = SCAN(name,'.')
     IF (dotloc == 0) THEN
-      CALL this%generieis_store%store(name, item)
+      CALL this%generic_store%store(name, item)
     ELSE IF (dotloc == 1) THEN
-      CALL this%generieis_store%store(name(2:), item)
+      CALL this%generic_store%store(name(2:), item)
     ELSE IF (dotloc == LEN(name)) THEN
-      CALL this%generieis_store%store(name(1:LEN(name)-1), item)
+      CALL this%generic_store%store(name(1:LEN(name)-1), item)
     ELSE
       gptr => this%namespaces%get(name(1:dotloc-1))
       IF (ASSOCIATED(gptr)) THEN
@@ -223,7 +228,7 @@ CONTAINS
     item => NULL()
 
     IF (dotloc == 0) THEN
-      item => this%generieis_store%get(name)
+      item => this%generic_store%get(name)
       ins_count = this%included_namespaces%get_size()
       c_ins = 1
       DO WHILE (.NOT. ASSOCIATED(item) .AND. c_ins <= ins_count)
@@ -503,7 +508,8 @@ CONTAINS
       END SELECT
     END IF
 
-    IF (ASSOCIATED(temp_ptr)) THEN
+    IF (ASSOCIATED(temp_ptr) .AND. temp_ptr%index_type == eis_reg_index_stack) &
+        THEN
       index = this%stack_variable_registry%store(stack, index = temp_ptr%value)
     ELSE
       temp_ptr => temp
@@ -511,6 +517,7 @@ CONTAINS
     END IF
 
     temp_ptr%ptype = eis_pt_stored_variable
+    temp_ptr%index_type = eis_reg_index_stack
     temp_ptr%value = index
     temp_ptr%cap_bits = stack%cap_bits
     temp_ptr%defer = .FALSE.
@@ -556,16 +563,18 @@ CONTAINS
       END SELECT
     END IF
 
-    IF (ASSOCIATED(temp_ptr)) THEN
-      index = this%stack_function_registry%store(holder, index = temp_ptr%value)
+    IF (ASSOCIATED(temp_ptr) &
+        .AND. temp_ptr%index_type == eis_reg_index_emplaced) THEN
+      index = this%emplaced_registry%store(holder, index = temp_ptr%value)
     ELSE
       temp_ptr => temp
-      index = this%stack_function_registry%store(holder)
+      index = this%emplaced_registry%store(holder)
     END IF
 
     IF (PRESENT(expected_parameters)) temp_ptr%expected_parameters &
         = expected_parameters
     temp_ptr%ptype = eis_pt_emplaced_function
+    temp_ptr%index_type = eis_reg_index_emplaced
     temp_ptr%value = index
 
     CALL this%stored_items%store(name, temp)
@@ -757,7 +766,7 @@ CONTAINS
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
 
-    gptr => this%stack_function_registry%get(index)
+    gptr => this%emplaced_registry%get(index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
         CLASS IS (late_bind_fn_holder)
