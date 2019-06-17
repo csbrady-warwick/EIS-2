@@ -114,6 +114,8 @@ MODULE eis_parser_mod
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
     GENERIC, PUBLIC :: add_constant => add_constant_now, add_constant_defer
+    PROCEDURE, PUBLIC :: add_constant_i4 => eip_add_constant_i4
+    PROCEDURE, PUBLIC :: add_constant_i8 => eip_add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string, add_stack_variable_defer
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
@@ -1428,8 +1430,8 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] can_simplify
   !> @param[in] global
-  SUBROUTINE eip_add_constant_defer(this, name, errcode, cap_bits, &
-      can_simplify, global)
+  SUBROUTINE eip_add_constant_defer(this, name, errcode, &
+      can_simplify, global, cap_bits)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -1500,6 +1502,90 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_add_constant_now
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_constant_i4(this, name, value, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Value to associate with the name
+    INTEGER(eis_i4), INTENT(IN) :: value
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this constant
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this constant can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this constant should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_constant_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global
+
+    CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
+        can_simplify, defer, global)
+
+  END SUBROUTINE eip_add_constant_i4
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_constant_i8(this, name, value, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Value to associate with the name
+    INTEGER(eis_i8), INTENT(IN) :: value
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this constant
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this constant can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this constant should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_constant_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global
+
+    CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
+        can_simplify, defer, global)
+
+  END SUBROUTINE eip_add_constant_i8
 
 
 
