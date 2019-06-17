@@ -108,14 +108,15 @@ MODULE eis_parser_mod
     PROCEDURE :: add_variable_defer => eip_add_variable_defer
     PROCEDURE :: add_constant_now => eip_add_constant_now
     PROCEDURE :: add_constant_defer => eip_add_constant_defer
+    PROCEDURE :: add_constant_i4 => eip_add_constant_i4
+    PROCEDURE :: add_constant_i8 => eip_add_constant_i8
     PROCEDURE :: evaluate_stack => eip_evaluate_stack
     PROCEDURE :: evaluate_string => eip_evaluate_string
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
     GENERIC, PUBLIC :: add_constant => add_constant_now, add_constant_defer
-    PROCEDURE, PUBLIC :: add_constant_i4 => eip_add_constant_i4
-    PROCEDURE, PUBLIC :: add_constant_i8 => eip_add_constant_i8
+    GENERIC, PUBLIC :: add_integer_constant => add_constant_i4, add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string, add_stack_variable_defer
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
