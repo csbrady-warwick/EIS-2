@@ -816,6 +816,8 @@ CONTAINS
     DEALLOCATE(current)
     DEALLOCATE(expression)
 
+    IF (err /= eis_err_none) RETURN
+
     IF (should_simplify) CALL this%simplify(this%output, err, &
         user_params = C_NULL_PTR)
     IF (should_minify) CALL this%minify(this%output, err)
