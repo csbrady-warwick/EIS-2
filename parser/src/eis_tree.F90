@@ -124,9 +124,9 @@ MODULE eis_tree_mod
     IF (ALLOCATED(stack%co_entries)) &
         current%co_value = stack%co_entries(curindex)
 
-    IF (current%value%ptype == c_pt_function .OR. &
-        current%value%ptype == c_pt_operator .OR. &
-        current%value%ptype == c_pt_emplaced_function) THEN
+    IF (current%value%ptype == eis_pt_function .OR. &
+        current%value%ptype == eis_pt_operator .OR. &
+        current%value%ptype == eis_pt_emplaced_function) THEN
       pcount = current%value%actual_params
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
@@ -171,7 +171,7 @@ MODULE eis_tree_mod
        
       DO inode = SIZE(tree%nodes), 1, -1
         CALL eis_simplify_tree(tree%nodes(inode), params, errcode, err_handler)
-        IF (tree%nodes(inode)%value%ptype /= c_pt_constant) THEN
+        IF (tree%nodes(inode)%value%ptype /= eis_pt_constant) THEN
           !This can only happen if one of the nodes downstream returned a
           !no simplify status
           RETURN
@@ -189,7 +189,7 @@ MODULE eis_tree_mod
         CALL eval%pop(res, err)
         IF (err == eis_err_none) THEN
           IF (IAND(status, eis_status_no_simplify) == 0) THEN
-            tree%value%ptype = c_pt_constant
+            tree%value%ptype = eis_pt_constant
             tree%value%numerical_data = res
             IF (ALLOCATED(tree%co_value%text)) THEN
               DEALLOCATE(tree%co_value%text)
@@ -294,9 +294,9 @@ MODULE eis_tree_mod
     my_id = id_in
 
     SELECT CASE (node%value%ptype)
-      CASE(c_pt_function)
+      CASE(eis_pt_function)
         ds = "box"
-      CASE(c_pt_operator)
+      CASE(eis_pt_operator)
         ds = "diamond"
       CASE DEFAULT
         ds = "circle"

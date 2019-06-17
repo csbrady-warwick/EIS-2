@@ -210,7 +210,7 @@ MODULE eis_eval_stack_mod
     status = eis_status_none
 
     DO istack = 1, stack%stack_point
-      IF (stack%entries(istack)%ptype == c_pt_constant) THEN
+      IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
         CALL this%push(stack%entries(istack)%numerical_data, errcode)
       ELSE
         err = eis_err_none
