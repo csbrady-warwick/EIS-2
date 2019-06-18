@@ -861,6 +861,8 @@ CONTAINS
       params = C_NULL_PTR
     END IF
 
+    errcode = eis_err_none
+
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
       CALL this%err_handler%add_error(eis_err_evaluator, errcode)
@@ -923,6 +925,8 @@ CONTAINS
     ELSE
       params = C_NULL_PTR
     END IF
+
+    errcode = eis_err_none
 
     CALL this%tokenize(str, stack, errcode, simplify, minify)
     IF (errcode == eis_err_none) THEN
@@ -1800,6 +1804,8 @@ CONTAINS
       CALL deallocate_stack(this%stack)
       RETURN
     END IF
+
+    IF (iblock%ptype == eis_pt_null) RETURN
 
     !Functions must be followed by a left bracket
     IF ((this%last_block_type == eis_pt_function &
