@@ -202,6 +202,7 @@ clean:
 	-$(RM) -rf $(OBJDIR)
 	-$(RM) -rf $(MODDIR)
 	-$(RM) $(INCDIR)/*.mod
+	-$(RM) $(LIB)
 
 # dependencies file
 include Makefile-deps
