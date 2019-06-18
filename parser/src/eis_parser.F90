@@ -957,7 +957,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Optional host code parameters that might be needed during
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
-    INTEGER :: ipt, stored_params
+    INTEGER :: ipt, stored_params, stored_charpos
     INTEGER(eis_bitmask) :: cap_bits
     CHARACTER(LEN=:), ALLOCATABLE :: str
     TYPE(C_PTR) :: params
@@ -975,9 +975,11 @@ CONTAINS
         !This copy is a workaround, I do not believe it is required per standard
         ALLOCATE(str, SOURCE = stack%co_entries(ipt)%text)
         stored_params = stack%entries(ipt)%actual_params
+        stored_charpos = stack%co_entries(ipt)%charindex
         CALL this%load_block(str, stack%entries(ipt), &
             stack%co_entries(ipt), cap_bits)
         stack%entries(ipt)%actual_params = stored_params
+        stack%co_entries(ipt)%charindex = stored_charpos
         IF (stack%co_entries(ipt)%defer) THEN
           errcode = IOR(errcode, eis_err_has_deferred)
           CALL this%err_handler%add_error(eis_err_parser, errcode, &

@@ -94,6 +94,7 @@ MODULE eis_tree_mod
     END DO
 
     simplified%cap_bits = stack%cap_bits
+    simplified%has_deferred = stack%has_deferred
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
