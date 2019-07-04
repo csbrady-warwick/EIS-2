@@ -9,11 +9,15 @@ MODULE eis_registry_mod
 
   IMPLICIT NONE
 
+  INTEGER, PARAMETER :: eis_reg_index_none     = 0
+  INTEGER, PARAMETER :: eis_reg_index_stack    = 1
+  INTEGER, PARAMETER :: eis_reg_index_emplaced = 2
+
   !>@class
   !> Type holding pointer to the two kinds of functions used for emplaced
   !> variables and functions
   TYPE :: late_bind_fn_holder
-    PROCEDURE(parser_late_bind_interop_fn), POINTER, NOPASS :: c_contents &
+    PROCEDURE(parser_late_bind_interop_fn), POINTER, NOPASS :: eis_contents &
        => NULL()
     PROCEDURE(parser_late_bind_fn), POINTER, NOPASS :: contents => NULL()
   END TYPE late_bind_fn_holder
@@ -47,10 +51,11 @@ MODULE eis_registry_mod
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     LOGICAL :: can_simplify = .TRUE.
+    INTEGER :: index_type = eis_reg_index_none
     INTEGER(eis_i4) :: value = 0_eis_i4
     REAL(eis_num) :: numerical_data = 0.0_eis_num
-    INTEGER :: ptype = c_pt_null
-    INTEGER :: associativity = c_assoc_null
+    INTEGER :: ptype = eis_pt_null
+    INTEGER :: associativity = eis_assoc_null
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
@@ -64,7 +69,7 @@ MODULE eis_registry_mod
     TYPE(eis_namespace) :: stored_items
     TYPE(named_store) :: uop_table !< Contains named unary operators
     TYPE(ordered_store) :: stack_variable_registry
-    TYPE(ordered_store) :: stack_function_registry !< Contains deferred stacks
+    TYPE(ordered_store) :: emplaced_registry !< Contains deferred stacks
 
     CONTAINS
 
@@ -296,7 +301,7 @@ CONTAINS
 
     TYPE(eis_function_entry) :: temp
     
-    temp%ptype = c_pt_constant
+    temp%ptype = eis_pt_constant
     temp%numerical_data = value
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
@@ -342,7 +347,7 @@ CONTAINS
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_function_entry) :: temp
 
-    temp%ptype = c_pt_variable
+    temp%ptype = eis_pt_variable
     temp%fn_ptr => fn
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
@@ -395,7 +400,7 @@ CONTAINS
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
-    temp%ptype = c_pt_function
+    temp%ptype = eis_pt_function
     temp%expected_parameters = expected_parameters
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
@@ -447,7 +452,7 @@ CONTAINS
     LOGICAL :: l_unary
 
     temp%fn_ptr => fn
-    temp%ptype = c_pt_operator
+    temp%ptype = eis_pt_operator
     temp%associativity = associativity
     temp%precedence = precedence
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
@@ -503,14 +508,16 @@ CONTAINS
       END SELECT
     END IF
 
-    IF (ASSOCIATED(temp_ptr)) THEN
+    IF (ASSOCIATED(temp_ptr) .AND. temp_ptr%index_type == eis_reg_index_stack) &
+        THEN
       index = this%stack_variable_registry%store(stack, index = temp_ptr%value)
     ELSE
       temp_ptr => temp
       index = this%stack_variable_registry%store(stack)
     END IF
 
-    temp_ptr%ptype = c_pt_stored_variable
+    temp_ptr%ptype = eis_pt_stored_variable
+    temp_ptr%index_type = eis_reg_index_stack
     temp_ptr%value = index
     temp_ptr%cap_bits = stack%cap_bits
     temp_ptr%defer = .FALSE.
@@ -556,16 +563,18 @@ CONTAINS
       END SELECT
     END IF
 
-    IF (ASSOCIATED(temp_ptr)) THEN
-      index = this%stack_function_registry%store(holder, index = temp_ptr%value)
+    IF (ASSOCIATED(temp_ptr) &
+        .AND. temp_ptr%index_type == eis_reg_index_emplaced) THEN
+      index = this%emplaced_registry%store(holder, index = temp_ptr%value)
     ELSE
       temp_ptr => temp
-      index = this%stack_function_registry%store(holder)
+      index = this%emplaced_registry%store(holder)
     END IF
 
     IF (PRESENT(expected_parameters)) temp_ptr%expected_parameters &
         = expected_parameters
-    temp_ptr%ptype = c_pt_emplaced_function
+    temp_ptr%ptype = eis_pt_emplaced_function
+    temp_ptr%index_type = eis_reg_index_emplaced
     temp_ptr%value = index
 
     CALL this%stored_items%store(name, temp)
@@ -627,7 +636,7 @@ CONTAINS
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(late_bind_fn_holder) :: holder
 
-    holder%c_contents => def_fn
+    holder%eis_contents => def_fn
 
     CALL this%add_emplaced_func_holder(name, holder, errcode, &
         expected_parameters, err_handler)
@@ -691,7 +700,7 @@ CONTAINS
       block_in%value = temp%value
       cap_bits = temp%cap_bits
     ELSE
-      block_in%ptype = c_pt_bad
+      block_in%ptype = eis_pt_bad
     END IF
 
   END SUBROUTINE eir_fill_block
@@ -757,12 +766,12 @@ CONTAINS
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
 
-    gptr => this%stack_function_registry%get(index)
+    gptr => this%emplaced_registry%get(index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
         CLASS IS (late_bind_fn_holder)
           fn => co%contents
-          fn_c => co%c_contents
+          fn_c => co%eis_contents
         CLASS DEFAULT
           fn => NULL()
           fn_c => NULL()

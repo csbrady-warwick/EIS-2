@@ -94,6 +94,7 @@ MODULE eis_tree_mod
     END DO
 
     simplified%cap_bits = stack%cap_bits
+    simplified%has_deferred = stack%has_deferred
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -124,9 +125,9 @@ MODULE eis_tree_mod
     IF (ALLOCATED(stack%co_entries)) &
         current%co_value = stack%co_entries(curindex)
 
-    IF (current%value%ptype == c_pt_function .OR. &
-        current%value%ptype == c_pt_operator .OR. &
-        current%value%ptype == c_pt_emplaced_function) THEN
+    IF (current%value%ptype == eis_pt_function .OR. &
+        current%value%ptype == eis_pt_operator .OR. &
+        current%value%ptype == eis_pt_emplaced_function) THEN
       pcount = current%value%actual_params
       ALLOCATE(current%nodes(pcount))
       DO iparam = 1, pcount
@@ -171,7 +172,7 @@ MODULE eis_tree_mod
        
       DO inode = SIZE(tree%nodes), 1, -1
         CALL eis_simplify_tree(tree%nodes(inode), params, errcode, err_handler)
-        IF (tree%nodes(inode)%value%ptype /= c_pt_constant) THEN
+        IF (tree%nodes(inode)%value%ptype /= eis_pt_constant) THEN
           !This can only happen if one of the nodes downstream returned a
           !no simplify status
           RETURN
@@ -182,14 +183,14 @@ MODULE eis_tree_mod
 
       IF (can_simplify) THEN
         DO inode = SIZE(tree%nodes), 1, -1
-          CALL eval%push(tree%nodes(inode)%value%numerical_data, err)
+          CALL ees_push(eval, tree%nodes(inode)%value%numerical_data, err)
         END DO
         err = eis_err_none
-        CALL eval%eval_element(tree%value, params, status, err)
-        CALL eval%pop(res, err)
+        CALL ees_eval_element(eval, tree%value, params, status, err)
+        CALL ees_pop_scalar(eval, res, err)
         IF (err == eis_err_none) THEN
           IF (IAND(status, eis_status_no_simplify) == 0) THEN
-            tree%value%ptype = c_pt_constant
+            tree%value%ptype = eis_pt_constant
             tree%value%numerical_data = res
             IF (ALLOCATED(tree%co_value%text)) THEN
               DEALLOCATE(tree%co_value%text)
@@ -294,9 +295,9 @@ MODULE eis_tree_mod
     my_id = id_in
 
     SELECT CASE (node%value%ptype)
-      CASE(c_pt_function)
+      CASE(eis_pt_function)
         ds = "box"
-      CASE(c_pt_operator)
+      CASE(eis_pt_operator)
         ds = "diamond"
       CASE DEFAULT
         ds = "circle"

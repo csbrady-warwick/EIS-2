@@ -38,17 +38,17 @@ MODULE eis_parser_mod
   IMPLICIT NONE
 
   !> Character is part of a numerical value
-  INTEGER, PARAMETER :: c_char_numeric = 1
+  INTEGER, PARAMETER :: eis_char_numeric = 1
   !> Character is part of an alphanumeric value
-  INTEGER, PARAMETER :: c_char_alpha = 2
+  INTEGER, PARAMETER :: eis_char_alpha = 2
   !> character is a delimiter
-  INTEGER, PARAMETER :: c_char_delimiter = 3
+  INTEGER, PARAMETER :: eis_char_delimiter = 3
   !> character is a space
-  INTEGER, PARAMETER :: c_char_space = 4
+  INTEGER, PARAMETER :: eis_char_space = 4
   !> character is an opcode/special character
-  INTEGER, PARAMETER :: c_char_opcode = 5
+  INTEGER, PARAMETER :: eis_char_opcode = 5
   !> character is of unknown type
-  INTEGER, PARAMETER :: c_char_unknown = 1024
+  INTEGER, PARAMETER :: eis_char_unknown = 1024
 
   TYPE(eis_registry), SAVE :: global_registry
   LOGICAL, SAVE :: global_setup = .FALSE.
@@ -108,12 +108,15 @@ MODULE eis_parser_mod
     PROCEDURE :: add_variable_defer => eip_add_variable_defer
     PROCEDURE :: add_constant_now => eip_add_constant_now
     PROCEDURE :: add_constant_defer => eip_add_constant_defer
+    PROCEDURE :: add_constant_i4 => eip_add_constant_i4
+    PROCEDURE :: add_constant_i8 => eip_add_constant_i8
     PROCEDURE :: evaluate_stack => eip_evaluate_stack
     PROCEDURE :: evaluate_string => eip_evaluate_string
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
     GENERIC, PUBLIC :: add_constant => add_constant_now, add_constant_defer
+    GENERIC, PUBLIC :: add_integer_constant => add_constant_i4, add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string, add_stack_variable_defer
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
@@ -138,6 +141,7 @@ MODULE eis_parser_mod
   PUBLIC :: interop_stack_count, interop_parsers, interop_stacks
   PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
   PUBLIC :: eis_add_interop_parser, eis_add_interop_stack
+  PUBLIC :: eis_fast_evaluate, eis_iter_evaluate
 
 CONTAINS
 
@@ -307,51 +311,51 @@ CONTAINS
     IF (.NOT. global_setup) THEN
       err = eis_err_none
       global_setup = .TRUE.
-      CALL global_registry%add_operator('+', eis_uplus, c_assoc_ra, 4, err, &
+      CALL global_registry%add_operator('+', eis_uplus, eis_assoc_ra, 4, err, &
         unary = .TRUE., err_handler = this%err_handler)
-      CALL global_registry%add_operator('-', eis_uminus, c_assoc_ra, 4, err, &
+      CALL global_registry%add_operator('-', eis_uminus, eis_assoc_ra, 4, err, &
           unary = .TRUE., err_handler = this%err_handler)
-      CALL global_registry%add_operator('+', eis_bplus, c_assoc_a, 2, err, &
+      CALL global_registry%add_operator('+', eis_bplus, eis_assoc_a, 2, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('-', eis_bminus, c_assoc_la, 2, err, &
+      CALL global_registry%add_operator('-', eis_bminus, eis_assoc_la, 2, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('*', eis_times, c_assoc_a, 3, err, &
+      CALL global_registry%add_operator('*', eis_times, eis_assoc_a, 3, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('/', eis_divide, c_assoc_la, 3, err, &
+      CALL global_registry%add_operator('/', eis_divide, eis_assoc_la, 3, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('^', eis_pow, c_assoc_ra, 4, err, &
+      CALL global_registry%add_operator('^', eis_pow, eis_assoc_ra, 4, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('e', eis_expo, c_assoc_la, 4, err, &
+      CALL global_registry%add_operator('e', eis_expo, eis_assoc_la, 4, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('lt', eis_lt, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('lt', eis_lt, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('<', eis_lt, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('<', eis_lt, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('le', eis_le, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('le', eis_le, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('<=', eis_le, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('<=', eis_le, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('gt', eis_gt, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('gt', eis_gt, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('>', eis_gt, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('>', eis_gt, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('ge', eis_ge, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('ge', eis_ge, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('>=', eis_ge, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('>=', eis_ge, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('eq', eis_eq, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('eq', eis_eq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('==', eis_eq, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('==', eis_eq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('ne', eis_neq, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('/=', eis_neq, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('/=', eis_neq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('!=', eis_neq, c_assoc_la, 1, err, &
+      CALL global_registry%add_operator('!=', eis_neq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('and', eis_and, c_assoc_la, 0, err, &
+      CALL global_registry%add_operator('and', eis_and, eis_assoc_la, 0, err, &
           err_handler = this%err_handler)
-      CALL global_registry%add_operator('or', eis_or, c_assoc_la, 0, err, &
+      CALL global_registry%add_operator('or', eis_or, eis_assoc_la, 0, err, &
           err_handler = this%err_handler)
 
       CALL global_registry%add_constant('math.pi', pi, err, &
@@ -556,22 +560,22 @@ CONTAINS
     CHARACTER, INTENT(IN) :: chr !< Character to test
     INTEGER :: char_type !< Type code for character
 
-    char_type = c_char_unknown
+    char_type = eis_char_unknown
 
     IF (chr == ' ') THEN
-      char_type = c_char_space
+      char_type = eis_char_space
     ELSE IF (chr >= '0' .AND. chr <= '9' .OR. chr == '.') THEN
-      char_type = c_char_numeric
+      char_type = eis_char_numeric
     ELSE IF ((chr >= 'A' .AND. chr <= 'Z') &
         .OR. (chr >= 'a' .AND. chr <= 'z') .OR. chr == '_' .OR. chr == '"') THEN
-      char_type = c_char_alpha
+      char_type = eis_char_alpha
     ELSE IF (chr == '(' .OR. chr == ')' .OR. chr == ',') THEN
-      char_type = c_char_delimiter
+      char_type = eis_char_delimiter
     ! 92 is the ASCII code for backslash
     ELSE IF (chr == '+' .OR. chr == '-' .OR. ICHAR(chr) == 92 &
         .OR. chr == '/' .OR. chr == '*' .OR. chr == '^' .OR. chr == '>' &
         .OR. chr == '<' .OR. chr == '=' .OR. chr == '!') THEN
-      char_type = c_char_opcode
+      char_type = eis_char_opcode
     END IF
 
   END FUNCTION char_type
@@ -592,10 +596,10 @@ CONTAINS
     as_parenthesis = 0
 
     IF (strcmp(name, '(')) THEN
-      as_parenthesis = c_paren_left_bracket
+      as_parenthesis = eis_paren_left_bracket
 
     ELSE IF (strcmp(name, ')')) THEN
-      as_parenthesis = c_paren_right_bracket
+      as_parenthesis = eis_paren_right_bracket
     END IF
 
   END FUNCTION as_parenthesis
@@ -625,7 +629,7 @@ CONTAINS
     LOGICAL :: can_be_unary
     INTEGER :: slen
 
-    iblock%ptype = c_pt_bad
+    iblock%ptype = eis_pt_bad
     iblock%value = 0
     iblock%numerical_data = 0.0_eis_num
     IF (ALLOCATED(icoblock%text)) DEALLOCATE(icoblock%text)
@@ -634,7 +638,7 @@ CONTAINS
     cap_bits = 0
 
     IF (LEN(TRIM(name)) == 0) THEN
-      iblock%ptype = c_pt_null
+      iblock%ptype = eis_pt_null
       iblock%value = 0
       iblock%numerical_data = 0.0_eis_num
       RETURN
@@ -643,41 +647,41 @@ CONTAINS
     work = as_parenthesis(name)
     IF (work /= 0) THEN
       ! block is a parenthesis
-      iblock%ptype = c_pt_parenthesis
+      iblock%ptype = eis_pt_parenthesis
       iblock%value = INT(work, eis_i4)
       RETURN
     END IF
 
     IF (strcmp(name, ',')) THEN
-      iblock%ptype = c_pt_separator
+      iblock%ptype = eis_pt_separator
       iblock%value = 0
       RETURN
     END IF
 
     slen = LEN_TRIM(name)
     IF (strcmp(name(1:1), '"') .AND. strcmp(name(slen:slen), '"')) THEN
-      iblock%ptype = c_pt_character
+      iblock%ptype = eis_pt_character
       RETURN
     END IF
 
-    can_be_unary = .NOT. (this%last_block_type == c_pt_variable &
-          .OR. this%last_block_type == c_pt_constant &
-          .OR. this%last_block_type == c_pt_stored_variable &
-          .OR. (this%last_block_type == c_pt_parenthesis &
-          .AND. this%last_block_value == c_paren_right_bracket))
+    can_be_unary = .NOT. (this%last_block_type == eis_pt_variable &
+          .OR. this%last_block_type == eis_pt_constant &
+          .OR. this%last_block_type == eis_pt_stored_variable &
+          .OR. (this%last_block_type == eis_pt_parenthesis &
+          .AND. this%last_block_value == eis_paren_right_bracket))
 
     CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary, &
         cap_bits)
-    IF (iblock%ptype /= c_pt_bad) RETURN
+    IF (iblock%ptype /= eis_pt_bad) RETURN
 
     CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary, &
         cap_bits)
-    IF (iblock%ptype /= c_pt_bad) RETURN
+    IF (iblock%ptype /= eis_pt_bad) RETURN
 
     value = parse_string_as_real(name, work)
     IF (IAND(work, eis_err_bad_value) == 0) THEN
       ! block is a simple variable
-      iblock%ptype = c_pt_constant
+      iblock%ptype = eis_pt_constant
       iblock%value = 0
       iblock%numerical_data = value
       RETURN
@@ -752,7 +756,7 @@ CONTAINS
     err = eis_err_none
     charindex = 1
 
-    this%last_block_type = c_pt_null
+    this%last_block_type = eis_pt_null
     this%last_block_value = 0
     this%last_charindex = 1
     IF (ALLOCATED(this%last_block_text)) DEALLOCATE(this%last_block_text)
@@ -760,8 +764,8 @@ CONTAINS
 
     DO i = 2, LEN(TRIM(expression))
       ptype = char_type(expression(i:i))
-      IF (ptype == current_type .AND. ptype /= c_char_delimiter &
-          .OR. (ptype == c_char_numeric .AND. current_type == c_char_alpha &
+      IF (ptype == current_type .AND. ptype /= eis_char_delimiter &
+          .OR. (ptype == eis_char_numeric .AND. current_type == eis_char_alpha &
           .AND. .NOT. strcmp(current, 'e'))) THEN
         current(current_pointer:current_pointer) = expression(i:i)
         current_pointer = current_pointer+1
@@ -785,8 +789,8 @@ CONTAINS
         current_pointer = 2
         current(1:1) = expression(i:i)
         current_type = ptype
-        maybe_e = (iblock%ptype == c_pt_variable) .OR. (iblock%ptype &
-            == c_pt_constant)
+        maybe_e = (iblock%ptype == eis_pt_variable) .OR. (iblock%ptype &
+            == eis_pt_constant)
       END IF
     END DO
 
@@ -796,7 +800,7 @@ CONTAINS
 
     IF (err == eis_err_none) THEN
       DO i = this%stack%stack_point, 1, -1
-        IF (this%stack%entries(i)%ptype == c_pt_function) THEN
+        IF (this%stack%entries(i)%ptype == eis_pt_function) THEN
           IF (this%stack%co_entries(i)%expected_params > 0) THEN
             err = IOR(err, eis_err_wrong_parameters)
             CALL this%err_handler%add_error(eis_err_parser, err, &
@@ -815,6 +819,8 @@ CONTAINS
     CALL deallocate_stack(this%brackets)
     DEALLOCATE(current)
     DEALLOCATE(expression)
+
+    IF (err /= eis_err_none) RETURN
 
     IF (should_simplify) CALL this%simplify(this%output, err, &
         host_params = C_NULL_PTR)
@@ -856,6 +862,8 @@ CONTAINS
       params = C_NULL_PTR
     END IF
 
+    errcode = eis_err_none
+
     IF (stack%has_emplaced) THEN
       errcode = IOR(errcode, eis_err_has_emplaced)
       CALL this%err_handler%add_error(eis_err_evaluator, errcode)
@@ -869,8 +877,10 @@ CONTAINS
       stack%has_deferred = .FALSE.
     END IF
 
-    eip_evaluate_stack = this%evaluator%evaluate(stack, result, params, &
+    eip_evaluate_stack = ees_evaluate(this%evaluator, stack, result, params, &
         errcode, this%err_handler, is_no_op = is_no_op)
+
+    stack%sanity_checked = (errcode == eis_err_none)
 
   END FUNCTION eip_evaluate_stack
 
@@ -919,6 +929,8 @@ CONTAINS
       params = C_NULL_PTR
     END IF
 
+    errcode = eis_err_none
+
     CALL this%tokenize(str, stack, errcode, simplify, minify)
     IF (errcode == eis_err_none) THEN
       eip_evaluate_string = this%evaluate(stack, result, errcode, &
@@ -952,7 +964,7 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Optional host code parameters that might be needed during
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
-    INTEGER :: ipt, stored_params
+    INTEGER :: ipt, stored_params, stored_charpos
     INTEGER(eis_bitmask) :: cap_bits
     CHARACTER(LEN=:), ALLOCATABLE :: str
     TYPE(C_PTR) :: params
@@ -970,15 +982,17 @@ CONTAINS
         !This copy is a workaround, I do not believe it is required per standard
         ALLOCATE(str, SOURCE = stack%co_entries(ipt)%text)
         stored_params = stack%entries(ipt)%actual_params
+        stored_charpos = stack%co_entries(ipt)%charindex
         CALL this%load_block(str, stack%entries(ipt), &
             stack%co_entries(ipt), cap_bits)
         stack%entries(ipt)%actual_params = stored_params
+        stack%co_entries(ipt)%charindex = stored_charpos
         IF (stack%co_entries(ipt)%defer) THEN
           errcode = IOR(errcode, eis_err_has_deferred)
           CALL this%err_handler%add_error(eis_err_parser, errcode, &
               str, stack%co_entries(ipt)%charindex)
         END IF
-        IF (stack%entries(ipt)%ptype == c_pt_stored_variable) THEN
+        IF (stack%entries(ipt)%ptype == eis_pt_stored_variable) THEN
           CALL this%registry%copy_in_stored(stack%entries(ipt)%value, &
               this%output, this%err_handler, ipt)
         END IF
@@ -1098,8 +1112,8 @@ CONTAINS
     END IF
 
     !This is not an stored function, no emplacement necessary
-    IF (tree_node%value%ptype /= c_pt_emplaced_function &
-        .AND. tree_node%value%ptype /= c_pt_emplaced_variable) RETURN
+    IF (tree_node%value%ptype /= eis_pt_emplaced_function &
+        .AND. tree_node%value%ptype /= eis_pt_emplaced_variable) RETURN
 
     nparams = 0
     IF (ASSOCIATED(tree_node%nodes)) THEN
@@ -1426,8 +1440,8 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] can_simplify
   !> @param[in] global
-  SUBROUTINE eip_add_constant_defer(this, name, errcode, cap_bits, &
-      can_simplify, global)
+  SUBROUTINE eip_add_constant_defer(this, name, errcode, &
+      can_simplify, global, cap_bits)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -1498,6 +1512,90 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_add_constant_now
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_constant_i4(this, name, value, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Value to associate with the name
+    INTEGER(eis_i4), INTENT(IN) :: value
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this constant
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this constant can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this constant should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_constant_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global
+
+    CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
+        can_simplify, defer, global)
+
+  END SUBROUTINE eip_add_constant_i4
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a constant to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] value
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_constant_i8(this, name, value, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Value to associate with the name
+    INTEGER(eis_i8), INTENT(IN) :: value
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this constant
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this constant can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this constant should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_constant_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this constant to the global list of constant for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global
+
+    CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
+        can_simplify, defer, global)
+
+  END SUBROUTINE eip_add_constant_i8
 
 
 
@@ -1703,18 +1801,20 @@ CONTAINS
     ! Populate the block
     CALL this%load_block(current, iblock, icoblock, cap_bits)
     icoblock%charindex = charindex
-    IF (iblock%ptype == c_pt_bad) THEN
+    IF (iblock%ptype == eis_pt_bad) THEN
       err = eis_err_not_found
       CALL this%err_handler%add_error(eis_err_parser, err, current, charindex)
       CALL deallocate_stack(this%stack)
       RETURN
     END IF
 
+    IF (iblock%ptype == eis_pt_null) RETURN
+
     !Functions must be followed by a left bracket
-    IF ((this%last_block_type == c_pt_function &
-        .OR. this%last_block_type == c_pt_emplaced_function) &
-        .AND. .NOT. (iblock%ptype == c_pt_parenthesis &
-        .AND. iblock%value == c_paren_left_bracket)) THEN
+    IF ((this%last_block_type == eis_pt_function &
+        .OR. this%last_block_type == eis_pt_emplaced_function) &
+        .AND. .NOT. (iblock%ptype == eis_pt_parenthesis &
+        .AND. iblock%value == eis_paren_left_bracket)) THEN
       IF (this%stack%co_entries(this%stack%stack_point)%expected_params &
           == 0) THEN
         !Functions that take no parameters
@@ -1729,10 +1829,10 @@ CONTAINS
     END IF
 
     !Open brackets must not be preceeded by a constant or variable
-    IF (iblock%ptype == c_pt_parenthesis &
-        .AND. iblock%value == c_paren_left_bracket) THEN
-      IF (this%last_block_type == c_pt_variable &
-          .OR. this%last_block_type == c_pt_constant) THEN
+    IF (iblock%ptype == eis_pt_parenthesis &
+        .AND. iblock%value == eis_paren_left_bracket) THEN
+      IF (this%last_block_type == eis_pt_variable &
+          .OR. this%last_block_type == eis_pt_constant) THEN
         err = IOR(err, eis_err_bracketed_constant)
         CALL this%err_handler%add_error(eis_err_parser, err, &
             this%last_block_text, this%last_charindex)
@@ -1742,9 +1842,10 @@ CONTAINS
 
     !If previous block was an operator than almost anything else is valid
     !except a separator or a right bracket
-    IF (this%last_block_type == c_pt_operator .AND. &
-        (iblock%ptype == c_pt_separator .OR. (iblock%ptype == c_pt_parenthesis &
-        .AND. iblock%value == c_paren_right_bracket))) THEN
+    IF (this%last_block_type == eis_pt_operator .AND. &
+        (iblock%ptype == eis_pt_separator &
+        .OR. (iblock%ptype == eis_pt_parenthesis &
+        .AND. iblock%value == eis_paren_right_bracket))) THEN
       err = IOR(err, eis_err_malformed)
       CALL this%err_handler%add_error(eis_err_parser, err, &
           this%last_block_text, this%last_charindex)
@@ -1753,21 +1854,21 @@ CONTAINS
     !If current block is a binary operator then previous block must not be
     !a separator or a left bracket. Unary operator must be preceded by either
     !a separator, an operator, an open bracket or null
-    IF (iblock%ptype == c_pt_operator) THEN
+    IF (iblock%ptype == eis_pt_operator) THEN
       IF (icoblock%expected_params == 2) THEN
-        IF (this%last_block_type == c_pt_separator &
-            .OR. (this%last_block_type == c_pt_parenthesis &
-            .AND. this%last_block_value == c_paren_left_bracket)) THEN
+        IF (this%last_block_type == eis_pt_separator &
+            .OR. (this%last_block_type == eis_pt_parenthesis &
+            .AND. this%last_block_value == eis_paren_left_bracket)) THEN
           err = IOR(err, eis_err_malformed)
           CALL this%err_handler%add_error(eis_err_parser, err, current, &
               charindex)
         END IF
       ELSE !No ternary operators so must be unary
-        IF (.NOT. (this%last_block_type == c_pt_null &
-            .OR. this%last_block_type == c_pt_separator &
-            .OR. this%last_block_type == c_pt_operator &
-            .OR. (this%last_block_type == c_pt_parenthesis &
-            .AND. this%last_block_value == c_paren_left_bracket))) THEN
+        IF (.NOT. (this%last_block_type == eis_pt_null &
+            .OR. this%last_block_type == eis_pt_separator &
+            .OR. this%last_block_type == eis_pt_operator &
+            .OR. (this%last_block_type == eis_pt_parenthesis &
+            .AND. this%last_block_value == eis_paren_left_bracket))) THEN
           err = IOR(err, eis_err_malformed)
           CALL this%err_handler%add_error(eis_err_parser, err, current, &
               charindex)
@@ -1777,31 +1878,31 @@ CONTAINS
 
     this%output%has_deferred = this%output%has_deferred .OR. icoblock%defer
 
-    IF (iblock%ptype == c_pt_variable &
-        .OR. iblock%ptype == c_pt_constant) THEN
+    IF (iblock%ptype == eis_pt_variable &
+        .OR. iblock%ptype == eis_pt_constant) THEN
       CALL push_to_stack(this%output, iblock, icoblock)
 
-    ELSE IF (iblock%ptype == c_pt_stored_variable) THEN
+    ELSE IF (iblock%ptype == eis_pt_stored_variable) THEN
       IF (.NOT. icoblock%defer) THEN
         CALL this%registry%copy_in_stored(iblock%value, this%output, &
         this%err_handler)
       ELSE
         CALL push_to_stack(this%stack, iblock, icoblock)
       END IF
-    ELSE IF (iblock%ptype == c_pt_parenthesis) THEN
-      IF (iblock%value == c_paren_left_bracket) THEN
+    ELSE IF (iblock%ptype == eis_pt_parenthesis) THEN
+      IF (iblock%value == eis_paren_left_bracket) THEN
         iblock%actual_params = 0
         CALL push_to_stack(this%stack, iblock, icoblock)
         CALL push_to_stack(this%brackets, iblock, icoblock)
       ELSE
         DO
           CALL stack_snoop(this%stack, block2, 0)
-          IF (block2%ptype == c_pt_parenthesis &
-              .AND. block2%value == c_paren_left_bracket) THEN
+          IF (block2%ptype == eis_pt_parenthesis &
+              .AND. block2%value == eis_paren_left_bracket) THEN
             CALL pop_to_null(this%stack)
             IF (this%brackets%stack_point > 1) THEN
-              IF (this%last_block_type == c_pt_parenthesis &
-                  .AND. this%last_block_value == c_paren_left_bracket) THEN
+              IF (this%last_block_type == eis_pt_parenthesis &
+                  .AND. this%last_block_value == eis_paren_left_bracket) THEN
                 !No actual parameters between open and close brackets
                   this%brackets%entries(this%brackets%stack_point)%&
                       actual_params &
@@ -1818,8 +1919,8 @@ CONTAINS
             ! If stack isn't empty then check for function
             IF (this%stack%stack_point /= 0) THEN
               CALL stack_snoop(this%stack, block2, 0)
-              IF (block2%ptype == c_pt_function .OR. &
-                  block2%ptype == c_pt_emplaced_function) THEN
+              IF (block2%ptype == eis_pt_function .OR. &
+                  block2%ptype == eis_pt_emplaced_function) THEN
                 this%stack%entries(this%stack%stack_point)%actual_params = &
                     this%brackets%entries(this%brackets%stack_point)%&
                     actual_params
@@ -1855,25 +1956,25 @@ CONTAINS
         END DO
       END IF
 
-    ELSE IF (iblock%ptype == c_pt_function .OR. iblock%ptype &
-        == c_pt_emplaced_function) THEN
-      IF (iblock%ptype == c_pt_emplaced_function) &
+    ELSE IF (iblock%ptype == eis_pt_function .OR. iblock%ptype &
+        == eis_pt_emplaced_function) THEN
+      IF (iblock%ptype == eis_pt_emplaced_function) &
           this%output%has_emplaced = .TRUE.
       CALL push_to_stack(this%stack, iblock, icoblock)
       iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock, icoblock)
 
-    ELSE IF (iblock%ptype == c_pt_separator) THEN
+    ELSE IF (iblock%ptype == eis_pt_separator) THEN
       DO
         IF (this%stack%stack_point == 0) THEN
           !This is a separator in creating a vector, so nothing to do
           EXIT
         ELSE
           CALL stack_snoop(this%stack, block2, 0)
-          IF (block2%ptype /= c_pt_parenthesis) THEN
+          IF (block2%ptype /= eis_pt_parenthesis) THEN
             CALL pop_to_stack(this%stack, this%output)
           ELSE
-            IF (block2%value /= c_paren_left_bracket) THEN
+            IF (block2%value /= eis_paren_left_bracket) THEN
               err = IOR(err, eis_err_malformed)
               CALL this%err_handler%add_error(eis_err_parser, err, current, &
                   charindex)
@@ -1888,7 +1989,7 @@ CONTAINS
         END IF
       END DO
 
-    ELSE IF (iblock%ptype == c_pt_operator) THEN
+    ELSE IF (iblock%ptype == eis_pt_operator) THEN
       DO
         IF (this%stack%stack_point == 0) THEN
           ! stack is empty, so just push operator onto stack and
@@ -1898,14 +1999,14 @@ CONTAINS
         END IF
         ! stack is not empty so check precedence etc.
         CALL stack_snoop(this%stack, block2, 0, coblock2)
-        IF (block2%ptype /= c_pt_operator) THEN
+        IF (block2%ptype /= eis_pt_operator) THEN
           ! Previous block is not an operator so push current operator
           ! to stack and leave loop
           CALL push_to_stack(this%stack, iblock, icoblock)
           EXIT
         ELSE
-          IF (icoblock%associativity == c_assoc_la &
-              .OR. icoblock%associativity == c_assoc_a) THEN
+          IF (icoblock%associativity == eis_assoc_la &
+              .OR. icoblock%associativity == eis_assoc_a) THEN
             ! Operator is full associative or left associative
             IF (icoblock%precedence &
                 <= coblock2%precedence) THEN
@@ -1929,7 +2030,7 @@ CONTAINS
       END DO
     END IF
 
-    IF (iblock%ptype /= c_pt_null) THEN
+    IF (iblock%ptype /= eis_pt_null) THEN
       this%last_block_type = iblock%ptype
       this%last_block_value = iblock%value
       this%last_charindex = charindex
@@ -2065,5 +2166,69 @@ CONTAINS
     CALL eis_visualise_stack(stack_in, str_out)
 
   END SUBROUTINE eip_visualize_stack
+
+
+
+  FUNCTION eis_fast_evaluate(stack, result, errcode, host_params, eval)
+    TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
+    !> Allocatable array holding all the results from the evaluation.
+    !> Will only be reallocated if it is too small to hold all the results
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    !> Error code describing any errors that occured
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
+    !> Evaluator object. Optional, default use internal
+    TYPE(eis_eval_stack), INTENT(INOUT), OPTIONAL, TARGET :: eval
+    !> Parser object. Optional, default do not report errors
+!    TYPE(eis_parser), INTENT(INOUT), OPTIONAL :: parser
+    !> Number of results returned by the evaluation
+    INTEGER :: eis_fast_evaluate
+    TYPE(C_PTR) :: params
+    TYPE(eis_eval_stack), SAVE, TARGET :: eval_common
+    TYPE(eis_eval_stack), POINTER :: eval_ptr
+
+    IF (PRESENT(host_params)) THEN
+      params = host_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
+
+    IF (PRESENT(eval)) THEN
+      eval_ptr => eval
+    ELSE
+      eval_ptr => eval_common
+    END IF
+
+    eis_fast_evaluate = ees_evaluate_fast(eval_ptr, stack, result, params, &
+        errcode)
+
+  END FUNCTION eis_fast_evaluate
+
+
+
+  SUBROUTINE eis_iter_evaluate(stack, host_params, iter_fn, store_fn, eval)
+    TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
+    !> Host code parameters provided.
+    TYPE(C_PTR), INTENT(IN) :: host_params
+    !> Function to advance host_params to next iteration and return whether or
+    !> not to keep iterating
+    PROCEDURE(parser_param_update_fn) :: iter_fn
+    !> Function to store the results of the evaluation
+    PROCEDURE(parser_store_data_fn) :: store_fn
+    TYPE(eis_eval_stack), INTENT(INOUT), OPTIONAL, TARGET :: eval
+    !> Number of results returned by the evaluation
+    TYPE(eis_eval_stack), SAVE, TARGET :: eval_common
+    TYPE(eis_eval_stack), POINTER :: eval_ptr
+
+    IF (PRESENT(eval)) THEN
+      eval_ptr => eval
+    ELSE
+      eval_ptr => eval_common
+    END IF
+
+    CALL ees_evaluate_iter(eval_ptr, stack, host_params, iter_fn, store_fn)
+
+  END SUBROUTINE eis_iter_evaluate
 
 END MODULE eis_parser_mod

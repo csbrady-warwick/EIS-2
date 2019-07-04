@@ -66,7 +66,7 @@ MODULE eis_parser_interop
 
    parser_id = create_new_parser()
    IF (C_ASSOCIATED(language)) THEN
-     CALL c_f_string(language, language_f)
+     CALL eis_f_string(language, language_f)
      CALL interop_parsers(parser_id)%contents%init(errcode, &
          should_simplify = (should_simplify /= 0), &
          should_minify = (should_minify /= 0), &
@@ -112,7 +112,7 @@ MODULE eis_parser_interop
     END IF
 
     stack_id = create_new_stack(INT(parser_id))
-    CALL c_f_string(expression, fstring)
+    CALL eis_f_string(expression, fstring)
     f_errcode = 0_eis_error
     CALL interop_stacks(stack_id)%parser%tokenize(fstring, &
         interop_stacks(stack_id)%contents, f_errcode)
@@ -160,7 +160,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_function(fstring, fn, errcode, f_bitmask, expected_params, &
@@ -205,7 +205,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_variable(fstring, fn, errcode, f_bitmask, &
@@ -248,7 +248,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_constant(fstring, value, errcode, f_bitmask, &
@@ -370,7 +370,7 @@ MODULE eis_parser_interop
 
     parser => eis_get_interop_parser(stack_id)
     CALL parser%get_error_report(error_id, errstr)
-    CALL f_c_string(errstr, buflen, string_out)
+    CALL f_eis_string(errstr, buflen, string_out)
     eis_get_error_report = LEN(errstr) + 1
     DEALLOCATE(errstr)
 
@@ -383,7 +383,7 @@ MODULE eis_parser_interop
   !> Increment the reference count for a stack. Use to indicate
   !> that another part of your code wants to use a given stored stack
   !> @param[in] stack_id - ID of stored stack to increment the reference of
-  SUBROUTINE eis_stack_inc_ref(stack_id) BIND(C)
+  SUBROUTINE eis_stack_ineis_ref(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
 
@@ -393,7 +393,7 @@ MODULE eis_parser_interop
 
     interop_stacks(stack_id)%refcount = interop_stacks(stack_id)%refcount + 1
 
-  END SUBROUTINE eis_stack_inc_ref
+  END SUBROUTINE eis_stack_ineis_ref
 
 
 
@@ -406,7 +406,7 @@ MODULE eis_parser_interop
   !> code and given to the interoperable interface then it will not be 
   !> deallocated even when the reference count reaches zero
   !> @param[in] stack_id - ID of stored stack to decrement the reference of
-  SUBROUTINE eis_stack_dec_ref(stack_id) BIND(C)
+  SUBROUTINE eis_stack_deeis_ref(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
 
@@ -421,7 +421,7 @@ MODULE eis_parser_interop
       interop_stacks(stack_id)%contents => NULL()
     END IF
 
-  END SUBROUTINE eis_stack_dec_ref
+  END SUBROUTINE eis_stack_deeis_ref
 
 
 END MODULE eis_parser_interop

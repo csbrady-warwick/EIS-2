@@ -12,15 +12,6 @@ MODULE eis_eval_stack_mod
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: entries
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: fn_call_vals
     INTEGER :: stack_point = 0
-    CONTAINS
-    PROCEDURE, PRIVATE :: resize => ees_resize
-    PROCEDURE :: eval_element => ees_eval_element
-    PROCEDURE :: evaluate => ees_evaluate
-    PROCEDURE :: push => ees_push
-    PROCEDURE, PRIVATE :: pop_scalar => ees_pop_scalar
-    PROCEDURE, PRIVATE :: pop_vector => ees_pop_vector
-    GENERIC :: pop => pop_scalar, pop_vector
-    PROCEDURE, PRIVATE :: trim_first => ees_trim_first
   END TYPE eis_eval_stack
 
   CONTAINS
@@ -31,8 +22,8 @@ MODULE eis_eval_stack_mod
   !> the part of the stack that is in use
   !> @param[inout] this
   !> @param[in] n_elements
-  SUBROUTINE ees_resize(this, n_elements, errcode)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+  PURE SUBROUTINE ees_resize(this, n_elements, errcode)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: n_elements !< Number of elements to set the size to
     INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: temp
@@ -71,8 +62,9 @@ MODULE eis_eval_stack_mod
         DEALLOCATE(this%fn_call_vals)
         ALLOCATE(this%fn_call_vals(element%actual_params))
       END IF
-      CALL this%pop(element%actual_params, this%fn_call_vals, errcode)
-      CALL this%push(element%eval_fn(element%actual_params, &
+      CALL ees_pop_vector(this, element%actual_params, this%fn_call_vals, &
+          errcode)
+      CALL ees_push(this, element%eval_fn(element%actual_params, &
           this%fn_call_vals, host_params, status_code, errcode), errcode)
     END IF
 
@@ -86,14 +78,14 @@ MODULE eis_eval_stack_mod
   !> @param[inout] this
   !> @param [in] value
   !> @param [inout] errcode
-  SUBROUTINE ees_push(this, value, errcode)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+  PURE SUBROUTINE ees_push(this, value, errcode)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     REAL(eis_num), INTENT(IN) :: value !< Value to push on the stack
     INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
-    IF (.NOT. ALLOCATED(this%entries)) CALL this%resize(1, errcode)
+    IF (.NOT. ALLOCATED(this%entries)) CALL ees_resize(this, 100, errcode)
     IF (this%stack_point == SIZE(this%entries)) &
-        CALL this%resize(this%stack_point * 2, errcode)
+        CALL ees_resize(this, this%stack_point * 2, errcode)
 
     this%stack_point = this%stack_point + 1
     this%entries(this%stack_point) = value
@@ -108,8 +100,8 @@ MODULE eis_eval_stack_mod
   !> @param[inout] this
   !> @param[out] value
   !> @param[inout] errcode
-  SUBROUTINE ees_pop_scalar(this, value, errcode)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+  PURE SUBROUTINE ees_pop_scalar(this, value, errcode)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     REAL(eis_num), INTENT(OUT) :: value !< Value to pop off the stack
     INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
 
@@ -131,8 +123,8 @@ MODULE eis_eval_stack_mod
   !> @param[in] value_count
   !> @param[out] values
   !> @param[inout] errcode
-  SUBROUTINE ees_pop_vector(this, value_count, values, errcode)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+  PURE SUBROUTINE ees_pop_vector(this, value_count, values, errcode)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: value_count !< Number of values to pop off the stack
     !> Array to hold the popped values
     REAL(eis_num), DIMENSION(:), INTENT(OUT) :: values
@@ -159,7 +151,7 @@ MODULE eis_eval_stack_mod
   !> @param[out] value
   !> @param[inout] errcode
   SUBROUTINE ees_trim_first(this, value, errcode)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     !> Value removed from the bottom of the stack
     REAL(eis_num), INTENT(OUT) :: value
     INTEGER(eis_i8), INTENT(INOUT) :: errcode !< Error code information
@@ -190,7 +182,7 @@ MODULE eis_eval_stack_mod
   !> @param[out] is_no_op
   FUNCTION ees_evaluate(this, stack, result_vals, host_params, errcode, &
       err_handler, is_no_op) RESULT(result_count)
-    CLASS(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
     !> Array holding the results of the evaluation
     REAL(eis_num), DIMENSION(:), INTENT(INOUT), ALLOCATABLE :: result_vals
@@ -210,30 +202,30 @@ MODULE eis_eval_stack_mod
     status = eis_status_none
 
     DO istack = 1, stack%stack_point
-      IF (stack%entries(istack)%ptype == c_pt_constant) THEN
-        CALL this%push(stack%entries(istack)%numerical_data, errcode)
+      IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
+        CALL ees_push(this, stack%entries(istack)%numerical_data, errcode)
       ELSE
         err = eis_err_none
         stat_in = status
-        CALL this%eval_element(stack%entries(istack), host_params, stat_in, &
-            err)
+        CALL ees_eval_element(this, stack%entries(istack), host_params, &
+            stat_in, err)
         status = IOR(status, stat_in)
-        IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
-          IF (ALLOCATED(stack%co_entries)) THEN
-            CALL err_handler%add_error(eis_err_evaluator, err, &
-                stack%co_entries(istack)%text, &
-                stack%co_entries(istack)%charindex)
-          ELSE
-            CALL err_handler%add_error(eis_err_evaluator, err)
-          END IF
-          errcode = IOR(errcode, err)
+      END IF
+      IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
+        IF (ALLOCATED(stack%co_entries)) THEN
+          CALL err_handler%add_error(eis_err_evaluator, err, &
+              stack%co_entries(istack)%text, &
+              stack%co_entries(istack)%charindex)
+        ELSE
+          CALL err_handler%add_error(eis_err_evaluator, err)
         END IF
       END IF
+      errcode = IOR(errcode, err)
     END DO
 
     IF (stack%where_stack) THEN
       where_condition = this%entries(1)
-      CALL this%trim_first(where_condition, errcode)
+      CALL ees_trim_first(this, where_condition, errcode)
       IF (PRESENT(is_no_op)) THEN
         is_no_op = ABS(where_condition) < eis_tiny
       ELSE
@@ -254,8 +246,120 @@ MODULE eis_eval_stack_mod
     END IF
 
     result_count = this%stack_point
-    CALL this%pop(this%stack_point, result_vals, errcode)
+    CALL ees_pop_vector(this, this%stack_point, result_vals, errcode)
 
   END FUNCTION ees_evaluate
+
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Evaluate a stack to a set of results in the fastest way possible
+  !> @param[inout] this
+  !> @param[in] stack
+  !> @param[inout] result_vals
+  !> @param[in] host_params
+  !> @param[inout] errcode
+  !> @param[inout] err_handler
+  !> @param[out] is_no_op
+  FUNCTION ees_evaluate_fast(this, stack, result_vals, host_params, errcode&
+      ) RESULT(result_count)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
+    !> Array holding the results of the evaluation
+    REAL(eis_num), DIMENSION(:), INTENT(INOUT) :: result_vals
+    TYPE(C_PTR), INTENT(IN) :: host_params !< Host code user supplied parameters
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_error) :: err
+    INTEGER(eis_status) :: stat_in, status
+    INTEGER :: result_count
+    INTEGER :: istack
+
+    status = eis_status_none
+    errcode = eis_err_none
+
+    this%stack_point = 0
+    DO istack = 1, stack%stack_point
+      IF (this%stack_point == SIZE(this%entries)) &
+          CALL ees_resize(this, this%stack_point * 2, err)
+      IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
+        err = eis_err_none
+        CALL ees_push(this, stack%entries(istack)%numerical_data, err)
+      ELSE
+        err = eis_err_none
+        stat_in = status
+        CALL ees_eval_element(this, stack%entries(istack), host_params, &
+            stat_in, err)
+        status = IOR(status, stat_in)
+      END IF
+      errcode = IOR(errcode, err)
+      IF (errcode /= eis_err_none) THEN
+        result_count = 0
+        RETURN
+      END IF
+    END DO
+
+    result_count = this%stack_point
+    CALL ees_pop_vector(this, MIN(result_count, SIZE(result_vals)), &
+        result_vals, err)
+
+  END FUNCTION ees_evaluate_fast
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Evaluate a stack to a set of results in the fastest way possible
+  !> @param[inout] this
+  !> @param[in] stack
+  !> @param[in] host_params
+  !> @param[in] iter_fn
+  !> @param[in] store_fn
+  SUBROUTINE ees_evaluate_iter(this, stack, host_params, iter_fn, store_fn)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
+    TYPE(C_PTR), INTENT(IN) :: host_params !< Host code user supplied parameters
+    !> Function to advance host_params to next iteration and return whether or
+    !> not to keep iterating
+    PROCEDURE(parser_param_update_fn) :: iter_fn
+    !> Function to store the results of the evaluation
+    PROCEDURE(parser_store_data_fn) :: store_fn
+    INTEGER(eis_error) :: err, errcode
+    INTEGER(eis_status) :: stat_in, status
+    INTEGER :: result_count
+    INTEGER :: istack
+    LOGICAL :: run
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_vals
+
+    status = eis_status_none
+    ALLOCATE(result_vals(1))
+
+    this%stack_point = 0
+    run = .TRUE.
+    DO WHILE(run)
+      DO istack = 1, stack%stack_point
+        IF (this%stack_point == SIZE(this%entries)) &
+            CALL ees_resize(this, this%stack_point * 2, errcode)
+        IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
+          CALL ees_push(this, stack%entries(istack)%numerical_data, errcode)
+        ELSE
+          err = eis_err_none
+          stat_in = status
+          CALL ees_eval_element(this, stack%entries(istack), host_params, &
+              stat_in, err)
+          status = IOR(status, stat_in)
+        END IF
+        errcode = IOR(errcode, err)
+      END DO
+
+      result_count = this%stack_point
+      IF (SIZE(result_vals) < result_count) ALLOCATE(result_vals(result_count))
+      CALL ees_pop_vector(this, result_count, result_vals, errcode)
+      CALL store_fn(result_count, result_vals, errcode)
+      run = iter_fn(host_params) /= 0
+    END DO
+
+  END SUBROUTINE ees_evaluate_iter
 
 END MODULE eis_eval_stack_mod
