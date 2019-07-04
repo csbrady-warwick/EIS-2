@@ -177,17 +177,17 @@ The first is a simple Fortran Type, but it does have to be flagged as a C intero
 In this case my type contains two reals of kind `eis\_num`. I didn't have to use an EIS defined kind, I've just chosen to do so here because it means that I'm passing my data at the same precision as EIS is using for calculation. I now need to create two Fortran functions that will be called when a user requests my `x` and `y` data. These functions have the same structure
 
 ```fortran
-  FUNCTION getter(nparams, params, user_params, status_code, errcode) &
+  FUNCTION getter(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C)
     INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 ```
 
-This is the definition of a Fortran function that is called by EIS when ever any function or variable is evaluated. Note that this function is also defined `BIND(C)` because it is possible to specify functions for the parser from C code. The function takes 3 parameters and returns 3 things, two through the argument list and one as the function result. The `nparams` argument is the number of parameters that were passed to a function and are irrelevant here because we are going to define a parser variable not a parser function but the underlying Fortran function is the same. `params` is an array containing the parameters that are passed to a parser function. Again they are not used here because we are defining a variable. `user\_params` is going to be used here. It is a `C\_PTR`type, that is a C pointer that is going to contain the reference to the `data\_item` type that we are going to pass in.
+This is the definition of a Fortran function that is called by EIS when ever any function or variable is evaluated. Note that this function is also defined `BIND(C)` because it is possible to specify functions for the parser from C code. The function takes 3 parameters and returns 3 things, two through the argument list and one as the function result. The `nparams` argument is the number of parameters that were passed to a function and are irrelevant here because we are going to define a parser variable not a parser function but the underlying Fortran function is the same. `params` is an array containing the parameters that are passed to a parser function. Again they are not used here because we are defining a variable. `host_params` is going to be used here. It is a `C\_PTR`type, that is a C pointer that is going to contain the reference to the `data\_item` type that we are going to pass in.
 
 ```fortran
 MODULE mymod
@@ -202,34 +202,34 @@ MODULE mymod
 
   CONTAINS
 
-  FUNCTION get_x(nparams, params, user_params, status_code, errcode) &
+  FUNCTION get_x(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C)
     INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
-    CALL C_F_POINTER(user_params, dat)
+    CALL C_F_POINTER(host_params, dat)
     res = dat%x
 
   END FUNCTION get_x
 
 
 
-  FUNCTION get_y(nparams, params, user_params, status_code, errcode) &
+  FUNCTION get_y(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C)
     INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
     REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
-    TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
-    CALL C_F_POINTER(user_params, dat)
+    CALL C_F_POINTER(host_params, dat)
     res = dat%y
 
   END FUNCTION get_y
@@ -257,7 +257,7 @@ PROGRAM test
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
   READ(*,'(A)') input
   CALL parser%tokenize(input, stack, errcode)
-  ct = parser%evaluate(stack, result, errcode, user_params = C_LOC(item))
+  ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
   IF (errcode /= eis_err_none) THEN
     CALL parser%print_errors()
     STOP
@@ -266,7 +266,7 @@ PROGRAM test
     item%x = REAL(ix-1, eis_num)/99.0_eis_num
     DO iy = 1 , 100
       item%y = REAL(iy-1, eis_num)/99.0_eis_num
-      ct = parser%evaluate(stack, result, errcode, user_params = C_LOC(item))
+      ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
       WRITE(10,*) result(1)
     END DO
   END DO
