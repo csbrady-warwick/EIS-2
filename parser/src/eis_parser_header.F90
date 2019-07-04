@@ -15,6 +15,19 @@ MODULE eis_parser_header
       INTEGER(eis_error), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn
     END FUNCTION
+
+    FUNCTION parser_param_update_fn(user_params) BIND(C)
+      IMPORT C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
+      INTEGER :: parser_param_update_fn
+    END FUNCTION
+
+    SUBROUTINE parser_store_data_fn(nresults, results, errcode) BIND(C)
+      IMPORT eis_num, eis_i4, eis_error
+      INTEGER(eis_i4), VALUE, INTENT(IN) :: nresults
+      REAL(eis_num), DIMENSION(nresults) :: results
+      INTEGER(eis_error), VALUE, INTENT(IN) :: errcode
+    END SUBROUTINE
   END INTERFACE
 
   INTEGER, PARAMETER :: eis_physics_none = 0 !< No physical units specified
@@ -56,6 +69,7 @@ MODULE eis_parser_header
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.
+    LOGICAL :: sanity_checked = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
     LOGICAL :: has_deferred = .FALSE.
     LOGICAL :: where_stack = .FALSE.

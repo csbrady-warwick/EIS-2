@@ -141,6 +141,7 @@ MODULE eis_parser_mod
   PUBLIC :: interop_stack_count, interop_parsers, interop_stacks
   PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
   PUBLIC :: eis_add_interop_parser, eis_add_interop_stack
+  PUBLIC :: eis_fast_evaluate, eis_iter_evaluate
 
 CONTAINS
 
@@ -876,8 +877,10 @@ CONTAINS
       stack%has_deferred = .FALSE.
     END IF
 
-    eip_evaluate_stack = this%evaluator%evaluate(stack, result, params, &
+    eip_evaluate_stack = ees_evaluate(this%evaluator, stack, result, params, &
         errcode, this%err_handler, is_no_op = is_no_op)
+
+    stack%sanity_checked = (errcode == eis_err_none)
 
   END FUNCTION eip_evaluate_stack
 
@@ -2163,5 +2166,69 @@ CONTAINS
     CALL eis_visualise_stack(stack_in, str_out)
 
   END SUBROUTINE eip_visualize_stack
+
+
+
+  FUNCTION eis_fast_evaluate(stack, result, errcode, user_params, eval)
+    TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
+    !> Allocatable array holding all the results from the evaluation.
+    !> Will only be reallocated if it is too small to hold all the results
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    !> Error code describing any errors that occured
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: user_params
+    !> Evaluator object. Optional, default use internal
+    TYPE(eis_eval_stack), INTENT(INOUT), OPTIONAL, TARGET :: eval
+    !> Parser object. Optional, default do not report errors
+!    TYPE(eis_parser), INTENT(INOUT), OPTIONAL :: parser
+    !> Number of results returned by the evaluation
+    INTEGER :: eis_fast_evaluate
+    TYPE(C_PTR) :: params
+    TYPE(eis_eval_stack), SAVE, TARGET :: eval_common
+    TYPE(eis_eval_stack), POINTER :: eval_ptr
+
+    IF (PRESENT(user_params)) THEN
+      params = user_params
+    ELSE
+      params = C_NULL_PTR
+    END IF
+
+    IF (PRESENT(eval)) THEN
+      eval_ptr => eval
+    ELSE
+      eval_ptr => eval_common
+    END IF
+
+    eis_fast_evaluate = ees_evaluate_fast(eval_ptr, stack, result, params, &
+        errcode)
+
+  END FUNCTION eis_fast_evaluate
+
+
+
+  SUBROUTINE eis_iter_evaluate(stack, user_params, iter_fn, store_fn, eval)
+    TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
+    !> Host code parameters provided.
+    TYPE(C_PTR), INTENT(IN) :: user_params
+    !> Function to advance user_params to next iteration and return whether or
+    !> not to keep iterating
+    PROCEDURE(parser_param_update_fn) :: iter_fn
+    !> Function to store the results of the evaluation
+    PROCEDURE(parser_store_data_fn) :: store_fn
+    TYPE(eis_eval_stack), INTENT(INOUT), OPTIONAL, TARGET :: eval
+    !> Number of results returned by the evaluation
+    TYPE(eis_eval_stack), SAVE, TARGET :: eval_common
+    TYPE(eis_eval_stack), POINTER :: eval_ptr
+
+    IF (PRESENT(eval)) THEN
+      eval_ptr => eval
+    ELSE
+      eval_ptr => eval_common
+    END IF
+
+    CALL ees_evaluate_iter(eval_ptr, stack, user_params, iter_fn, store_fn)
+
+  END SUBROUTINE eis_iter_evaluate
 
 END MODULE eis_parser_mod

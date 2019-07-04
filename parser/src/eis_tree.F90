@@ -183,11 +183,11 @@ MODULE eis_tree_mod
 
       IF (can_simplify) THEN
         DO inode = SIZE(tree%nodes), 1, -1
-          CALL eval%push(tree%nodes(inode)%value%numerical_data, err)
+          CALL ees_push(eval, tree%nodes(inode)%value%numerical_data, err)
         END DO
         err = eis_err_none
-        CALL eval%eval_element(tree%value, params, status, err)
-        CALL eval%pop(res, err)
+        CALL ees_eval_element(eval, tree%value, params, status, err)
+        CALL ees_pop_scalar(eval, res, err)
         IF (err == eis_err_none) THEN
           IF (IAND(status, eis_status_no_simplify) == 0) THEN
             tree%value%ptype = eis_pt_constant

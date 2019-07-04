@@ -29,6 +29,7 @@ MODULE eis_constants
   !> Number will grow if more are needed
   INTEGER, PARAMETER :: n_stacks_default = 32
 
+
   !> kind parameter for real values used in EIS
   INTEGER, PARAMETER :: eis_num = C_DOUBLE
   !> kind parameter for real values in C. Equvalent to eis_num
