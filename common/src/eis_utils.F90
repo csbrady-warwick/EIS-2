@@ -7,7 +7,7 @@ MODULE eis_utils
   PRIVATE
 
   PUBLIC :: eis_append_string, c_f_string, f_c_string
-  PUBLIC :: eis_get_lun
+  PUBLIC :: eis_get_lun, eis_load_file_to_string
 
   INTERFACE eis_append_string
     MODULE PROCEDURE  eis_append_string_aa
@@ -374,6 +374,34 @@ MODULE eis_utils
         EXIT
       END IF
     END DO
- END FUNCTION eis_get_lun 
+ END FUNCTION eis_get_lun
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Opens a file and loads the entire contents into a string
+  !> @param[in] filename
+  !> @param[out] string
+  SUBROUTINE eis_load_file_to_string(filename, string)
+    CHARACTER(LEN=*), INTENT(IN) :: filename !< File to open
+    !> String variable to hold the contents of the file
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: string
+    INTEGER :: lun
+    LOGICAL :: exists
+    INTEGER(eis_i8) :: fsize
+
+    IF (ALLOCATED(string)) DEALLOCATE(string)
+    lun = eis_get_lun()
+    IF (lun < 0) RETURN
+    INQUIRE(FILE=filename, EXIST=exists, SIZE = fsize)
+    IF (.NOT. exists .OR. fsize < 0) RETURN
+
+    ALLOCATE(CHARACTER(LEN=fsize)::string)
+    OPEN(FILE=filename, UNIT=lun, STATUS='OLD', ACCESS='STREAM')
+    READ(lun) string
+    CLOSE(lun)
+
+ END SUBROUTINE eis_load_file_to_string
 
 END MODULE eis_utils
