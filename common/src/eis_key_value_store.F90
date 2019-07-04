@@ -5,6 +5,7 @@ MODULE eis_key_value_store_mod
   USE eis_header
   USE eis_named_store_mod
   USE eis_utils
+  USE eis_string_store_mod
 
   IMPLICIT NONE
 
@@ -358,62 +359,19 @@ CONTAINS
     CLASS(eis_key_value_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    INTEGER, PARAMETER :: buff_size = 1024*1024 !1MB default buffer
-    CHARACTER(LEN=buff_size) :: buffer, buff2
-    INTEGER(eis_i8) :: flen, flen_remain
-    INTEGER :: lun, buf_this_time, bpos, bpos_last
-    CHARACTER(LEN=:), ALLOCATABLE :: line, temp
-    LOGICAL :: continue_line, file_exists
+    INTEGER, DIMENSION(2) :: ranges
+    TYPE(eis_string_store) :: raw_strings
+    CHARACTER(LEN=:), ALLOCATABLE :: str
+    INTEGER :: istr
+    LOGICAL :: ok
 
-    lun = eis_get_lun()
-    IF (lun < 0) THEN
-      errcode = IOR(errcode, eis_err_no_luns)
-      RETURN
-    END IF
-    INQUIRE(FILE=filename, exist = file_exists)
-    IF (.NOT. file_exists) THEN
-      errcode = IOR(errcode, eis_err_no_file)
-      RETURN
-    END IF
-    OPEN(UNIT=lun, FILE=filename, STATUS='OLD', ACCESS='STREAM')
-    INQUIRE(UNIT=lun, SIZE = flen)
-    flen_remain = flen
-    DO WHILE(flen_remain > 0)
-      buf_this_time = MIN(buff_size, flen_remain)
-      READ(lun) buffer(1:buf_this_time)
-      bpos_last = 1
-      bpos = INDEX(buffer, NEW_LINE(buffer))
-      DO WHILE (bpos > 0)
-        CALL eis_append_string(line, buffer(bpos_last:bpos_last + bpos-2), &
-            newline = .FALSE.)
-        continue_line = .FALSE.
-        IF (line(LEN(line):LEN(line)) == '\') THEN
-          IF (LEN(line) >= 2) THEN
-            IF (line(LEN(line)-1:LEN(line)-1) /= '\') THEN
-              continue_line = .TRUE.
-            END IF
-          ELSE
-            continue_line = .TRUE.
-          END IF
-        END IF
-        IF (.NOT. continue_line) THEN
-          CALL this%parse_key_string(line)
-          DEALLOCATE(line)
-        ELSE
-          ALLOCATE(temp, SOURCE = line(1:LEN(line) - 1))
-          DEALLOCATE(line)
-          CALL MOVE_ALLOC(temp, line)
-        END IF
-        bpos_last = bpos_last + bpos + LEN(NEW_LINE(buffer)) - 1
-        bpos = INDEX(buffer(bpos_last:buf_this_time), NEW_LINE(buffer))
-      END DO
-      CALL eis_append_string(line, buffer(bpos_last:buf_this_time), &
-          newline = .FALSE.)
-      flen_remain = flen_remain - buf_this_time
+    ranges = raw_strings%load_from_ascii_file(filename, errcode)
+    CALL raw_strings%remove_blank_lines()
+    CALL raw_strings%combine_split_lines("\")
+    DO istr = 1, raw_strings%get_size()
+      ok = raw_strings%get(istr, str)
+      CALL this%parse_key_string(str)
     END DO
-    CALL this%parse_key_string(line)
-    DEALLOCATE(line)
-    CLOSE(lun)
 
   END SUBROUTINE ekv_load_from_ascii_file
 

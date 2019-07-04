@@ -18,7 +18,7 @@ MODULE eis_string_store_mod
   END TYPE string_holder
 
   !>@class
-  !>Key_value store. Stores a list of strings by index number
+  !>String line store. Stores a list of strings by index number
   !>stored strings are UCS4 if available
   TYPE :: eis_string_store
     PRIVATE
@@ -32,17 +32,28 @@ MODULE eis_string_store_mod
     PROCEDURE :: get_string_ascii => ess_get_string_ascii
     PROCEDURE :: append_string_ucs4 => ess_append_string_ucs4
     PROCEDURE :: append_string_ascii => ess_append_string_ascii
+    PROCEDURE :: insert_string_ucs4 => ess_insert_string_ucs4
+    PROCEDURE :: insert_string_ascii => ess_insert_string_ascii
+    PROCEDURE :: populate_from_ascii => ess_populate_from_ascii
+    PROCEDURE :: populate_from_ucs4 => ess_popuate_from_ucs4
 
     GENERIC, PUBLIC :: store => store_string_ucs4, store_string_ascii
     GENERIC, PUBLIC :: get => get_string_ucs4, get_string_ascii
     GENERIC, PUBLIC :: append => append_string_ucs4, append_string_ascii
+    GENERIC, PUBLIC :: insert => insert_string_ucs4, insert_string_ascii
+    GENERIC, PUBLIC :: populate => populate_from_ascii, populate_from_ucs4
 #else
     PROCEDURE, PUBLIC :: store => ess_store_string_ascii
     PROCEDURE, PUBLIC :: get => ess_get_string_ascii
     PROCEDURE, PUBLIC :: append => ess_append_string_ascii
+    PROCEDURE, PUBLIC :: insert => ess_insert_string_ascii
+    PROCEDURE, PUBLIC :: populate => ess_populate_from_ascii
 #endif
+    PROCEDURE, PUBLIC :: delete => ess_delete
     PROCEDURE, PUBLIC :: get_size => ess_get_size
     PROCEDURE, PUBLIC :: load_from_ascii_file => ess_load_from_ascii_file
+    PROCEDURE, PUBLIC :: remove_blank_lines => ess_remove_blank_lines
+    PROCEDURE, PUBLIC :: combine_split_lines => ess_combine_split_lines
     
   END TYPE eis_string_store
 
@@ -80,23 +91,49 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Deletes an item from the store
+  !> @param[inout] this
+  !> @param[in] index
+  !> @return success
+  FUNCTION ess_delete(this, index) RESULT(success)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> Index of item to delete
+    INTEGER, INTENT(IN) :: index
+    !> Whether or not the deletion succeded
+    LOGICAL :: success
+    LOGICAL :: disorder
+
+    disorder = this%strings%can_disorder
+    this%strings%can_disorder = .TRUE.
+    success = this%strings%delete(index)
+    this%strings%can_disorder = disorder
+
+  END FUNCTION ess_delete
+
+
+
 #ifdef UNICODE
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Stores a string to a numbered item. String is UCS4
   !> @param[inout] this
   !> @param[in] text
-  !> @return index
-  FUNCTION ess_store_string_ucs4(this, text) RESULT(index)
+  !> @param[in] index
+  !> @return index_out
+  FUNCTION ess_store_string_ucs4(this, text, index) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
+    !> Index to store the string in. Optional, default store at end
+    INTEGER, INTENT(IN), OPTIONAL :: index
     !> Index of stored string
-    INTEGER(eis_i4) :: index
+    INTEGER(eis_i4) :: index_out
     TYPE(string_holder) :: temp
 
     ALLOCATE(temp%text, SOURCE = text)
-    index = this%strings%store(temp)
+    index_out = this%strings%store(temp, index)
 
   END FUNCTION ess_store_string_ucs4
 #endif
@@ -107,17 +144,20 @@ CONTAINS
   !> Stores a string to a numbered item. String is ASCII
   !> @param[inout] this
   !> @param[in] text
-  !> @return index
-  FUNCTION ess_store_string_ascii(this, text) RESULT(index)
+  !> @param[in] index
+  !> @return index_out
+  FUNCTION ess_store_string_ascii(this, text, index) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: text
+    !> Index to store the string in. Optional, default store at end
+    INTEGER, INTENT(IN), OPTIONAL :: index
     !> Index of stored string
-    INTEGER(eis_i4) :: index
+    INTEGER(eis_i4) :: index_out
     TYPE(string_holder) :: temp
 
     ALLOCATE(temp%text, SOURCE = text)
-    index = this%strings%store(temp)
+    index_out = this%strings%store(temp, index)
 
   END FUNCTION ess_store_string_ascii
 
@@ -300,6 +340,175 @@ CONTAINS
 
 
 
+
+#ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Stores a string to a numbered item. String is UCS4
+  !> @param[inout] this
+  !> @param[in] text
+  !> @return index
+  FUNCTION ess_insert_string_ucs4(this, text) RESULT(index)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> String to store
+    CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
+    !> Index of stored string
+    INTEGER(eis_i4) :: index
+    TYPE(string_holder) :: temp
+
+    ALLOCATE(temp%text, SOURCE = text)
+    index = this%strings%store(temp)
+
+  END FUNCTION ess_insert_string_ucs4
+#endif
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Stores a string to a numbered item. String is ASCII
+  !> @param[inout] this
+  !> @param[in] text
+  !> @return index
+  FUNCTION ess_insert_string_ascii(this, dest_index, text) RESULT(index)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> Index at which to insert text
+    INTEGER, INTENT(IN) :: dest_index
+    !> String to store
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: text
+    !> Index of stored string
+    INTEGER(eis_i4) :: index
+    TYPE(string_holder) :: temp
+    LOGICAL :: disorder
+
+    ALLOCATE(temp%text, SOURCE = text)
+    disorder = this%strings%can_disorder
+    this%strings%can_disorder = .TRUE.
+    index = this%strings%insert(temp, dest_index)
+    this%strings%can_disorder = disorder
+
+  END FUNCTION ess_insert_string_ascii
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to add lines from a single string
+  !> @details
+  !> Lines can be continued by adding a "\" character as the last character
+  !> on the line. Blank lines will still be added as blank lines
+  !> @param[in] this
+  !> @param[in] str_in
+  !> @param[inout] errcode
+  !> @result index_range
+  FUNCTION ess_populate_from_ascii(this, str, errcode, index_start) &
+      RESULT(index_range)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: index_start
+    INTEGER, DIMENSION(2) :: index_range
+    INTEGER :: newline_pos, newline_offset, last_pos
+    INTEGER :: min_index, max_index, indx
+    CHARACTER(LEN=:), ALLOCATABLE :: str_compose
+
+    errcode = eis_err_none
+
+    IF (PRESENT(index_start)) indx = index_start
+
+    newline_pos = INDEX(str, NEW_LINE(str))
+    newline_offset = newline_pos
+    last_pos = 1
+    min_index = HUGE(min_index)
+    max_index = 0
+    DO WHILE(newline_offset > 0)
+      IF (last_pos /= newline_pos) THEN
+        IF (PRESENT(index_start)) THEN
+          indx = this%insert(indx, str(last_pos:newline_pos - 1))
+          indx = indx + 1
+        ELSE
+          indx = this%store(str(last_pos:newline_pos - 1))
+        END IF
+      ELSE
+        IF (PRESENT(index_start)) THEN
+          indx = this%insert(indx, "")
+          indx = indx + 1
+        ELSE
+          indx = this%store("")
+        END IF
+      END IF
+      min_index = MIN(indx, min_index)
+      max_index = MAX(indx, max_index)
+      last_pos = newline_pos + LEN(NEW_LINE(str))
+      newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
+      newline_pos = newline_offset + (last_pos - 1)
+    END DO
+
+    index_range = [min_index, max_index]
+
+  END FUNCTION ess_populate_from_ascii
+
+
+
+#ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to add lines from a single string
+  !> @details
+  !> Lines can be continued by adding a "\" character as the last character
+  !> on the line. Blank lines will still be added as blank lines
+  !> @param[in] this
+  !> @param[in] str_in
+  !> @param[inout] errcode
+  !> @result index_range
+  FUNCTION ess_populate_from_ucs4(this, str, errcode, index_start) &
+      RESULT(index_range)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: str
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: index_start
+    INTEGER, DIMENSION(2) :: index_range
+    INTEGER :: newline_pos, newline_offset, last_pos
+    INTEGER :: min_index, max_index, indx
+
+    errcode = eis_err_none
+
+    IF (PRESENT(index_start)) indx = index_start
+
+    newline_pos = INDEX(str, NEW_LINE(str))
+    newline_offset = newline_pos
+    last_pos = 1
+    min_index = HUGE(min_index)
+    max_index = 0
+    DO WHILE(newline_offset > 0)
+      IF (last_pos /= newline_pos) THEN
+        IF (PRESENT(index_start)) THEN
+          indx = this%insert(indx, str(last_pos:newline_pos - 1))
+          indx = indx + 1
+        ELSE
+          indx = this%store(str(last_pos:newline_pos - 1))
+        END IF
+      ELSE
+        IF (PRESENT(index_start)) THEN
+          indx = this%insert(indx, "")
+          indx = indx + 1
+        ELSE
+          indx = this%store("")
+        END IF
+      END IF
+      min_index = MIN(indx, min_index)
+      max_index = MAX(indx, max_index)
+      last_pos = newline_pos + LEN(NEW_LINE(str))
+      newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
+      newline_pos = newline_offset + (last_pos - 1)
+    END DO
+
+    index_range = [min_index, max_index]
+
+  END FUNCTION ess_populate_from_ucs4
+#endif
+
+
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Routine to add keys to a store from an external file
@@ -311,11 +520,12 @@ CONTAINS
   !> @param[in] filename
   !> @param[inout] errcode
   !> @result index_range
-  FUNCTION ess_load_from_ascii_file(this, filename, errcode) &
+  FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start) &
       RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: index_start
     INTEGER, DIMENSION(2) :: index_range
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str
     INTEGER :: newline_pos, newline_offset, last_pos
@@ -324,31 +534,80 @@ CONTAINS
     errcode = eis_err_none
 
     CALL eis_load_file_to_string(filename, str)
+    index_range = [min_index, max_index]
     IF (.NOT. ALLOCATED(str)) THEN
       errcode = IOR(errcode, eis_err_no_file)
       RETURN
     END IF
 
-    newline_pos = INDEX(str, NEW_LINE(str))
-    newline_offset = newline_pos
-    last_pos = 1
-    min_index = HUGE(min_index)
-    max_index = 0
-    DO WHILE(newline_offset > 0)
-      IF (last_pos /= newline_pos) THEN
-        indx = this%store(str(last_pos:newline_pos - 1))
-      ELSE
-        indx = this%store("")
-      END IF
-      min_index = MIN(indx, min_index)
-      max_index = MAX(indx, max_index)
-      last_pos = newline_pos + LEN(NEW_LINE(str))
-      newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
-      newline_pos = newline_offset + (last_pos - 1)
-    END DO
-
-    index_range = [min_index, max_index]
+    index_range = this%populate(str, errcode, index_start)
+    DEALLOCATE(str)
 
   END FUNCTION ess_load_from_ascii_file
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Remove blank lines from the list of lines
+  !> @param[in] this
+  SUBROUTINE ess_remove_blank_lines(this)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    INTEGER :: index
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
+    LOGICAL :: ok, disorder
+
+    index = this%get_size()
+    disorder = this%strings%can_disorder
+    this%strings%can_disorder = .TRUE.
+    DO WHILE (index > 0)
+      ok = this%get(index, str)
+      IF (str == "") THEN
+        ok = this%delete(index)
+      END IF
+      index = index - 1
+    END DO
+    this%strings%can_disorder = disorder
+
+  END SUBROUTINE ess_remove_blank_lines
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Combine lines when the last characters of a line
+  !> is a specified character sequence
+  !> @param[inout] this
+  !> @param[in] eol_sequence
+  SUBROUTINE ess_combine_split_lines(this, eol_sequence)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: eol_sequence
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str2
+    LOGICAL :: ok, loop, disorder
+    INTEGER :: eol_length, str_length, index, sindex
+
+    disorder = this%strings%can_disorder
+    this%strings%can_disorder = .TRUE.
+    loop = .TRUE.
+    eol_length = LEN(eol_sequence)
+    DO WHILE (loop)
+      loop = .FALSE.
+      DO index = 1, this%get_size()
+        ok = this%get(index, str)
+        str_length = LEN(str)
+        IF (str_length >= eol_length .AND. index < this%get_size()) THEN
+          IF (str(str_length - eol_length+1:str_length) == eol_sequence) THEN
+            ok = this%get(index + 1, str2)
+            sindex = this%store(str(1:str_length-eol_length) // str2, index)
+            ok = this%delete(index + 1)
+            loop = .TRUE.
+            EXIT
+          END IF
+        END IF
+      END DO
+    END DO
+    this%strings%can_disorder = disorder
+
+  END SUBROUTINE ess_combine_split_lines
 
 END MODULE eis_string_store_mod

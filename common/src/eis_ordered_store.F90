@@ -16,11 +16,14 @@ MODULE eis_ordered_store_mod
     PRIVATE
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: items
     LOGICAL, PUBLIC :: is_init = .FALSE.
+    LOGICAL, PUBLIC :: can_disorder = .FALSE.
     CONTAINS
     PRIVATE
     PROCEDURE, PUBLIC :: get_size => os_get_size
     PROCEDURE, PUBLIC :: get => os_get
     PROCEDURE, PUBLIC :: store => os_store
+    PROCEDURE, PUBLIC :: delete => os_delete
+    PROCEDURE, PUBLIC :: insert => os_insert
     FINAL :: os_destructor
   END TYPE ordered_store
 
@@ -128,7 +131,7 @@ CONTAINS
 
     IF (PRESENT(index)) THEN
       IF (ALLOCATED(this%items)) THEN
-        IF (index >=1 .OR. index <= SIZE(this%items)) THEN
+        IF (index >=1 .AND. index <= SIZE(this%items)) THEN
           CALL this%items(index)%cleanup()
           ALLOCATE(this%items(index)%item, SOURCE = item)
           os_store = index
@@ -154,6 +157,77 @@ CONTAINS
     os_store = sz
 
   END FUNCTION os_store
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> If the store is configured to allow it delete an item
+  !> @param[in] this
+  !> @param[in] item
+  !> @return success
+  FUNCTION os_delete(this, index) RESULT(success)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index
+    LOGICAL :: success
+    TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
+    INTEGER(INT32) :: sz
+
+    success = this%can_disorder .AND. ALLOCATED(this%items)
+    IF (.NOT. success) RETURN
+
+    IF (index >=1 .AND. index <= SIZE(this%items)) THEN
+      CALL this%items(index)%cleanup()
+    END IF
+
+    sz = SIZE(this%items)
+    ALLOCATE(temp(1:sz-1))
+    temp(1:index-1) = this%items(1:index-1)
+    temp(index:) = this%items(index+1:)
+    CALL unlink_items(this%items)
+    DEALLOCATE(this%items)
+    CALL MOVE_ALLOC(temp, this%items)
+
+  END FUNCTION os_delete
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Insert an item before another item specified by index. Only allowed
+  !> if the store has the "can_disorder" flag set to true. Returns -1 if
+  !> insert is not possible (either not can_disorder or index out of range)
+  !> Can specify an index 1 greater than the count to add at the end
+  !> @param[in] this
+  !> @param[in] item
+  !> @return os_store
+  FUNCTION os_insert(this, item, index)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+    CLASS(*), TARGET, INTENT(IN) :: item !< Item to insert
+    !> Item index before which to insert item
+    INTEGER, INTENT(IN) :: index
+    INTEGER(INT32) :: os_insert !< Index to which the item is stored
+    TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
+    INTEGER(INT32) :: sz
+
+    os_insert = -1
+    IF (.NOT. ALLOCATED(this%items)) RETURN
+    IF (index < 1 .OR. index > SIZE(this%items) + 1) RETURN
+
+    sz = SIZE(this%items)
+    ALLOCATE(temp(1:sz+1))
+    temp(1:index) = this%items(1:index)
+    IF (index < SIZE(this%items)) temp(index+1:sz-1) = this%items(index:)
+    CALL unlink_items(this%items)
+    DEALLOCATE(this%items)
+    CALL MOVE_ALLOC(temp, this%items)
+
+    ALLOCATE(this%items(index)%item, SOURCE = item)
+    os_insert = index
+
+  END FUNCTION os_insert
 
 
 

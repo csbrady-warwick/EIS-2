@@ -5,7 +5,7 @@ eis_header.o: eis_header.F90 eis_constants.o
 eis_named_store.o: eis_named_store.F90
 eis_ordered_store.o: eis_ordered_store.F90
 eis_key_value_store.o: eis_key_value_store.F90 eis_constants.o eis_header.o \
-  eis_named_store.o eis_utils.o
+  eis_named_store.o eis_utils.o eis_string_store.o
 eis_string_store.o: eis_string_store.F90 eis_constants.o eis_ordered_store.o \
   eis_header.o eis_utils.o
 eis_utils.o: eis_utils.F90 eis_constants.o
