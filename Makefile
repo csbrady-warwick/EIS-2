@@ -6,7 +6,9 @@
 all:
 	$(MAKE) -C common
 	$(MAKE) -C parser
+	$(MAKE) -C deck
 # cleanup
 clean:
 	$(MAKE) -C common clean
 	$(MAKE) -C parser clean
+	$(MAKE) -C deck clean

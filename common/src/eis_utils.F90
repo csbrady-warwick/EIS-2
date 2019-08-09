@@ -8,6 +8,18 @@ MODULE eis_utils
 
   PUBLIC :: eis_append_string, c_f_string, f_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
+  PUBLIC :: eis_remove_string_section, eis_copy_string
+  PUBLIC :: eis_compare_string
+
+
+  INTERFACE eis_copy_string
+    MODULE PROCEDURE eis_copy_string_aa
+#ifdef UNICODE
+    MODULE PROCEDURE eis_copy_string_uu
+    MODULE PROCEDURE eis_copy_string_ua
+    MODULE PROCEDURE eis_copy_string_au
+#endif
+  END INTERFACE eis_copy_string
 
   INTERFACE eis_append_string
     MODULE PROCEDURE  eis_append_string_aa
@@ -18,6 +30,27 @@ MODULE eis_utils
 #endif
   END INTERFACE eis_append_string
 
+  INTERFACE eis_remove_string_section
+    MODULE PROCEDURE eis_remove_string_section_ascii
+    MODULE PROCEDURE eis_remove_string_section_ascii_char
+#ifdef UNICODE
+    MODULE PROCEDURE eis_remove_string_section_ucs4
+#endif
+  END INTERFACE eis_remove_string_section
+
+  INTERFACE eis_uppercase_character
+    MODULE PROCEDURE eis_uppercase_character_ascii
+  END INTERFACE eis_uppercase_character
+
+  INTERFACE eis_compare_string
+    MODULE PROCEDURE eis_compare_string_aa
+#ifdef UNICODE
+    !MODULE PROCEDURE eis_compare_string_uu
+    !MODULE PROCEDURE eis_compare_string_ua
+    !MODULE PROCEDURE eis_compare_string_au
+#endif
+  END INTERFACE eis_compare_string
+
   INTERFACE c_f_string
     MODULE PROCEDURE c_f_string_array, c_f_string_ptr
   END INTERFACE c_f_string
@@ -27,6 +60,152 @@ MODULE eis_utils
   END INTERFACE f_c_string
 
   CONTAINS
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to copy the new string into the old string. The old string is 
+  !> allocated or deallocated as needed. If the new string is not allocated
+  !> the old string is guaranteed to not be allocated after this function call
+  !> @details
+  !> str_dest is only reallocated if it is too short. Both strings must be of
+  !> kind ASCII
+  !> @param[in] str_src
+  !> @param[inout] str_dest
+  SUBROUTINE eis_copy_string_aa(str_src, str_dest)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(IN) :: str_src
+    !> String to be copied into. Must be allocatable
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str_dest
+
+    IF (.NOT. ALLOCATED(str_src)) THEN
+      IF (ALLOCATED(str_dest)) DEALLOCATE(str_dest)
+      RETURN
+    END IF
+
+    IF (ALLOCATED(str_dest)) THEN
+      IF (LEN(str_dest) >= LEN(str_src)) THEN
+        str_dest = str_src
+        RETURN
+      ELSE
+        DEALLOCATE(str_dest)
+      END IF
+    END IF
+    ALLOCATE(str_dest, SOURCE = str_src)
+
+
+  END SUBROUTINE eis_copy_string_aa
+
+
+
+#ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to copy the new string into the old string. The old string is 
+  !> allocated or deallocated as needed. If the new string is not allocated
+  !> the old string is guaranteed to not be allocated after this function call
+  !> @details
+  !> str_dest is only reallocated if it is too short. Both strings must be of
+  !> kind UCS4
+  !> @param[in] str_src
+  !> @param[inout] str_dest
+  SUBROUTINE eis_copy_string_uu(str_src, str_dest)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(IN) :: str_src
+    !> String to be copied into. Must be allocatable
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: str_dest
+
+    IF (.NOT. ALLOCATED(str_src)) THEN
+      IF (ALLOCATED(str_dest)) DEALLOCATE(str_dest)
+      RETURN
+    END IF
+
+    IF (ALLOCATED(str_dest)) THEN
+      IF (LEN(str_dest) >= LEN(str_src)) THEN
+        str_dest = str_src
+        RETURN
+      ELSE
+        DEALLOCATE(str_dest)
+      END IF
+    END IF
+    ALLOCATE(str_dest, SOURCE = str_src)
+
+
+  END SUBROUTINE eis_copy_string_uu
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to copy the new string into the old string. The old string is 
+  !> allocated or deallocated as needed. If the new string is not allocated
+  !> the old string is guaranteed to not be allocated after this function call
+  !> @details
+  !> str_dest is only reallocated if it is too short. str_src must be of kind
+  !> UCS4, str_dest must be of kind ASCII
+  !> @param[in] str_src
+  !> @param[inout] str_dest
+  SUBROUTINE eis_copy_string_ua(str_src, str_dest)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(IN) :: str_src
+    !> String to be copied into. Must be allocatable
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str_dest
+
+    IF (.NOT. ALLOCATED(str_src)) THEN
+      IF (ALLOCATED(str_dest)) DEALLOCATE(str_dest)
+      RETURN
+    END IF
+
+    IF (ALLOCATED(str_dest)) THEN
+      IF (LEN(str_dest) >= LEN(str_src)) THEN
+        str_dest = str_src
+        RETURN
+      ELSE
+        DEALLOCATE(str_dest)
+      END IF
+    END IF
+    ALLOCATE(str_dest, SOURCE = str_src)
+
+
+  END SUBROUTINE eis_copy_string_ua
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to copy the new string into the old string. The old string is 
+  !> allocated or deallocated as needed. If the new string is not allocated
+  !> the old string is guaranteed to not be allocated after this function call
+  !> @details
+  !> str_dest is only reallocated if it is too short. str_src must be of kind
+  !> ASCII, str_dest must be of kind UCS4
+  !> @param[in] str_src
+  !> @param[inout] str_dest
+  SUBROUTINE eis_copy_string_au(str_src, str_dest)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(IN) :: str_src
+    !> String to be copied into. Must be allocatable
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: str_dest
+  
+    IF (.NOT. ALLOCATED(str_src)) THEN
+      IF (ALLOCATED(str_dest)) DEALLOCATE(str_dest)
+      RETURN
+    END IF
+
+    IF (ALLOCATED(str_dest)) THEN
+      IF (LEN(str_dest) >= LEN(str_src)) THEN
+        str_dest = str_src
+        RETURN
+      ELSE
+        DEALLOCATE(str_dest)
+      END IF
+    END IF
+    ALLOCATE(str_dest, SOURCE = str_src)
+
+
+  END SUBROUTINE eis_copy_string_au
+#endif
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -163,6 +342,7 @@ MODULE eis_utils
   END SUBROUTINE eis_append_string_ua
 
 
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Function to append a new string to the end of an existing string
@@ -208,6 +388,207 @@ MODULE eis_utils
 
   END SUBROUTINE eis_append_string_au
 #endif
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Remove all characters between init and final inclusive.
+  !> If init is < 1 then init becomes 1
+  !> If final > LEN(str) then final becomes LEN(str)
+  !> @param[inout] str
+  !> @param[in] init
+  !> @param[in] final
+  SUBROUTINE eis_remove_string_section_ascii(str, init, final)
+    !> Existing string. Must be ALLOCATABLE, must be allocated
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str
+    !> Initial character to be removed, inclusive
+    INTEGER, INTENT(IN) :: init
+    !> Final character to be removed, inclusive
+    INTEGER, INTENT(IN) :: final
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp
+    INTEGER :: iind, find, rlen
+
+    IF (.NOT. ALLOCATED(str)) RETURN
+
+    iind = MAX(1, init)
+    find = MIN(LEN(str), final)
+    rlen = find - iind + 1
+
+    ALLOCATE(CHARACTER(LEN=LEN(str) - rlen) :: temp)
+    IF (iind > 1) temp(1:iind-1) = str(1:iind-1)
+    IF (find < LEN(str)) temp(iind:) = str(find+1:)
+    DEALLOCATE(str)
+    CALL MOVE_ALLOC(temp, str)
+
+  END SUBROUTINE eis_remove_string_section_ascii
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Remove all characters between init and final inclusive.
+  !> If init is < 1 then init becomes 1
+  !> If final > LEN(str) then final becomes LEN(str)
+  !> @param[inout] str
+  !> @param[in] init_s
+  !> @param[in] final_s
+  !> @param[in] init_exclude
+  !> @param[in] final_exclude
+  !> @param[in] first_only
+  SUBROUTINE eis_remove_string_section_ascii_char(str, init_s, final_s, &
+      init_exclude, final_exclude, first_only)
+    !> Existing string. Must be ALLOCATABLE, must be allocated
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str
+    !> Sequence of characters to start the removal section
+    CHARACTER(LEN=*), INTENT(IN) :: init_s
+    !> Sequence of characters to end the removal section
+    CHARACTER(LEN=*), INTENT(IN) :: final_s
+    !> Should removal be exclusive of the init sequence
+    !> Optional. Default inclusive removal
+    LOGICAL, INTENT(IN), OPTIONAL :: init_exclude
+    !> should removal be exclusive of the final sequence
+    !> Optional. Default inclusive removal
+    LOGICAL, INTENT(IN), OPTIONAL :: final_exclude
+    !> Should the removal only be of the first instance of the sequence
+    !> Optional. Default remove all instances
+    LOGICAL, INTENT(IN), OPTIONAL :: first_only
+    LOGICAL :: init_e, final_e, fo, iter_on
+    INTEGER :: ipos, fpos
+
+
+    IF (.NOT. ALLOCATED(str)) RETURN
+    init_e = .FALSE.;final_e = .FALSE.;fo=.FALSE.
+    IF (PRESENT(init_exclude)) init_e = init_exclude
+    IF (PRESENT(final_exclude)) final_e = final_exclude
+    IF (PRESENT(first_only)) fo = first_only
+
+    iter_on = .TRUE.
+    DO WHILE(iter_on)
+      ipos = INDEX(str, init_s)
+      IF (ipos > 0) THEN
+        IF (init_e) THEN
+          ipos = ipos + LEN(init_s)
+        END IF
+      END IF
+      fpos = INDEX(str(ipos + LEN(init_s):), final_s)
+      IF (fpos > 0) THEN
+        fpos = fpos + ipos + LEN(init_s) - 1
+        IF (final_e) THEN
+          fpos = fpos - 1
+        ELSE
+          fpos = fpos + LEN(final_s) - 1
+        END IF
+      END IF
+
+      IF (ipos > 0 .AND. fpos <= 0) fpos = LEN(str)
+      iter_on = ipos > 0 .AND. fpos > 0
+
+      IF (iter_on) THEN
+        CALL eis_remove_string_section_ascii(str, ipos, fpos)
+      END IF
+      iter_on = iter_on .AND. .NOT. fo
+    END DO
+
+  END SUBROUTINE eis_remove_string_section_ascii_char
+
+
+
+#ifdef UNICODE
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Remove all characters between init and final inclusive.
+  !> If init is < 1 then init becomes 1
+  !> If final > LEN(str) then final becomes LEN(str)
+  !> @param[inout] str
+  !> @param[in] init
+  !> @param[in] final
+  SUBROUTINE eis_remove_string_section_ucs4(str, init, final)
+    !> Existing string. Must be ALLOCATABLE, must be allocated
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE, INTENT(INOUT) :: str
+    !> Initial character to be removed, inclusive
+    INTEGER, INTENT(IN) :: init
+    !> Final character to be removed, inclusive
+    INTEGER, INTENT(IN) :: final
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: temp
+    INTEGER :: iind, find, rlen
+
+    IF (.NOT. ASSOCIATED(str)) RETURN
+
+    iind = MAX(1, init)
+    find = MIN(LEN(str), final)
+    rlen = find - iind + 1
+
+    ALLOCATE(CHARACTER(LEN=rlen) :: temp)
+    IF (iind > 1) temp(1:iind-1) = str(1:iind-1)
+    IF (find < LEN(str)) temp(iind:) = str(find+1:)
+    DEALLOCATE(str)
+    CALL MOVE_ALLOC(temp, str)
+
+  END SUBROUTINE eis_remove_string_section_ucs4
+#endif
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Produces the upper case equivalent of a single character
+  !> @param[in] c
+  !> @result uppercase
+  FUNCTION eis_uppercase_character_ascii(c) RESULT(uppercase)
+    CHARACTER(LEN=1, KIND=ASCII), INTENT(IN) :: c
+    CHARACTER(LEN=1, KIND=ASCII) :: uppercase
+
+    IF (IACHAR(c) >= IACHAR('a') .AND. IACHAR(c) <= IACHAR('z')) THEN
+      uppercase = ACHAR(IACHAR(c) - IACHAR('a') + IACHAR('A'))
+    ELSE
+      uppercase = c
+    END IF
+
+  END FUNCTION eis_uppercase_character_ascii
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to test if two strings are equal
+  !> @details
+  !> Both strings must be of kind ASCII
+  !> @param[in] str1
+  !> @param[in] str2
+  !> @param[in] case_sensitive
+  !> @result same
+  FUNCTION eis_compare_string_aa(str1, str2, case_sensitive) RESULT(same)
+    !> First string to compare
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str1
+    !> Second string to compare
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str2
+    !> Whether to perform case sensitive comparison or not
+    !> Optional, if not present default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: case_sensitive
+    !> The result of the comparison operation
+    LOGICAL :: same
+    LOGICAL :: cs
+    CHARACTER(LEN=1, KIND=ASCII) :: c1, c2
+    INTEGER :: istr
+
+    cs = .FALSE.
+    IF (PRESENT(case_sensitive)) cs = case_sensitive
+    same = .FALSE.
+    IF (LEN(str1) /= LEN(str2)) RETURN
+    DO istr = 1, LEN(str1)
+      c1 = str1(istr:istr); c2 = str2(istr:istr)
+      IF (.NOT. cs) THEN
+        c1 = eis_uppercase_character(c1)
+        c2 = eis_uppercase_character(c2)
+      END IF
+      IF (c1 /= c2) RETURN
+    END DO
+    same = .TRUE.
+
+  END FUNCTION eis_compare_string_aa
+
+
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief

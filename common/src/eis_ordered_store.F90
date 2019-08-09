@@ -24,6 +24,7 @@ MODULE eis_ordered_store_mod
     PROCEDURE, PUBLIC :: store => os_store
     PROCEDURE, PUBLIC :: delete => os_delete
     PROCEDURE, PUBLIC :: insert => os_insert
+    PROCEDURE, PUBLIC :: clear => os_clear
     FINAL :: os_destructor
   END TYPE ordered_store
 
@@ -190,6 +191,24 @@ CONTAINS
     CALL MOVE_ALLOC(temp, this%items)
 
   END FUNCTION os_delete
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Delete all items from the store and deallocate the memory
+  !> @param[in] this
+  !> @return success
+  FUNCTION os_clear(this) RESULT(success)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+    LOGICAL :: success
+    TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
+    INTEGER(INT32) :: iindex
+
+    DEALLOCATE(this%items) 
+
+  END FUNCTION os_clear
 
 
 

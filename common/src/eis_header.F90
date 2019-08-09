@@ -37,5 +37,9 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_no_luns = 2**16 
   !> String handler couldn't find a specified file
   INTEGER(eis_error), PARAMETER :: eis_err_no_file = 2**17
+  !> String handler was given an invalid serialisation string
+  INTEGER(eis_error), PARAMETER :: eis_err_malformed_file = 2**18
+  !> Deck handler found an unmatched start and end block description
+  INTEGER(eis_error), PARAMETER :: eis_err_mismatched_begin_end = 2**19
 
 END MODULE eis_header

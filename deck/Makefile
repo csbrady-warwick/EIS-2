@@ -162,7 +162,7 @@ FC_INFO := $(shell ${FC} --version 2>/dev/null \
 include Makefile-objs
 
 # target name
-LIB = $(LIBDIR)/libeis_parser.a
+LIB = $(LIBDIR)/libeis_deck.a
 
 VPATH = $(SRCDIR):$(OBJDIR):$(LIBDIR):$(MODDIR)
 
@@ -182,8 +182,8 @@ $(LIB): $(OBJDIR) $(MODDIR) $(INCDIR) $(LIBDIR) $(OBJS)
 	$(RM) -f $@
 	$(AR) -crs $@ $(addprefix $(OBJDIR)/,$(OBJS))
 	$(RANLIB) $@
-	@cp $(MODDIR)/eis_parser_mod.mod $(INCDIR)
-	@cp $(MODDIR)/eis_parser_header.mod $(INCDIR)
+	@cp $(MODDIR)/eis_string_deck_mod.mod $(INCDIR)
+#	@cp $(MODDIR)/eis_parser_header.mod $(INCDIR)
 
 $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)

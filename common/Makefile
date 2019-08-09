@@ -71,7 +71,7 @@ endif
 # gfortran
 # ========
 ifeq ($(strip $(COMPILER)),gfortran)
-  FFLAGS = -O3 -g
+  FFLAGS = -O3 -g -std=f2003
   ifeq (debug,$(findstring debug,$(MODE)))
     FFLAGS = -O0 -g -Wall -Wextra -pedantic -fbounds-check \
              -ffpe-trap=invalid,zero,overflow -Wno-unused-parameter \
