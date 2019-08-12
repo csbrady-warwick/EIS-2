@@ -184,7 +184,7 @@ MODULE eis_string_deck_mod
   SUBROUTINE esd_generate_blocklist(this, errcode)
     CLASS(eis_string_deck), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(OUT) :: errcode
-    INTEGER :: iline, cloc
+    INTEGER :: iline, cloc, iline2
     LOGICAL :: ok
     CHARACTER(LEN=:), ALLOCATABLE :: str
     INTEGER :: iblock, parent_block, current_block
@@ -195,6 +195,7 @@ MODULE eis_string_deck_mod
     TYPE(bholder), POINTER :: head => NULL(), new
 
     errcode = eis_err_none
+    iblock = 0
 
     DO iline = 1, this%strings%get_size()
       ok = this%strings%get(iline, str)
@@ -209,7 +210,6 @@ MODULE eis_string_deck_mod
         !Put it at the start of the linked list
         new%next => head
         head => new
-        PRINT *, "Beginning ", TRIM(ADJUSTL(str(cloc+1:)))
       END IF
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'end' , &
           case_sensitive = .FALSE.)) THEN
@@ -232,8 +232,6 @@ MODULE eis_string_deck_mod
         new => head%next
         DEALLOCATE(head)
         head => new
-
-        PRINT *, "Ending ", TRIM(ADJUSTL(str(cloc+1:)))
       END IF
     END DO
 
@@ -261,7 +259,7 @@ MODULE eis_string_deck_mod
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'begin' , &
           case_sensitive = .FALSE.)) THEN
         !The parent block now has a child block and has a line end added
-        CALL this%blocks(parent_block)%add_child(iblock)
+        CALL this%blocks(parent_block)%add_child(current_block)
         CALL this%blocks(parent_block)%add_line_end(iline)
 
         !Create the information on this block
@@ -281,22 +279,24 @@ MODULE eis_string_deck_mod
       ELSE IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'end' , &
           case_sensitive = .FALSE.)) THEN
         !Mark the text for the current block as ended
-        CALL this%blocks(iblock)%add_line_end(iline)
-        CALL this%blocks(parent_block)%add_line_start(iline)
-        this%blocks(iblock)%line_end = iline
+        CALL this%blocks(current_block)%add_line_end(iline)
         !Wind the parent block back up a level
-        parent_block = this%blocks(parent_block)%parent_block
+        parent_block = this%blocks(current_block)%parent_block
+        CALL this%blocks(parent_block)%add_line_start(iline)
+        this%blocks(parent_block)%line_end = iline
+        current_block = parent_block
       END IF
     END DO
 
-  DO iblock = 1, SIZE(this%blocks)
+  DO iblock = 1, UBOUND(this%blocks,1)
     PRINT *,"Starting :", this%blocks(iblock)%block_name
-    PRINT *, this%blocks(iblock)%line_start + 1
-    PRINT *, this%blocks(iblock)%line_end - 1
-    DO iline = this%blocks(iblock)%line_start + 1, &
-        this%blocks(iblock)%line_end - 1
-      ok = this%strings%get(iline, str)
-      PRINT *, str
+    
+    DO iline = 1, SIZE(this%blocks(iblock)%starts)
+      DO iline2 = this%blocks(iblock)%starts(iline) + 1, &
+          this%blocks(iblock)%ends(iline) - 1
+        ok = this%strings%get(iline2, str)
+        PRINT *, str
+      END DO
     END DO
     PRINT *,"Ending :", this%blocks(iblock)%block_name
   END DO
