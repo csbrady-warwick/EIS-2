@@ -229,16 +229,17 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     INTEGER(INT32) :: os_insert !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz
+    INTEGER(INT32) :: sz, old_count
 
     os_insert = -1
     IF (.NOT. ALLOCATED(this%items)) RETURN
     IF (index < 1 .OR. index > SIZE(this%items) + 1) RETURN
 
     sz = SIZE(this%items)
-    ALLOCATE(temp(1:sz+1))
-    temp(1:index) = this%items(1:index)
-    IF (index < SIZE(this%items)) temp(index+1:sz-1) = this%items(index:)
+    old_count = MIN(sz, index)
+    ALLOCATE(temp(1:MAX(sz+1, index)))
+    temp(1:old_count) = this%items(1:old_count)
+    IF (index < sz) temp(index+1:sz-1) = this%items(index:)
     CALL unlink_items(this%items)
     DEALLOCATE(this%items)
     CALL MOVE_ALLOC(temp, this%items)
