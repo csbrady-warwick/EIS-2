@@ -187,7 +187,7 @@ MODULE eis_string_deck_mod
     INTEGER :: iline, cloc, iline2
     LOGICAL :: ok
     CHARACTER(LEN=:), ALLOCATABLE :: str
-    INTEGER :: iblock, parent_block, current_block
+    INTEGER :: iblock, current_block
     TYPE :: bholder
       CHARACTER(LEN=:), ALLOCATABLE :: blockname
       TYPE(bholder), POINTER :: next => NULL()
@@ -248,7 +248,6 @@ MODULE eis_string_deck_mod
 
     !Allocate storage for the blocks
     ALLOCATE(this%blocks(0:iblock))
-    parent_block = 0
     iblock = 1
     current_block = 0
 
@@ -259,38 +258,37 @@ MODULE eis_string_deck_mod
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'begin' , &
           case_sensitive = .FALSE.)) THEN
         !The parent block now has a child block and has a line end added
-        CALL this%blocks(parent_block)%add_child(current_block)
-        CALL this%blocks(parent_block)%add_line_end(iline)
+        CALL this%blocks(current_block)%add_child(iblock)
+        CALL this%blocks(current_block)%add_line_end(iline)
 
         !Create the information on this block
         ALLOCATE(this%blocks(iblock)%block_name, &
             SOURCE = TRIM(ADJUSTL(str(cloc+1:))))
         this%blocks(iblock)%id = iblock
-        this%blocks(iblock)%parent_block = parent_block
+        this%blocks(iblock)%parent_block = current_block
         !Mark the current line as the start line for the current block
         CALL this%blocks(iblock)%add_line_start(iline)
         this%blocks(iblock)%line_start = iline
 
         !The parent block for any further sub-blocks is now the current block
         !index
-        parent_block = iblock
         current_block = iblock
         iblock = iblock + 1
       ELSE IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'end' , &
           case_sensitive = .FALSE.)) THEN
         !Mark the text for the current block as ended
         CALL this%blocks(current_block)%add_line_end(iline)
-        !Wind the parent block back up a level
-        parent_block = this%blocks(current_block)%parent_block
-        CALL this%blocks(parent_block)%add_line_start(iline)
-        this%blocks(parent_block)%line_end = iline
-        current_block = parent_block
+        !Wind the current block back up a level
+        current_block = this%blocks(current_block)%parent_block
+        CALL this%blocks(current_block)%add_line_start(iline)
+        this%blocks(current_block)%line_end = iline
       END IF
     END DO
 
   DO iblock = 1, UBOUND(this%blocks,1)
-    PRINT *,"Starting :", this%blocks(iblock)%block_name
-    
+    PRINT *,"Starting :", this%blocks(iblock)%id, this%blocks(iblock)%block_name
+    IF (ALLOCATED(this%blocks(iblock)%children)) &
+        PRINT *,"Children :", this%blocks(iblock)%children
     DO iline = 1, SIZE(this%blocks(iblock)%starts)
       DO iline2 = this%blocks(iblock)%starts(iline) + 1, &
           this%blocks(iblock)%ends(iline) - 1
