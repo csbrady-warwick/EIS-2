@@ -131,6 +131,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_error_count => eip_get_error_count
     PROCEDURE, PUBLIC :: get_error_report => eip_get_error_report
     PROCEDURE, PUBLIC :: get_error_info => eip_get_error_info
+    PROCEDURE, PUBLIC :: flush_errors => eip_flush_errors
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
 
@@ -2044,6 +2045,9 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Print all of the errors to stdout
+  !> @param[inout] this
   SUBROUTINE eip_print_errors(this)
     CLASS(eis_parser) :: this
     INTEGER :: ierr, ec
@@ -2057,6 +2061,7 @@ CONTAINS
   END SUBROUTINE eip_print_errors
 
 
+
   !> @brief
   !> Get the number of errors reported on this parser
   !> @param[inout] this
@@ -2068,6 +2073,7 @@ CONTAINS
     count = this%err_handler%get_error_count()
 
   END FUNCTION eip_get_error_count
+
 
 
   !> @brief
@@ -2099,8 +2105,11 @@ CONTAINS
   !> @param[out] error_cause_location
   !> @param[out] error_phase
   !> @param[out] error_type
+  !> @param[out] error_filename
+  !> @param[out] error_line_number
   SUBROUTINE eip_get_error_info(this, index, error_cause, &
-      error_cause_location, error_phase, error_type)
+      error_cause_location, error_phase, error_type, error_filename, &
+      error_line_number)
 
     CLASS(eis_parser), INTENT(IN) :: this
     !> Index of error to get report on. Must be between 1 and
@@ -2108,32 +2117,52 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     !> Reports the string representation of the part of the string that
     !> caused the error. Optional, default is not return this info
-    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_cause
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_cause
     !> Reports the character offset location of the cause of the error
     !> Optional, default is not report this info
-    INTEGER, INTENT(INOUT), OPTIONAL :: error_cause_location
+    INTEGER, INTENT(OUT), OPTIONAL :: error_cause_location
     !> Reports the string representation of where in the parsing phase the
     !> error occured. Optional, default is not report this info
-    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_phase
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_phase
     !> Reports the string representation of the type of error that was
     !> encountered during the parsing. Optional, default is no report this info
-    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(INOUT) :: error_type
-    CHARACTER(LEN=:), ALLOCATABLE :: ec, eps, ets
-    INTEGER :: ecl
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_type
+    !> Reports the file name of the file which contains the error
+    !> Optional, default is not report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_filename
+    !> Reports the line number within the file which contains the error
+    !> Optional, default is not report this info
+    INTEGER, INTENT(OUT), OPTIONAL :: error_line_number
+    CHARACTER(LEN=:), ALLOCATABLE :: ec, eps, ets, efn
+    INTEGER :: ecl, eln
 
-    CALL this%err_handler%get_error_cause(index, ec, ecl)
+    CALL this%err_handler%get_error_cause(index, ec, ecl,filename=efn, &
+        line_number = eln)
     CALL this%err_handler%get_error_string(index, ets, eps)
 
     IF (PRESENT(error_cause)) CALL MOVE_ALLOC(ec, error_cause)
     IF (PRESENT(error_cause_location)) error_cause_location = ecl
     IF (PRESENT(error_phase)) CALL MOVE_ALLOC(eps, error_phase)
     IF (PRESENT(error_type)) CALL MOVE_ALLOC(ets, error_type)
+    IF (PRESENT(error_filename)) CALL MOVE_ALLOC(efn, error_type)
+    IF (PRESENT(error_line_number)) error_line_number = eln
 
     IF (ALLOCATED(ec)) DEALLOCATE(ec)
     IF (ALLOCATED(eps)) DEALLOCATE(eps)
     IF (ALLOCATED(ets)) DEALLOCATE(ets)
 
   END SUBROUTINE eip_get_error_info
+
+
+
+  !> @brief
+  !> Flush all of the errors in the list of errors
+  !> @param[inout] this
+  SUBROUTINE eip_flush_errors(this)
+    CLASS(eis_parser) :: this
+    CALL this%err_handler%flush_errors()
+  END SUBROUTINE eip_flush_errors
+
 
 
   !> @brief
@@ -2150,6 +2179,7 @@ CONTAINS
     CALL get_tokens(stack_in, str_out)
 
   END SUBROUTINE eip_get_tokens
+
 
 
   !> @brief

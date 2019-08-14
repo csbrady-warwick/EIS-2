@@ -1106,7 +1106,7 @@ CONTAINS
   FUNCTION ess_deserialise(this, str, errcode, store_index) RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String holding the portable representation
-    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(IN) :: str
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str
     !> Error code from the operation
     INTEGER(eis_error), INTENT(OUT) :: errcode
     !> Index to start unpacking the strings at

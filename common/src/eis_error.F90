@@ -9,11 +9,13 @@ MODULE eis_error_mod
   !> Type representing an error
   TYPE :: eis_error_item
     !> String representation of the source of the error
-    CHARACTER(LEN=:), ALLOCATABLE :: errstring
+    CHARACTER(LEN=:), ALLOCATABLE :: errstring, filename
     !> Numerical representation of the type of the error
     INTEGER(eis_error) :: errcode = eis_err_none
     !> Character offset from start of the string of the error
     INTEGER :: charindex = -1
+    !> Line number for an error on a specific line of a file
+    INTEGER :: line_number = -1
   END TYPE eis_error_item
 
   !>Error handler class
@@ -102,6 +104,9 @@ MODULE eis_error_mod
       CALL this%strings%store('err_src_emplace','Error during emplacement of &
           &function')
       CALL this%strings%store('err_src_evaluate','Error when evaluating stack')
+      CALL this%strings%store('err_src_file','Error when handling a text file')
+      CALL this%strings%store('err_src_deck','Error when handling an &
+          &input deck')
       CALL this%strings%store('err_src_undefined', 'Error in unspecified part &
           &of the parser. (This is probably a bug in the parser code)')
 
@@ -125,11 +130,30 @@ MODULE eis_error_mod
           &subscript a constant')
       CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
       CALL this%strings%store('err_bad_stack', 'Invalid or unavailable stack')
+
+      CALL this%strings%store('err_no_luns', 'No logical unit numbers were &
+          &available for file access')
+      CALL this%strings%store('err_no_file', 'The requested file was not found')
+      CALL this%strings%store('err_malformed_file', 'Malformed string when &
+          &reading a serialisation string.')
+      CALL this%strings%store('err_mismatched_begin_end', 'Deck block "end"ed &
+          &without matching "start" directive')
+      CALL this%strings%store('err_deck_too_deep', 'Deck block encountered &
+          &with too high a depth (i.e is a child of a block that should not &
+          &have children). This is a malformed deck.')
+      CALL this%strings%store('err_empty_block', 'Deck block encountered &
+          &with no keys in it. This is a malformed deck')
+      CALL this%strings%store('err_root_keys', 'Deck key encountered &
+          &outside a block. This is a malformed deck')
+
+
+      CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
+          &{errline} : ')
+      CALL this%strings%store('err_report_file_only', 'In file "{errfile}": ')
       CALL this%strings%store('err_report_place', 'In block with text &
           &"{errtext}" starting at character position {charpos}: ')
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
-          &error. To see the location of the error do not minify the stack. &
-          &Errors are :')
+          &error. Errors are :')
     END IF
 
   END SUBROUTINE eeh_init
@@ -143,7 +167,9 @@ MODULE eis_error_mod
   !> @param[in] errcode
   !> @param[in] errstring
   !> @param[in] charindex
-  SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, charindex)
+  !> @param[in] line_number
+  SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, charindex, &
+      filename, line_number)
 
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
     !> Type code for source of error (tokenize, evalaute etc.)
@@ -154,6 +180,10 @@ MODULE eis_error_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: errstring
     !> Character location of key in error
     INTEGER, OPTIONAL, INTENT(IN) :: charindex
+    !> String describing the file that contains the error
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Line number of the error in multiple lines
+    INTEGER, OPTIONAL, INTENT(IN) :: line_number
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz
 
@@ -176,10 +206,13 @@ MODULE eis_error_mod
     ELSE
       ALLOCATE(temp(sz)%errstring, SOURCE = '{UNKNOWN}')
     END IF
+    IF (PRESENT(filename)) ALLOCATE(temp(sz)%filename, SOURCE = filename)
     IF (PRESENT(charindex)) temp(sz)%charindex = charindex
+    IF (PRESENT(line_number)) temp(sz)%line_number = line_number
     CALL MOVE_ALLOC(temp, this%errors)
 
   END SUBROUTINE eeh_add_error
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -218,22 +251,36 @@ MODULE eis_error_mod
   !> @param[in] index
   !> @param[inout] err_text
   !> @param[out] cloc_out
-  SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out)
+  !> @param[out] filename
+  !> @param[out] line_number
+  SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out, filename, &
+      line_number)
     CLASS(eis_error_handler), INTENT(IN) :: this
     INTEGER, INTENT(IN) :: index !< Error index code
     !>Error text for the returned error text
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_text 
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: err_text 
     !>Character location for the returned error (in the original string)
     INTEGER, INTENT(OUT) :: cloc_out
+    !>Filename for the error source
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
+    !> Line number of the cause of the error
+    INTEGER, INTENT(OUT), OPTIONAL :: line_number
 
     cloc_out = -1
-    IF (ALLOCATED(err_text)) DEALLOCATE(err_text)
+    IF (PRESENT(line_number)) line_number = -1
     IF (.NOT. ALLOCATED(this%errors)) RETURN
     IF (index < 1 .OR. index > SIZE(this%errors)) RETURN
     cloc_out = this%errors(index)%charindex
 
-    IF (.NOT. ALLOCATED(this%errors(index)%errstring)) RETURN
-    ALLOCATE(err_text, SOURCE = this%errors(index)%errstring)
+    IF (PRESENT(line_number)) line_number = this%errors(index)%line_number
+
+    IF (ALLOCATED(this%errors(index)%errstring)) THEN
+      ALLOCATE(err_text, SOURCE = this%errors(index)%errstring)
+    END IF
+
+    IF (ALLOCATED(this%errors(index)%filename) .AND. PRESENT(filename)) THEN
+      ALLOCATE(filename, SOURCE = this%errors(index)%filename)
+    END IF
 
   END SUBROUTINE eeh_get_error_cause
 
@@ -267,6 +314,10 @@ MODULE eis_error_mod
       ok = this%strings%append('err_src_emplace', err_source)
     ELSE IF (IAND(errcode, eis_err_evaluator) /= 0) THEN
       ok = this%strings%append('err_src_evaluate', err_source)
+    ELSE IF (IAND(errcode, eis_err_file) /= 0) THEN
+      ok = this%strings%append('err_src_file', err_source)
+    ELSE IF (IAND(errcode, eis_err_deck) /= 0) THEN
+      ok = this%strings%append('err_src_deck', err_source)
     ELSE
       ok = this%strings%append('err_src_undefined', err_source)
     END IF
@@ -304,6 +355,29 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_bad_stack) /= 0) THEN
       ok = this%strings%append('err_bad_stack', err_string)
+    END IF
+
+    !Errors from deck parser
+    IF (IAND(errcode, eis_err_no_luns) /= 0) THEN
+      ok = this%strings%append('err_no_luns', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_no_file) /= 0) THEN
+      ok = this%strings%append('err_no_file', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_malformed_file) /= 0) THEN
+      ok = this%strings%append('err_malformed_file', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_mismatched_begin_end) /= 0) THEN
+      ok = this%strings%append('err_mismatched_begin_end', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_deck_too_deep) /= 0) THEN
+      ok = this%strings%append('err_deck_too_deep', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_deck_empty_block) /= 0) THEN
+      ok = this%strings%append('err_deck_empty_block', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_root_keys) /= 0) THEN
+      ok = this%strings%append('err_root_keys', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
@@ -352,10 +426,11 @@ MODULE eis_error_mod
     INTEGER, INTENT(IN) :: index !< Error report index
     !> Error report string
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
-    CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp
-    CHARACTER(LEN=9) :: posstr
+    CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp, &
+        filename
+    CHARACTER(LEN=9) :: posstr, linestr
     CHARACTER(LEN=19) :: format_str
-    INTEGER :: charpos, nchar
+    INTEGER :: charpos, nchar, line_number
     TYPE(eis_key_value_store) :: errstr_store
     LOGICAL :: ok
 
@@ -367,26 +442,50 @@ MODULE eis_error_mod
     END IF
 
     IF (index < 1 .OR. index > SIZE(this%errors)) THEN
+      PRINT *, index, SIZE(this%errors)
       CALL eis_append_string(report, 'Error out of range')
       RETURN
     END IF
 
-    CALL this%get_error_cause(index, errname, charpos)
+    CALL this%get_error_cause(index, errname, charpos, filename, line_number)
     CALL this%get_error_string(index, errstring, err_source)
 
     CALL eis_append_string(report, REPEAT("=", 80))
 
     CALL eis_append_string(report, err_source)
 
-    IF (charpos > 0) THEN
-      nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
-      WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
-      WRITE(posstr, format_str) charpos
-      CALL errstr_store%store('charpos', TRIM(posstr))
-      CALL errstr_store%store('errtext', TRIM(errname))
-      ok = this%strings%get('err_report_place', temp)
-      CALL errstr_store%format_fill(temp)
-      CALL eis_append_string(report, temp)
+    IF (charpos > 0 .OR. line_number > 0) THEN
+
+      IF (ALLOCATED(filename)) THEN
+        IF (line_number > 0) THEN
+          nchar = CEILING(LOG10(REAL(line_number, eis_num))+1)
+          WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
+          WRITE(linestr, format_str) line_number
+          CALL errstr_store%store('errline', TRIM(linestr))
+          CALL errstr_store%store('errfile', TRIM(filename))
+          ok = this%strings%get('err_report_file', temp)
+          CALL errstr_store%format_fill(temp)
+          CALL eis_append_string(report, temp)
+      ELSE
+          CALL errstr_store%store('errfile', TRIM(filename))
+          ok = this%strings%get('err_report_file_only', temp)
+          CALL errstr_store%format_fill(temp)
+          CALL eis_append_string(report, temp)
+      END IF
+    END IF
+
+      IF (charpos > 0) THEN
+        nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
+        WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
+        WRITE(posstr, format_str) charpos
+        CALL errstr_store%store('charpos', TRIM(posstr))
+        CALL errstr_store%store('errtext', TRIM(errname))
+
+        ok = this%strings%get('err_report_place', temp)
+        CALL errstr_store%format_fill(temp)
+        CALL eis_append_string(report, temp, newline = (line_number <=0))
+      END IF
+
     ELSE
       ok = this%strings%append('err_report_fail', report)
     END IF
@@ -396,6 +495,7 @@ MODULE eis_error_mod
 
     IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
     IF (ALLOCATED(errstring)) DEALLOCATE(errstring)
+    IF (ALLOCATED(errname)) DEALLOCATE(errname)
     IF (ALLOCATED(errname)) DEALLOCATE(errname)
     IF (ALLOCATED(temp)) DEALLOCATE(temp)
 

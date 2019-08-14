@@ -4,11 +4,13 @@ MODULE eis_string_deck_mod
   USE eis_utils
   USE eis_key_value_store_mod
   USE eis_string_store_mod
+  USE eis_error_mod
   IMPLICIT NONE
 
   TYPE eis_string_deck_block
     CHARACTER(LEN=:), ALLOCATABLE :: block_name
     INTEGER :: id = -1, parent_block = -1
+    INTEGER :: level = -1
     INTEGER :: line_count = 0
     INTEGER, DIMENSION(:), ALLOCATABLE :: starts, ends, iends
     INTEGER, DIMENSION(:), ALLOCATABLE :: children
@@ -33,18 +35,29 @@ MODULE eis_string_deck_mod
   TYPE eis_string_deck_data
     TYPE(eis_string_deck_block), DIMENSION(:), POINTER :: blocks => NULL()
     TYPE(eis_string_store) :: strings
+    TYPE(eis_error_handler) :: handler
     CONTAINS
     FINAL :: esdd_destructor
   END TYPE eis_string_deck_data
 
   TYPE eis_string_deck
     TYPE(eis_string_deck_data), POINTER :: data => NULL()
+    LOGICAL :: is_init = .FALSE.
     CONTAINS
     PRIVATE
+    PROCEDURE :: parse_core => esd_parse_core
+    PROCEDURE, PUBLIC :: init => esd_init
     PROCEDURE, PUBLIC :: load_deck_file => esd_parse_deck_file
+    PROCEDURE, PUBLIC :: read_deck_string => esd_parse_deck_string
+    PROCEDURE, PUBLIC :: read_parsed_deck => esd_read_parsed_deck
     PROCEDURE, PUBLIC :: generate_blocklist => esd_generate_blocklist
     PROCEDURE, PUBLIC :: get_block_count => esd_get_block_count
     PROCEDURE, PUBLIC :: get_block => esd_get_block
+    PROCEDURE, PUBLIC :: get_error_count => esd_get_error_count
+    PROCEDURE, PUBLIC :: get_error_report => esd_get_error_report
+    PROCEDURE, PUBLIC :: get_error_info => esd_get_error_info
+    PROCEDURE, PUBLIC :: flush_errors => esd_flush_errors
+    PROCEDURE, PUBLIC :: print_errors => esd_print_errors
     FINAL :: esd_destructor
   END TYPE eis_string_deck
 
@@ -317,12 +330,85 @@ MODULE eis_string_deck_mod
     ALLOCATE(this%iends(ct_lines))
     this%iends(1) = this%ends(1) - this%starts(1) - 1
     this%line_count = this%ends(1) - this%starts(1) - 1
-    DO i = 1, ct_lines - 1
-      this%iends(i+1) = this%iends(i) + this%ends(i) - this%starts(i) - 2
-      this%line_count = this%line_count + this%ends(i+1) - this%starts(i+1) - 1
+    DO i = 2, ct_lines
+      this%iends(i) = this%iends(i-1) + this%ends(i) - this%starts(i) - 1
+      this%line_count = this%line_count + this%ends(i) - this%starts(i) - 1
     END DO
 
   END SUBROUTINE esdb_compact_lines
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to initialise this object
+  SUBROUTINE esd_init(this, errcode)
+    CLASS(eis_string_deck), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+
+    IF (this%is_init) RETURN
+    this%is_init = .TRUE.
+    IF (ASSOCIATED(this%data)) DEALLOCATE(this%data)
+    ALLOCATE(this%data)
+    CALL this%data%handler%init(errcode)
+
+  END SUBROUTINE esd_init
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine containing the core parsing information that is common
+  !> between all parsing routes
+  !> @param[in] filename
+  !> @param[in] errcode
+  SUBROUTINE esd_parse_core(this, errcode)
+    CLASS(eis_string_deck), INTENT(INOUT) :: this
+    !> Error code
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    INTEGER :: iline, cloc, ln, lnm
+    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
+    LOGICAL :: found
+    INTEGER, DIMENSION(2) :: ranges
+
+    errcode = eis_err_none
+    CALL this%data%strings%remove_comments(slc_start='#', mlc_start='/*', &
+        mlc_end='*/')
+    CALL this%data%strings%remove_blank_lines()
+    CALL this%data%strings%remove_whitespace()
+    CALL this%data%strings%combine_split_lines("\")
+    iline = 1
+    DO WHILE (iline <= this%data%strings%get_size())
+      found = this%data%strings%get(iline, str, line_number = ln, &
+          line_number_max = lnm, filename = src_filename)
+      iline = iline + 1
+      cloc = INDEX(str, ":")
+      IF (cloc < 1) CYCLE
+      IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'import' , &
+          case_sensitive = .FALSE.)) THEN
+        IF (cloc < LEN(str)) THEN
+          iline = iline - 1 !Decrement because deleting line
+          found = this%data%strings%delete(iline)
+          ranges = this%data%strings%load_from_ascii_file(&
+              TRIM(ADJUSTL(str(cloc+1:))), errcode, index_start = iline)
+          IF (errcode /= eis_err_none) THEN
+            CALL this%data%handler%add_error(eis_err_deck, errcode, &
+                filename = src_filename, line_number = ln)
+            RETURN
+          END IF
+          CALL this%data%strings%remove_comments(slc_start='#', &
+              mlc_start='/*', mlc_end='*/')
+          CALL this%data%strings%remove_blank_lines()
+          CALL this%data%strings%remove_whitespace()
+          CALL this%data%strings%combine_split_lines("\")
+        ELSE
+          errcode = eis_err_no_file
+          CALL this%data%handler%add_error(eis_err_deck, errcode, &
+              filename = src_filename, line_number = ln)
+          RETURN
+        END IF
+      END IF
+    END DO
+  END SUBROUTINE esd_parse_core
 
 
 
@@ -342,52 +428,79 @@ MODULE eis_string_deck_mod
     !> file input to other processors in an MPI setup etc.
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: parsed_text
     INTEGER, DIMENSION(2) :: ranges
-    INTEGER :: iline, ln, lnm, cloc
-    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
-    LOGICAL :: found
-
-    IF (ASSOCIATED(this%data)) DEALLOCATE(this%data)
-    ALLOCATE(this%data)
+    INTEGER(eis_error) :: ierr
 
     errcode = eis_err_none
+    CALL this%init(ierr)
+    errcode = IOR(errcode, ierr)
     ranges = this%data%strings%load_from_ascii_file(filename, errcode)
-    CALL this%data%strings%remove_comments(slc_start='#', mlc_start='/*', &
-        mlc_end='*/')
-    CALL this%data%strings%remove_blank_lines()
-    CALL this%data%strings%remove_whitespace()
-    CALL this%data%strings%combine_split_lines("\")
-    iline = 1
-    DO WHILE (iline <= this%data%strings%get_size())
-      found = this%data%strings%get(iline, str, line_number = ln, &
-          line_number_max = lnm, filename = src_filename)
-      iline = iline + 1
-      cloc = INDEX(str, ":")
-      IF (cloc < 1) CYCLE
-      IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'import' , &
-          case_sensitive = .FALSE.)) THEN
-        IF (cloc < LEN(str)) THEN
-          iline = iline -1 !Decrement because deleting line
-          found = this%data%strings%delete(iline)
-          ranges = this%data%strings%load_from_ascii_file(&
-              TRIM(ADJUSTL(str(cloc+1:))), errcode, index_start = iline)
-          IF (errcode /= eis_err_none) RETURN
-          CALL this%data%strings%remove_comments(slc_start='#', &
-              mlc_start='/*', mlc_end='*/')
-          CALL this%data%strings%remove_blank_lines()
-          CALL this%data%strings%remove_whitespace()
-          CALL this%data%strings%combine_split_lines("\")
-        ELSE
-          errcode = eis_err_no_file
-          RETURN
-        END IF
-      END IF
-    END DO
+    IF (errcode /= eis_err_none) THEN
+      CALL this%data%handler%add_error(eis_err_deck, errcode, &
+          filename = filename)
+      RETURN
+    END IF
 
-    IF (PRESENT(parsed_text)) CALL this%data%strings%serialise(parsed_text)
-
-    CALL this%generate_blocklist(errcode)
+    CALL this%parse_core(ierr)
+    errcode = IOR(errcode, ierr)
+    IF (PRESENT(parsed_text)) THEN
+      CALL this%data%strings%serialise(parsed_text)
+      RETURN
+    END IF
 
   END SUBROUTINE esd_parse_deck_file
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Parse a text file to a deck description
+  !> @param[in] text
+  !> @param[out] errcode
+  !> @param[in] filename
+  SUBROUTINE esd_parse_deck_string(this, text, errcode, filename)
+    CLASS(eis_string_deck), INTENT(INOUT) :: this
+    !> Text of deck file
+    CHARACTER(LEN=*), INTENT(IN) :: text
+    !> Error code
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    !> Filename to associate with the strings when reporting errors
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
+    INTEGER, DIMENSION(2) :: ranges
+    INTEGER(eis_error) :: ierr
+
+    errcode = eis_err_none
+    CALL this%init(ierr)
+    errcode = IOR(errcode, ierr)
+    ranges = this%data%strings%populate(text, errcode, filename = filename)
+    CALL this%parse_core(ierr)
+
+  END SUBROUTINE esd_parse_deck_string
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Parse a serialised deck representation (from read_deck_file)
+  !> @param[in] text
+  !> @param[in] errcode
+  SUBROUTINE esd_read_parsed_deck(this, text, errcode)
+    CLASS(eis_string_deck), INTENT(INOUT) :: this
+    !> Serialised deck representation
+    CHARACTER(LEN=*), INTENT(IN) :: text
+    !> Error code
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    INTEGER, DIMENSION(2) :: ranges
+    INTEGER(eis_error) :: ierr
+
+    errcode = eis_err_none
+    CALL this%init(ierr)
+    errcode = IOR(errcode, ierr)
+
+    ranges = this%data%strings%deserialise(text, errcode)
+
+    CALL this%parse_core(ierr)
+
+  END SUBROUTINE esd_read_parsed_deck
 
 
 
@@ -396,24 +509,39 @@ MODULE eis_string_deck_mod
   !> Generate a list of blocks from a parsed source
   !> @param[inout] this
   !> @param[out] errcode
-  SUBROUTINE esd_generate_blocklist(this, errcode)
+  SUBROUTINE esd_generate_blocklist(this, errcode, max_level, allow_root_keys, &
+      allow_empty_blocks)
     CLASS(eis_string_deck), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(OUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: max_level
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_root_keys, allow_empty_blocks
     INTEGER :: iline, cloc, iline2
     LOGICAL :: ok
-    CHARACTER(LEN=:), ALLOCATABLE :: str
-    INTEGER :: iblock, current_block
+    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
+    INTEGER :: iblock, current_block, current_level, ln
     TYPE :: bholder
       CHARACTER(LEN=:), ALLOCATABLE :: blockname
       TYPE(bholder), POINTER :: next => NULL()
     END TYPE
     TYPE(bholder), POINTER :: head => NULL(), new
+    INTEGER :: mlevel
+    LOGICAL :: root_keys, empty_blocks
+
+    mlevel = HUGE(mlevel)
+    IF (PRESENT(max_level)) mlevel = max_level
+
+    root_keys = .FALSE.
+    IF (PRESENT(allow_root_keys)) root_keys = allow_root_keys
+
+    empty_blocks = .FALSE.
+    IF (PRESENT(allow_empty_blocks)) empty_blocks = allow_empty_blocks
 
     errcode = eis_err_none
     iblock = 0
 
     DO iline = 1, this%data%strings%get_size()
-      ok = this%data%strings%get(iline, str)
+      ok = this%data%strings%get(iline, str, filename = src_filename, &
+          line_number = ln)
       cloc = INDEX(str, ":")
       IF (cloc < 1) CYCLE
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'begin' , &
@@ -432,6 +560,8 @@ MODULE eis_string_deck_mod
         !This is an error
         IF (.NOT. ASSOCIATED(head)) THEN
           errcode = eis_err_mismatched_begin_end
+          CALL this%data%handler%add_error(eis_err_deck, errcode, &
+              filename = src_filename, line_number = ln)
           EXIT
         END IF
         !The block that is being closed was opened but the names don't match
@@ -439,6 +569,8 @@ MODULE eis_string_deck_mod
         IF (.NOT. eis_compare_string(TRIM(ADJUSTL(str(cloc+1:))), &
             head%blockname)) THEN
           errcode = eis_err_mismatched_begin_end
+          CALL this%data%handler%add_error(eis_err_deck, errcode, &
+              filename = src_filename, line_number = ln)
           EXIT
         END IF
 
@@ -454,6 +586,8 @@ MODULE eis_string_deck_mod
     !but never closed. This is also an error
     DO WHILE(ASSOCIATED(head))
       errcode = eis_err_mismatched_begin_end
+      CALL this%data%handler%add_error(eis_err_deck, errcode, &
+          filename = src_filename, line_number = ln)
       new => head%next
       DEALLOCATE(head)
       head => new
@@ -465,18 +599,29 @@ MODULE eis_string_deck_mod
     ALLOCATE(this%data%blocks(0:iblock))
     ALLOCATE(this%data%blocks(0)%block_name, SOURCE = '{ROOT}')
     this%data%blocks(0)%id = 0
+    this%data%blocks(0)%level = 0
+    CALL this%data%blocks(0)%add_line_start(0)
     DO iblock = 0, iblock
       this%data%blocks(iblock)%parser_data => this%data
     END DO
     iblock = 1
     current_block = 0
+    current_level = 0
 
     DO iline = 1, this%data%strings%get_size()
-      ok = this%data%strings%get(iline, str)
+      ok = this%data%strings%get(iline, str, filename = src_filename, &
+          line_number = ln)
       cloc = INDEX(str, ":")
       IF (cloc < 1) CYCLE
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'begin' , &
           case_sensitive = .FALSE.)) THEN
+        current_level = current_level + 1
+        IF (current_level > mlevel) THEN
+          errcode = eis_err_deck_too_deep
+          CALL this%data%handler%add_error(eis_err_deck, errcode, &
+              filename = src_filename, line_number = ln)
+          RETURN
+        END IF
         !The parent block now has a child block and has a line end added
         CALL this%data%blocks(current_block)%add_child(iblock)
         CALL this%data%blocks(current_block)%add_line_end(iline)
@@ -486,6 +631,7 @@ MODULE eis_string_deck_mod
             SOURCE = TRIM(ADJUSTL(str(cloc+1:))))
         this%data%blocks(iblock)%id = iblock
         this%data%blocks(iblock)%parent_block = current_block
+        this%data%blocks(iblock)%level = current_level
         !Mark the current line as the start line for the current block
         CALL this%data%blocks(iblock)%add_line_start(iline)
 
@@ -495,6 +641,7 @@ MODULE eis_string_deck_mod
         iblock = iblock + 1
       ELSE IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'end' , &
           case_sensitive = .FALSE.)) THEN
+        current_level = current_level - 1
         !Mark the text for the current block as ended
         CALL this%data%blocks(current_block)%add_line_end(iline)
         !Wind the current block back up a level
@@ -502,12 +649,147 @@ MODULE eis_string_deck_mod
         CALL this%data%blocks(current_block)%add_line_start(iline)
       END IF
     END DO
+    !Finally, end the root block
+    CALL this%data%blocks(0)%add_line_end(iline)
 
     DO iblock = 0, UBOUND(this%data%blocks, 1)
       CALL this%data%blocks(iblock)%compact_lines()
+      IF (iblock > 0 .AND. .NOT. empty_blocks) THEN
+        IF (this%data%blocks(iblock)%get_line_count() < 1) THEN
+          errcode = eis_err_deck_empty_block
+          CALL this%data%handler%add_error(eis_err_deck, errcode, &
+              filename = src_filename, line_number = ln)
+          RETURN
+        END IF
+      END IF
     END DO
 
+    IF (.NOT. root_keys .AND. this%data%blocks(0)%get_line_count() > 0) THEN
+      errcode = eis_err_root_keys
+      CALL this%data%handler%add_error(eis_err_deck, errcode, &
+          filename = src_filename, line_number = ln)
+    END IF
+
   END SUBROUTINE esd_generate_blocklist
+
+
+
+  !> @brief
+  !> Print all of the errors to stdout
+  !> @param[inout] this
+  SUBROUTINE esd_print_errors(this)
+    CLASS(eis_string_deck), INTENT(IN) :: this
+    INTEGER :: ierr
+
+    DO ierr = 1, this%data%handler%get_error_count()
+      CALL this%data%handler%print_error_string(ierr)
+    END DO
+    CALL this%data%handler%flush_errors()
+
+  END SUBROUTINE esd_print_errors
+
+
+
+  !> @brief
+  !> Flush all of the errors in the list of errors
+  !> @param[inout] this
+  SUBROUTINE esd_flush_errors(this)
+    CLASS(eis_string_deck) :: this
+    CALL this%data%handler%flush_errors()
+  END SUBROUTINE esd_flush_errors
+
+
+
+  !> @brief
+  !> Get the number of errors reported on this deck
+  !> @param[inout] this
+  !> @return count
+  FUNCTION esd_get_error_count(this) RESULT(count)
+    CLASS(eis_string_deck), INTENT(IN) :: this
+    INTEGER :: count !< Number of errors reported
+
+    count = this%data%handler%get_error_count()
+
+  END FUNCTION esd_get_error_count
+
+
+
+  !> @brief
+  !> Get the error report on a specified error
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] report
+  SUBROUTINE esd_get_error_report(this, index, report)
+    CLASS(eis_string_deck), INTENT(IN) :: this
+    !> Index of error to get report on. Must be between 1 and
+    !> the result of esd_get_error_count
+    INTEGER, INTENT(IN) :: index
+    !> Allocatable string variable containing the error report
+    !> will be reallocated to be exactly long enough to store
+    !> the error report whether allocated or not
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
+
+    CALL this%data%handler%get_error_report(index, report)
+  END SUBROUTINE esd_get_error_report
+
+
+  !> @brief
+  !> Get error information for a single error. This contains the 
+  !> same information as the error report but is not formatted for use
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] error_cause
+  !> @param[out] error_cause_location
+  !> @param[out] error_phase
+  !> @param[out] error_type
+  !> @param[out] error_filename
+  !> @param[out] error_line_number
+  SUBROUTINE esd_get_error_info(this, index, error_cause, &
+      error_cause_location, error_phase, error_type, error_filename, &
+      error_line_number)
+
+    CLASS(eis_string_deck), INTENT(IN) :: this
+    !> Index of error to get report on. Must be between 1 and
+    !> the result of esd_get_error_count
+    INTEGER, INTENT(IN) :: index
+    !> Reports the string representation of the part of the string that
+    !> caused the error. Optional, default is not return this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_cause
+    !> Reports the character offset location of the cause of the error
+    !> Optional, default is not report this info
+    INTEGER, INTENT(OUT), OPTIONAL :: error_cause_location
+    !> Reports the string representation of where in the parsing phase the
+    !> error occured. Optional, default is not report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_phase
+    !> Reports the string representation of the type of error that was
+    !> encountered during the parsing. Optional, default is no report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_type
+    !> Reports the file name of the file which contains the error
+    !> Optional, default is not report this info
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(OUT) :: error_filename
+    !> Reports the line number within the file which contains the error
+    !> Optional, default is not report this info
+    INTEGER, INTENT(OUT), OPTIONAL :: error_line_number
+    CHARACTER(LEN=:), ALLOCATABLE :: ec, eps, ets, efn
+    INTEGER :: ecl, eln
+
+    CALL this%data%handler%get_error_cause(index, ec, ecl,filename=efn, &
+        line_number = eln)
+    CALL this%data%handler%get_error_string(index, ets, eps)
+
+    IF (PRESENT(error_cause)) CALL MOVE_ALLOC(ec, error_cause)
+    IF (PRESENT(error_cause_location)) error_cause_location = ecl
+    IF (PRESENT(error_phase)) CALL MOVE_ALLOC(eps, error_phase)
+    IF (PRESENT(error_type)) CALL MOVE_ALLOC(ets, error_type)
+    IF (PRESENT(error_filename)) CALL MOVE_ALLOC(efn, error_type)
+    IF (PRESENT(error_line_number)) error_line_number = eln
+
+    IF (ALLOCATED(ec)) DEALLOCATE(ec)
+    IF (ALLOCATED(eps)) DEALLOCATE(eps)
+    IF (ALLOCATED(ets)) DEALLOCATE(ets)
+
+  END SUBROUTINE esd_get_error_info
+
 
 
   !> @author C.S.Brady@warwick.ac.uk

@@ -236,10 +236,10 @@ CONTAINS
     IF (index < 1 .OR. index > SIZE(this%items) + 1) RETURN
 
     sz = SIZE(this%items)
-    old_count = MIN(sz, index)
+    old_count = MIN(sz, index-1)
     ALLOCATE(temp(1:MAX(sz+1, index)))
     temp(1:old_count) = this%items(1:old_count)
-    IF (index < sz) temp(index+1:sz-1) = this%items(index:)
+    IF (index <= sz) temp(index+1:sz+1) = this%items(index:)
     CALL unlink_items(this%items)
     DEALLOCATE(this%items)
     CALL MOVE_ALLOC(temp, this%items)
