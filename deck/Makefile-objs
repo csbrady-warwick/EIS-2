@@ -1,2 +1,2 @@
-SRCFILES := eis_deck_text.F90
+SRCFILES := eis_deck_text.F90 eis_deck_functions.F90
 OBJS := $(SRCFILES:.F90=.o)

@@ -1,1 +1,2 @@
 eis_deck_text.o:eis_deck_text.F90
+eis_deck_functions.o:eis_deck_functions.F90
