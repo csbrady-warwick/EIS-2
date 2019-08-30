@@ -145,6 +145,39 @@ MODULE eis_stack_mod
 
 
   !> @brief
+  !> Prepend one stack to the start of another stack.
+  !> @param[inout] stack - Stack to prepend to
+  !> @param[in] prepend - Stack to prepend to "stack"
+  SUBROUTINE prepend_stack(stack, prepend)
+
+    TYPE(eis_stack), INTENT(INOUT) :: stack, prepend
+    INTEGER :: i, n, old_stack_point
+
+    old_stack_point = stack%stack_point
+
+    IF (stack%stack_point + prepend%stack_point > stack%stack_size) THEN
+      CALL grow_stack(stack, 2 * (stack%stack_point + prepend%stack_point))
+    END IF
+
+    stack%stack_point = old_stack_point + prepend%stack_point
+    stack%entries(prepend%stack_point+1:prepend%stack_point + old_stack_point) &
+        = stack%entries(1:old_stack_point)
+    stack%entries(1:prepend%stack_point) &
+        = prepend%entries(1:prepend%stack_point)
+
+    IF (ALLOCATED(stack%co_entries)) THEN
+    stack%co_entries(prepend%stack_point+1:prepend%stack_point &
+        + old_stack_point) = stack%co_entries(1:old_stack_point)
+    stack%co_entries(1:prepend%stack_point) &
+        = prepend%co_entries(1:prepend%stack_point)
+    END IF
+    stack%cap_bits = IOR(stack%cap_bits, prepend%cap_bits)
+
+  END SUBROUTINE prepend_stack
+
+
+
+  !> @brief
   !> Append one stack to the end of another stack.
   !> @param[inout] stack - Stack to append to
   !> @param[in] append - Stack to append to "stack"

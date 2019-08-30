@@ -87,8 +87,7 @@ MODULE eis_tree_mod
       END IF
       CALL initialise_stack(intermediate)
       CALL eis_tree_to_stack(root, intermediate)
-      CALL append_stack(simplified, intermediate)
-      CALL copy_stack(simplified, intermediate)
+      CALL prepend_stack(simplified, intermediate)
       CALL deallocate_stack(intermediate)
       DEALLOCATE(root)
     END DO
