@@ -36,9 +36,15 @@ MODULE eis_numbered_store_mod
     CONTAINS
     PRIVATE
     PROCEDURE :: hash => ns_hash
-    PROCEDURE, PUBLIC :: get => ns_get
-    PROCEDURE, PUBLIC :: store => ns_store
-    PROCEDURE, PUBLIC :: hold => ns_hold
+    PROCEDURE :: get_i8 => ns_get_i8
+    PROCEDURE :: get_i4 => ns_get_i4
+    GENERIC, PUBLIC :: get => get_i4, get_i8
+    PROCEDURE :: store_i8 => ns_store_i8
+    PROCEDURE :: store_i4 => ns_store_i4
+    GENERIC, PUBLIC :: store => store_i4, store_i8
+    PROCEDURE :: hold_i8 => ns_hold_i8
+    PROCEDURE :: hold_i4 => ns_hold_i4
+    GENERIC, PUBLIC :: hold => hold_i4, hold_i8
     PROCEDURE, PUBLIC :: unlink => ns_unlink
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
@@ -247,7 +253,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] id
   !> @return item
-  FUNCTION ns_get(this, id) RESULT (item)
+  FUNCTION ns_get_i8(this, id) RESULT (item)
 
     CLASS(numbered_store), INTENT(IN) :: this
     INTEGER(INT64), INTENT(IN) :: id !< Value to hash
@@ -260,7 +266,26 @@ CONTAINS
     bucket = this%hash(id)
     item => this%buckets(bucket)%get(id)
 
-  END FUNCTION ns_get
+  END FUNCTION ns_get_i8
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get an item from the store by number int4 version
+  !> return NULL pointer if item is not present
+  !> @param[in] this
+  !> @param[in] id
+  !> @return item
+  FUNCTION ns_get_i4(this, id) RESULT (item)
+
+    CLASS(numbered_store), INTENT(IN) :: this
+    INTEGER(INT32), INTENT(IN) :: id !< Value to hash
+    CLASS(*), POINTER :: item
+
+    item => this%get(INT(id,INT64))
+
+  END FUNCTION ns_get_i4
 
 
 
@@ -271,7 +296,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] key
   !> @param[in] item
-  SUBROUTINE ns_store(this, key, item)
+  SUBROUTINE ns_store_i8(this, key, item)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
     INTEGER(INT64), INTENT(IN) :: key
@@ -287,7 +312,27 @@ CONTAINS
     CALL this%buckets(bucket)%store(key, copy)
     this%count = this%count + 1
 
-  END SUBROUTINE ns_store
+  END SUBROUTINE ns_store_i8
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to the hash table taking a copy int4 version
+  !> when doing so
+  !> @param[in] this
+  !> @param[in] key
+  !> @param[in] item
+  SUBROUTINE ns_store_i4(this, key, item)
+
+    CLASS(numbered_store), INTENT(INOUT) :: this
+    INTEGER(INT32), INTENT(IN) :: key
+    CLASS(*), INTENT(IN) :: item
+
+    CALL this%store(INT(key, INT64), item)
+
+  END SUBROUTINE ns_store_i4
+
 
 
 
@@ -301,7 +346,7 @@ CONTAINS
   !> @param[in] key
   !> @param[in] item
   !> @param[in] owns
-  SUBROUTINE ns_hold(this, key, item, owns)
+  SUBROUTINE ns_hold_i8(this, key, item, owns)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
     INTEGER(INT64), INTENT(IN) :: key
@@ -316,7 +361,30 @@ CONTAINS
     CALL this%buckets(bucket)%store(key, item, owns)
     this%count = this%count + 1
 
-  END SUBROUTINE ns_hold
+  END SUBROUTINE ns_hold_i8
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to the hash table storing the passed item NOT a copy.
+  !> By default is set to assume that it owns the item after adding
+  !> and deletes it when the store is closed. Set "owns = .FALSE." if this
+  !> you have other pointers to the item
+  !> @param[in] this
+  !> @param[in] key
+  !> @param[in] item
+  !> @param[in] owns
+  SUBROUTINE ns_hold_i4(this, key, item, owns)
+
+    CLASS(numbered_store), INTENT(INOUT) :: this
+    INTEGER(INT32), INTENT(IN) :: key
+    CLASS(*), POINTER, INTENT(IN) :: item
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
+
+    CALL this%hold(INT(key, INT64), item, owns)
+
+  END SUBROUTINE ns_hold_i4
 
 
 

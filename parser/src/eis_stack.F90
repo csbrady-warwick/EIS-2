@@ -14,7 +14,7 @@ MODULE eis_stack_mod
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
 
-    stack%stack_point = 0
+    CALL deallocate_stack(stack)
     stack%stack_size = 1
     stack%cap_bits = 0
     ALLOCATE(stack%entries(stack%stack_size))
@@ -35,6 +35,7 @@ MODULE eis_stack_mod
 
     stack%stack_point = 0
     stack%stack_size = 0
+    NULLIFY(stack%eval_fn)
     IF (stack%init) THEN
       CALL deallocate_stack_element(stack%entries)
       IF (ALLOCATED(stack%co_entries)) &

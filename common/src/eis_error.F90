@@ -9,7 +9,8 @@ MODULE eis_error_mod
   !> Type representing an error
   TYPE :: eis_error_item
     !> String representation of the source of the error
-    CHARACTER(LEN=:), ALLOCATABLE :: errstring, filename
+    CHARACTER(LEN=:), ALLOCATABLE :: errstring
+    CHARACTER(LEN=:), ALLOCATABLE :: filename
     !> Numerical representation of the type of the error
     INTEGER(eis_error) :: errcode = eis_err_none
     !> Character offset from start of the string of the error
@@ -106,7 +107,11 @@ MODULE eis_error_mod
       CALL this%strings%store('err_src_evaluate','Error when evaluating stack')
       CALL this%strings%store('err_src_file','Error when handling a text file')
       CALL this%strings%store('err_src_deck','Error when handling an &
-          &input deck')
+          &input deck file')
+      CALL this%strings%store('err_src_deck_definition','Error when handling &
+          &an input deck definition')
+      CALL this%strings%store('err_src_deck_parser', 'Error when parsing an &
+          &input deck file')
       CALL this%strings%store('err_src_undefined', 'Error in unspecified part &
           &of the parser. (This is probably a bug in the parser code)')
 
@@ -118,8 +123,7 @@ MODULE eis_error_mod
           &parameters was used in a function call')
       CALL this%strings%store('err_maths_domain', 'A mathematically invalid &
           &operation was requested')
-      CALL this%strings%store('err_not_found', 'The specified block was not &
-          &found in the list of known keys')
+      CALL this%strings%store('err_not_found', 'Unknown value or function')
       CALL this%strings%store('err_has_emplaced', 'The specified stack has &
           &unresolved emplaced elements')
       CALL this%strings%store('err_has_deferred', 'The specified stack has &
@@ -145,11 +149,20 @@ MODULE eis_error_mod
           &with no keys in it. This is a malformed deck')
       CALL this%strings%store('err_root_keys', 'Deck key encountered &
           &outside a block. This is a malformed deck')
-
+      CALL this%strings%store('err_defn_invalid', 'Deck definition object is in&
+          & an invalid state')
+      CALL this%strings%store('err_unknown_block', 'An unknown block was found &
+          &in the deck')
+      CALL this%strings%store('err_unknown_key', 'An unknown key was found &
+          &in the deck')
+      CALL this%strings%store('err_bad_key', 'A key in the deck could not be &
+          &parsed')
 
       CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
           &{errline} : ')
       CALL this%strings%store('err_report_file_only', 'In file "{errfile}": ')
+      CALL this%strings%store('err_report_text_place', 'In block with text &
+          &"{errtext}:')
       CALL this%strings%store('err_report_place', 'In block with text &
           &"{errtext}" starting at character position {charpos}: ')
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
@@ -168,8 +181,8 @@ MODULE eis_error_mod
   !> @param[in] errstring
   !> @param[in] charindex
   !> @param[in] line_number
-  SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, charindex, &
-      filename, line_number)
+  SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, &
+      charindex, filename, line_number)
 
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
     !> Type code for source of error (tokenize, evalaute etc.)
@@ -186,6 +199,9 @@ MODULE eis_error_mod
     INTEGER, OPTIONAL, INTENT(IN) :: line_number
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz
+    INTEGER(eis_error) :: err
+
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     IF (errcode == eis_err_none) RETURN !Don't add on no error
 
@@ -199,6 +215,7 @@ MODULE eis_error_mod
       sz = 1
       ALLOCATE(temp(sz))
     END IF
+
 
     temp(sz)%errcode = IOR(err_source, errcode)
     IF (PRESENT(errstring)) THEN
@@ -255,7 +272,7 @@ MODULE eis_error_mod
   !> @param[out] line_number
   SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out, filename, &
       line_number)
-    CLASS(eis_error_handler), INTENT(IN) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: index !< Error index code
     !>Error text for the returned error text
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: err_text 
@@ -265,6 +282,9 @@ MODULE eis_error_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
     !> Line number of the cause of the error
     INTEGER, INTENT(OUT), OPTIONAL :: line_number
+    INTEGER(eis_error) :: err
+
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     cloc_out = -1
     IF (PRESENT(line_number)) line_number = -1
@@ -295,13 +315,16 @@ MODULE eis_error_mod
   !> @param[inout] err_source
   SUBROUTINE eeh_get_error_string_from_code(this, errcode, err_string, &
       err_source)
-    CLASS(eis_error_handler), INTENT(IN) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(IN) :: errcode !< Error code to look up
     !> Error type string in specified language
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string
     !> Error source string in specified language
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_source
     LOGICAL :: ok
+    INTEGER(eis_error) :: err
+
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
     IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
@@ -316,10 +339,20 @@ MODULE eis_error_mod
       ok = this%strings%append('err_src_evaluate', err_source)
     ELSE IF (IAND(errcode, eis_err_file) /= 0) THEN
       ok = this%strings%append('err_src_file', err_source)
-    ELSE IF (IAND(errcode, eis_err_deck) /= 0) THEN
+    ELSE IF (IAND(errcode, eis_err_deck_file) /= 0) THEN
       ok = this%strings%append('err_src_deck', err_source)
+    ELSE IF (IAND(errcode, eis_err_deck_definition) /= 0) THEN
+      ok = this%strings%append('err_src_deck_definition', err_source)
+    ELSE IF (IAND(errcode, eis_err_deck_parser) /= 0) THEN
+      ok = this%strings%append('err_src_deck_parser', err_source)
     ELSE
       ok = this%strings%append('err_src_undefined', err_source)
+    END IF
+
+    IF (.NOT. ok) THEN
+      ALLOCATE(err_source, SOURCE = 'SERIOUS ERROR: UNABLE TO FIND ERROR&
+          & SOURCE STRING. THIS MIGHT BE A MALFORMED LANGUAGE PACK OR &
+          & MIGHT BE A SERIOUS ERROR IN THE EIS PARSER SYSTEM')
     END IF
 
 
@@ -380,6 +413,17 @@ MODULE eis_error_mod
       ok = this%strings%append('err_root_keys', err_string)
     END IF
 
+    !Errors from deck evaluation
+    IF (IAND(errcode, eis_err_unknown_block) /= 0) THEN
+      ok = this%strings%append('err_unknown_block', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_unknown_key) /= 0) THEN
+      ok = this%strings%append('err_unknown_key', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_bad_key) /= 0) THEN
+      ok = this%strings%append('err_bad_key', err_string)
+    END IF
+
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
         'No error text found')
 
@@ -396,12 +440,15 @@ MODULE eis_error_mod
   !> @param[inout] err_string
   !> @param[inout] err_source
   SUBROUTINE eeh_get_error_string(this, index, err_string, err_source)
-    CLASS(eis_error_handler), INTENT(IN) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: index !< Error index code
     !> Error type string in specified language
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_string
     !> Error source string in specified language
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: err_source
+    INTEGER(eis_error) :: err
+
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     IF (ALLOCATED(err_string)) DEALLOCATE(err_string)
     IF (ALLOCATED(err_source)) DEALLOCATE(err_source)
@@ -422,10 +469,10 @@ MODULE eis_error_mod
   !> @param[in] index
   !> @param[inout] report
   SUBROUTINE eeh_get_error_report(this, index, report)
-    CLASS(eis_error_handler), INTENT(IN) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: index !< Error report index
     !> Error report string
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: report
     CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp, &
         filename
     CHARACTER(LEN=9) :: posstr, linestr
@@ -433,8 +480,9 @@ MODULE eis_error_mod
     INTEGER :: charpos, nchar, line_number
     TYPE(eis_key_value_store) :: errstr_store
     LOGICAL :: ok
+    INTEGER(eis_error) :: err
 
-    IF (ALLOCATED(report)) DEALLOCATE(report)
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     IF (.NOT. ALLOCATED(this%errors)) THEN
       CALL eis_append_string(report, 'No stored errors')
@@ -442,7 +490,6 @@ MODULE eis_error_mod
     END IF
 
     IF (index < 1 .OR. index > SIZE(this%errors)) THEN
-      PRINT *, index, SIZE(this%errors)
       CALL eis_append_string(report, 'Error out of range')
       RETURN
     END IF
@@ -509,9 +556,12 @@ MODULE eis_error_mod
   !> @param[in] this
   !> @param[in] index
   SUBROUTINE eeh_print_err(this, index)
-    CLASS(eis_error_handler), INTENT(IN) :: this
+    CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: index !< Error report index
     CHARACTER(LEN=:), ALLOCATABLE :: report
+    INTEGER(eis_error) :: err
+
+    IF (.NOT. this%is_init) CALL this%init(err)
 
     CALL this%get_error_report(index, report)
     WRITE(*,'(A)') report

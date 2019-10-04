@@ -3,7 +3,7 @@ MODULE eis_parser_header
   USE eis_constants
   USE ISO_C_BINDING
 
-  INTERFACE
+  ABSTRACT INTERFACE
     !> Function definition for the parser evaluator function
     FUNCTION parser_eval_fn(nparams, params, host_params, status_code, &
         errcode) BIND(C)
@@ -15,6 +15,17 @@ MODULE eis_parser_header
       INTEGER(eis_error), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn
     END FUNCTION
+
+    SUBROUTINE parser_result_function(nresults, results, host_params, &
+        status_code, errcode) BIND(C)
+      IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status
+      INTEGER, INTENT(INOUT) :: nresults
+      REAL(eis_num), DIMENSION(nresults), INTENT(OUT) :: results
+      TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+      REAL(eis_num) :: parser_eval_fn
+    END SUBROUTINE
 
     FUNCTION parser_param_update_fn(user_params) BIND(C)
       IMPORT C_PTR
@@ -34,12 +45,38 @@ MODULE eis_parser_header
   INTEGER, PARAMETER :: eis_physics_si = 1 !< SI system
   INTEGER, PARAMETER :: eis_physics_cgs_gauss = 2 !< CGS Gaussian units
 
-  !> No status specified
-  INTEGER(eis_status), PARAMETER :: eis_status_none = 0
+  ! block type constants
+  INTEGER, PARAMETER :: eis_pt_variable = 1 !< Type variable
+  INTEGER, PARAMETER :: eis_pt_constant = 2 !< Type constant
+  INTEGER, PARAMETER :: eis_pt_operator = 3 !< Type operator
+  INTEGER, PARAMETER :: eis_pt_function = 4 !< Type function
+  INTEGER, PARAMETER :: eis_pt_parenthesis = 5 !< Type parenthesis
+  INTEGER, PARAMETER :: eis_pt_separator = 6 !< Type separator
+  INTEGER, PARAMETER :: eis_pt_character = 7 !< Type character
+  !> Type stack variable (stored variable)
+  INTEGER, PARAMETER :: eis_pt_stored_variable = 8
+  INTEGER, PARAMETER :: eis_pt_deferred_variable = 9 !< Type deferred variable
+  INTEGER, PARAMETER :: eis_pt_deferred_function = 10 !< Type deferred function
+  INTEGER, PARAMETER :: eis_pt_emplaced_variable = 11 !< Type emplaced variable
+  INTEGER, PARAMETER :: eis_pt_emplaced_function = 12 !< Type emplaced function
+  INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
+  INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
+
+  ! Associativity constants
+  INTEGER, PARAMETER :: eis_assoc_null = 0 !< No associativity specified
+  INTEGER, PARAMETER :: eis_assoc_a = 1 !< Fully associative operator
+  INTEGER, PARAMETER :: eis_assoc_la = 2 !< Left associative operator
+  INTEGER, PARAMETER :: eis_assoc_ra = 3 !< Right associative operator
+
+  !> Parenthesis is left bracket
+  INTEGER, PARAMETER :: eis_paren_left_bracket = 1
+  !> Parenthesis is right bracket
+  INTEGER, PARAMETER :: eis_paren_right_bracket = 2
+
   !> This key in a stack should not be simplified through
-  INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**0
+  INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**1
   !> This key in a stack is an emplaced value that should not be emplaced yet
-  INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**1
+  INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**2
 
   !> Information about a stack element that is needed during parsing but is
   !> not essential for evaluation
@@ -66,6 +103,11 @@ MODULE eis_parser_header
   TYPE eis_stack
     TYPE(eis_stack_element), ALLOCATABLE :: entries(:)
     TYPE(eis_stack_co_element), ALLOCATABLE :: co_entries(:)
+    PROCEDURE(parser_result_function), POINTER, NOPASS :: eval_fn => NULL()
+    CHARACTER(LEN=:), ALLOCATABLE :: eval_string
+    CHARACTER(LEN=:), ALLOCATABLE :: filename
+    INTEGER :: line_number = 0
+    INTEGER :: char_offset = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     INTEGER :: stack_point, stack_size
     LOGICAL :: init = .FALSE.

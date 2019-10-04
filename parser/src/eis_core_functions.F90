@@ -883,7 +883,6 @@ MODULE eis_core_functions_mod
   !> @param[in] params
   !> @param[in] host_params
   !> @param[inout] status_code
-  !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_supergauss(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C) 
@@ -909,7 +908,6 @@ MODULE eis_core_functions_mod
   !> @param[in] nparams
   !> @param[in] params
   !> @param[in] host_params
-  !> @param[inout] status_code
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_asinh(nparams, params, host_params, status_code, errcode) &
@@ -942,7 +940,6 @@ MODULE eis_core_functions_mod
   !> @param[in] params
   !> @param[in] host_params
   !> @param[inout] status_code
-  !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_acosh(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C) 
@@ -973,7 +970,6 @@ MODULE eis_core_functions_mod
   !> @param[in] nparams
   !> @param[in] params
   !> @param[in] host_params
-  !> @param[inout] status_code
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_atanh(nparams, params, host_params, status_code, errcode) &
@@ -1006,7 +1002,6 @@ MODULE eis_core_functions_mod
   !> @param[in] nparams
   !> @param[in] params
   !> @param[in] host_params
-  !> @param[inout] status_code
   !> @param[inout] status_code
   !> @param[inout] errcode
   FUNCTION eis_if(nparams, params, host_params, status_code, errcode) &

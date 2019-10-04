@@ -56,32 +56,12 @@ MODULE eis_constants
   !> HUGE value for variable of kind eis_num
   REAL(eis_num), PARAMETER :: eis_huge = HUGE(1.0_eis_num)
 
-  ! block type constants
-  INTEGER, PARAMETER :: eis_pt_variable = 1 !< Type variable
-  INTEGER, PARAMETER :: eis_pt_constant = 2 !< Type constant
-  INTEGER, PARAMETER :: eis_pt_operator = 3 !< Type operator
-  INTEGER, PARAMETER :: eis_pt_function = 4 !< Type function
-  INTEGER, PARAMETER :: eis_pt_parenthesis = 5 !< Type parenthesis
-  INTEGER, PARAMETER :: eis_pt_separator = 6 !< Type separator
-  INTEGER, PARAMETER :: eis_pt_character = 7 !< Type character
-  !> Type stack variable (stored variable)
-  INTEGER, PARAMETER :: eis_pt_stored_variable = 8
-  INTEGER, PARAMETER :: eis_pt_deferred_variable = 9 !< Type deferred variable
-  INTEGER, PARAMETER :: eis_pt_deferred_function = 10 !< Type deferred function
-  INTEGER, PARAMETER :: eis_pt_emplaced_variable = 11 !< Type emplaced variable
-  INTEGER, PARAMETER :: eis_pt_emplaced_function = 12 !< Type emplaced function
-  INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
-  INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
+  !> No status specified
+  INTEGER(eis_status), PARAMETER :: eis_status_none = 0
+  !> Terminate operations status
+  INTEGER(eis_status), PARAMETER :: eis_status_terminate = 2**0
 
-  ! Associativity constants
-  INTEGER, PARAMETER :: eis_assoc_null = 0 !< No associativity specified
-  INTEGER, PARAMETER :: eis_assoc_a = 1 !< Fully associative operator
-  INTEGER, PARAMETER :: eis_assoc_la = 2 !< Left associative operator
-  INTEGER, PARAMETER :: eis_assoc_ra = 3 !< Right associative operator
-
-  !> Parenthesis is left bracket
-  INTEGER, PARAMETER :: eis_paren_left_bracket = 1
-  !> Parenthesis is right bracket
-  INTEGER, PARAMETER :: eis_paren_right_bracket = 2
+  !> No error specified
+  INTEGER(eis_error), PARAMETER :: eis_err_none = 0
 
 END MODULE eis_constants

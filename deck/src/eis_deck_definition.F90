@@ -1,0 +1,1190 @@
+MODULE eis_deck_definition_mod
+
+  USE :: eis_constants
+  USE :: eis_header
+  USE :: eis_deck_header
+  USE :: eis_deck_function_mod
+  USE :: eis_named_store_mod
+  USE :: eis_numbered_store_mod
+  USE :: eis_parser_mod
+  USE :: eis_error_mod
+  IMPLICIT NONE
+
+  TYPE :: eis_deck_definition_info
+    INTEGER :: id_max = -1 !Want live UID to start from 0
+    INTEGER :: longest_block_name = 10 !Minimum of 10
+    TYPE(numbered_store) :: all_blocks
+    LOGICAL :: owns_parser = .FALSE.
+    CLASS(eis_parser), POINTER :: parser => NULL()
+    LOGICAL :: owns_interop = .FALSE.
+    INTEGER :: interop_parser
+    CONTAINS
+
+    PROCEDURE :: get_id => ddi_get_next_id
+    PROCEDURE :: add_block => ddi_add_block
+    PROCEDURE :: get_block_count => ddi_get_block_count
+    PROCEDURE :: get_block => ddi_get_block
+  END TYPE eis_deck_definition_info
+
+  TYPE :: deck_key_definition
+    CHARACTER(LEN=:), ALLOCATABLE :: name
+    PROCEDURE(key_text_callback), POINTER, NOPASS  :: key_text_fn  => NULL()
+    PROCEDURE(key_text_callback_c), POINTER, NOPASS  :: c_key_text_fn  => NULL()
+    PROCEDURE(key_value_callback), POINTER, NOPASS :: key_value_fn => NULL()
+    PROCEDURE(key_value_callback_c), POINTER, NOPASS :: c_key_value_fn => NULL()
+    PROCEDURE(key_numeric_value_callback), POINTER, NOPASS :: &
+        key_numeric_value_fn => NULL()
+    PROCEDURE(key_numeric_value_callback_c), POINTER, NOPASS :: &
+        c_key_numeric_value_fn => NULL()
+    PROCEDURE(key_stack_callback), POINTER, NOPASS :: key_stack_fn => NULL()
+    PROCEDURE(key_stack_callback_c), POINTER, NOPASS :: c_key_stack_fn => NULL()
+
+    CONTAINS
+    PROCEDURE :: init => dkd_init
+  END TYPE deck_key_definition
+
+  TYPE :: eis_deck_block_definition
+    TYPE(named_store) :: sub_blocks
+    TYPE(named_store) :: keys
+    CHARACTER(LEN=:), ALLOCATABLE :: name
+    CLASS(eis_deck_definition_info), POINTER :: info => NULL()
+    INTEGER :: id = -1, parent = -1, depth = -1
+    LOGICAL :: uninit = .TRUE.
+    PROCEDURE(block_generic_callback), POINTER, NOPASS :: init_block_fn &
+        => NULL()
+    PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: c_init_block_fn &
+        => NULL()
+    PROCEDURE(block_callback), POINTER, NOPASS :: start_block_fn => NULL()
+    PROCEDURE(block_callback_c), POINTER, NOPASS :: c_start_block_fn => NULL()
+    PROCEDURE(block_callback), POINTER, NOPASS :: end_block_fn => NULL()
+    PROCEDURE(block_callback_c), POINTER, NOPASS :: c_end_block_fn => NULL()
+    PROCEDURE(block_generic_callback), POINTER, NOPASS :: final_block_fn &
+        => NULL()
+    PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: c_final_block_fn &
+        => NULL()
+    PROCEDURE(block_remap_callback), POINTER, NOPASS :: block_remap_fn &
+        => NULL()
+    PROCEDURE(block_remap_callback_c), POINTER, NOPASS :: c_block_remap_fn &
+        => NULL()
+    PROCEDURE(key_text_callback), POINTER, NOPASS :: any_key_text_fn => NULL()
+    PROCEDURE(key_text_callback_c), POINTER, NOPASS :: c_any_key_text_fn &
+        => NULL()
+    PROCEDURE(key_value_callback), POINTER, NOPASS :: any_key_value_fn => NULL()
+    PROCEDURE(key_value_callback_c), POINTER, NOPASS :: c_any_key_value_fn &
+        => NULL()
+    PROCEDURE(key_numeric_value_callback), POINTER, NOPASS :: &
+        any_key_numeric_value_fn => NULL()
+    PROCEDURE(key_numeric_value_callback_c), POINTER, NOPASS :: &
+        c_any_key_numeric_value_fn => NULL()
+    PROCEDURE(key_stack_callback), POINTER, NOPASS :: any_key_stack_fn => NULL()
+    PROCEDURE(key_stack_callback_c), POINTER, NOPASS :: c_any_key_stack_fn &
+        => NULL()
+
+    CONTAINS
+
+    PROCEDURE, PRIVATE :: get_parents => dbd_get_parents
+
+    PROCEDURE :: init => dbd_init
+    PROCEDURE :: add_block => dbd_add_block
+    PROCEDURE :: get_child => dbd_get_block
+    PROCEDURE :: get_parent => dbd_get_parent
+    PROCEDURE :: initialise_block => dbd_initialise_block
+    PROCEDURE :: initialize_block => dbd_initialise_block
+    PROCEDURE :: start_block => dbd_start_block
+    PROCEDURE :: end_block => dbd_end_block
+    PROCEDURE :: finalise_block => dbd_finalise_block
+    PROCEDURE :: finalize_block => dbd_finalise_block
+
+    PROCEDURE :: add_key => dbd_add_key
+    PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
+    GENERIC, PUBLIC :: call_key => call_key_text
+  END TYPE eis_deck_block_definition
+
+
+  TYPE :: eis_deck_definition
+    LOGICAL :: is_init = .FALSE.
+    LOGICAL :: finalise_absent = .FALSE.
+    CLASS(eis_deck_definition_info), POINTER :: info => NULL()
+    TYPE(eis_deck_block_definition), POINTER :: root_definition => NULL()
+
+    CONTAINS
+    PROCEDURE :: init => dd_init
+    PROCEDURE :: get_root => dd_get_root
+    PROCEDURE :: get_block => dd_get_block
+    PROCEDURE :: initialize_blocks => dd_init_blocks
+    PROCEDURE :: initialise_blocks => dd_init_blocks
+    PROCEDURE :: finalize_blocks => dd_finalise_blocks
+    PROCEDURE :: finalise_blocks => dd_finalise_blocks
+    FINAL :: dd_destructor
+  END TYPE eis_deck_definition
+
+  CONTAINS
+
+  FUNCTION ddi_get_next_id(this)
+    CLASS(eis_deck_definition_info), INTENT(INOUT) :: this
+    INTEGER :: ddi_get_next_id
+
+    ddi_get_next_id = this%id_max + 1
+    this%id_max = this%id_max + 1
+
+  END FUNCTION ddi_get_next_id
+
+
+
+  SUBROUTINE ddi_add_block(this, block_in)
+    CLASS(eis_deck_definition_info), INTENT(INOUT) :: this
+    TYPE(eis_deck_block_definition), POINTER, INTENT(IN) :: block_in
+    CLASS(*), POINTER :: ptr
+
+    !Needed in F2003 standard
+    ptr => block_in
+
+    CALL this%all_blocks%hold(block_in%id, ptr, owns = .FALSE.)
+
+  END SUBROUTINE ddi_add_block
+
+
+
+  FUNCTION ddi_get_block_count(this) RESULT(count)
+    CLASS(eis_deck_definition_info), INTENT(IN) :: this
+    INTEGER :: count
+
+    count = this%id_max
+
+  END FUNCTION ddi_get_block_count
+
+
+
+  FUNCTION ddi_get_block(this, id) RESULT(bptr)
+    CLASS(eis_deck_definition_info), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: id
+    CLASS(eis_deck_block_definition), POINTER :: bptr
+    CLASS(*), POINTER :: gptr
+
+    gptr => this%all_blocks%get(id)
+    IF (.NOT. ASSOCIATED(gptr)) THEN
+      bptr => NULL()
+      RETURN
+    END IF
+
+    SELECT TYPE(gptr)
+      CLASS IS (eis_deck_block_definition)
+        bptr => gptr
+      CLASS DEFAULT
+        bptr => NULL()
+    END SELECT
+
+  END FUNCTION ddi_get_block
+
+
+
+  FUNCTION dd_init(this, init_deck, start_deck, end_deck, final_deck, &
+      any_key_text, any_key_value, any_key_numeric_value, &
+      any_key_stack, block_remapper, c_init_deck, c_start_deck, c_end_deck, &
+      c_final_deck, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
+      c_any_key_stack, c_block_remapper, parser, interop_parser) RESULT(root)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
+    PROCEDURE(block_callback), OPTIONAL :: start_deck, end_deck
+    PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
+    PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
+    PROCEDURE(key_numeric_value_callback), OPTIONAL :: any_key_numeric_value
+    PROCEDURE(key_stack_callback), OPTIONAL :: any_key_stack
+    PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
+
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_deck, c_final_deck
+    PROCEDURE(block_callback_c), OPTIONAL :: c_start_deck, c_end_deck
+    PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
+    PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
+    PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_any_key_numeric_value
+    PROCEDURE(key_stack_callback_c), OPTIONAL :: c_any_key_stack
+    PROCEDURE(block_remap_callback_c), OPTIONAL :: c_block_remapper
+
+    CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
+    INTEGER, INTENT(IN), OPTIONAL :: interop_parser
+
+    CLASS(eis_deck_block_definition), POINTER :: root
+    INTEGER :: dummy
+
+    root => this%root_definition
+    IF (this%is_init) RETURN
+    this%is_init = .TRUE.
+
+    ALLOCATE(this%info)
+    ALLOCATE(this%root_definition)
+    dummy = this%root_definition%init(this%info, '{ROOT}', 0, -1, init_deck, &
+        start_deck, end_deck, final_deck, any_key_text, any_key_value, &
+        any_key_numeric_value, any_key_stack, block_remapper, c_init_deck, &
+        c_start_deck, c_end_deck, c_final_deck, c_any_key_text, &
+        c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
+        c_block_remapper)
+    CALL this%info%add_block(this%root_definition)
+    root => this%root_definition
+
+    IF (PRESENT(parser)) THEN
+      this%info%parser => parser
+      IF (PRESENT(interop_parser)) THEN
+        this%info%interop_parser = interop_parser
+      ELSE
+        this%info%owns_interop = .TRUE.
+        this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
+            holds = .FALSE.)
+      END IF
+    ELSE
+      IF (PRESENT(interop_parser)) THEN
+        this%info%parser => eis_get_interop_parser(interop_parser)
+      END IF
+      IF (.NOT. ASSOCIATED(this%info%parser)) THEN
+        this%info%owns_parser = .TRUE.
+        this%info%owns_interop = .TRUE.
+        ALLOCATE(this%info%parser)
+        this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
+            holds = .FALSE.)
+      END IF
+    END IF
+
+  END FUNCTION dd_init
+
+
+
+  FUNCTION dd_get_root(this) RESULT(root)
+    CLASS(eis_deck_definition), INTENT(IN) :: this
+    CLASS(eis_deck_block_definition), POINTER :: root
+
+    root => this%root_definition
+
+  END FUNCTION dd_get_root
+
+
+
+  FUNCTION dd_get_block(this, id) RESULT(block)
+    CLASS(eis_deck_definition), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: id
+    CLASS(eis_deck_block_definition), POINTER :: block
+
+    block => this%info%get_block(id)
+
+  END FUNCTION dd_get_block
+
+
+
+  SUBROUTINE dd_init_blocks(this, host_state, errcode)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: nblocks, iblock
+    CLASS(eis_deck_block_definition), POINTER :: p
+
+    nblocks = this%info%get_block_count()
+    DO iblock = 0, nblocks
+      p => this%info%get_block(iblock)
+      CALL p%initialise_block(errcode, host_state)
+    END DO
+
+  END SUBROUTINE dd_init_blocks
+
+
+
+  SUBROUTINE dd_finalise_blocks(this, host_state, errcode)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: nblocks, iblock
+    CLASS(eis_deck_block_definition), POINTER :: p
+
+    nblocks = this%info%get_block_count()
+    DO iblock = 0, nblocks
+      p => this%info%get_block(iblock)
+      IF (.NOT. p%uninit .OR. this%finalise_absent) THEN
+        CALL p%finalise_block(errcode, host_state)
+      END IF
+    END DO
+
+  END SUBROUTINE dd_finalise_blocks
+
+
+
+  SUBROUTINE dd_destructor(this)
+    TYPE(eis_deck_definition), INTENT(INOUT) :: this
+    IF (ASSOCIATED(this%info%parser) .AND. this%info%owns_parser) &
+        DEALLOCATE(this%info%parser)
+    IF (this%info%owns_interop) &
+        CALL eis_release_interop_parser(this%info%interop_parser)
+    IF (ASSOCIATED(this%info)) DEALLOCATE(this%info)
+    IF (ASSOCIATED(this%root_definition)) DEALLOCATE(this%root_definition)
+  END SUBROUTINE dd_destructor
+
+
+
+  SUBROUTINE dbd_get_parents(this, parents)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    INTEGER, DIMENSION(:), ALLOCATABLE, INTENT(OUT) :: parents
+    INTEGER :: ipar
+    CLASS(eis_deck_block_definition), POINTER :: par
+
+    ALLOCATE(parents(this%depth+1))
+    par => this%get_parent()
+    DO ipar = this%depth, 1, -1
+      parents(ipar) = par%id
+    END DO
+    parents(this%depth+1) = this%id
+
+  END SUBROUTINE dbd_get_parents
+
+
+
+  FUNCTION dbd_init(this, info, block_name, depth, parent, init_block, &
+      start_block, end_block, final_block, any_key_text, any_key_value, &
+      any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
+      c_start_block, c_end_block, c_final_block, c_any_key_text, &
+      c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
+      c_block_remapper)
+
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
+    CHARACTER(LEN=*), INTENT(IN) :: block_name
+    INTEGER, INTENT(IN) :: depth
+    INTEGER, INTENT(IN) :: parent
+    PROCEDURE(block_generic_callback), OPTIONAL :: init_block, final_block
+    PROCEDURE(block_callback), OPTIONAL :: start_block, end_block
+    PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
+    PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
+    PROCEDURE(key_numeric_value_callback), OPTIONAL :: any_key_numeric_value
+    PROCEDURE(key_stack_callback), OPTIONAL :: any_key_stack
+    PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
+
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_block, c_final_block
+    PROCEDURE(block_callback_c), OPTIONAL :: c_start_block, c_end_block
+    PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
+    PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
+    PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_any_key_numeric_value
+    PROCEDURE(key_stack_callback_c), OPTIONAL :: c_any_key_stack
+    PROCEDURE(block_remap_callback_c), OPTIONAL :: c_block_remapper
+    INTEGER :: dbd_init
+    CLASS(*), POINTER :: ptr
+
+    ALLOCATE(this%name, SOURCE = block_name)
+    info%longest_block_name = MAX(info%longest_block_name, LEN(block_name))
+    this%info => info
+    this%id = info%get_id()
+    this%depth = depth
+    this%parent = parent
+    IF (PRESENT(init_block)) this%init_block_fn => init_block
+    IF (PRESENT(start_block)) this%start_block_fn => start_block
+    IF (PRESENT(end_block)) this%end_block_fn => end_block
+    IF (PRESENT(final_block)) this%final_block_fn => final_block
+    IF (PRESENT(any_key_text)) this%any_key_text_fn => any_key_text
+    IF (PRESENT(any_key_value)) this%any_key_value_fn => any_key_value
+    IF (PRESENT(any_key_numeric_value)) this%any_key_numeric_value_fn &
+        => any_key_numeric_value
+    IF (PRESENT(any_key_stack)) this%any_key_stack_fn => any_key_stack
+    IF (PRESENT(block_remapper)) this%block_remap_fn => block_remapper
+
+    IF (PRESENT(c_init_block)) this%c_init_block_fn => c_init_block
+    IF (PRESENT(c_start_block)) this%c_start_block_fn => c_start_block
+    IF (PRESENT(c_end_block)) this%c_end_block_fn => c_end_block
+    IF (PRESENT(c_final_block)) this%c_final_block_fn => c_final_block
+    IF (PRESENT(c_any_key_text)) this%c_any_key_text_fn => c_any_key_text
+    IF (PRESENT(c_any_key_value)) this%c_any_key_value_fn => c_any_key_value
+    IF (PRESENT(c_any_key_numeric_value)) this%c_any_key_numeric_value_fn &
+        => c_any_key_numeric_value
+    IF (PRESENT(c_any_key_stack)) this%c_any_key_stack_fn => c_any_key_stack
+    IF (PRESENT(c_block_remapper)) this%c_block_remap_fn => c_block_remapper
+
+    dbd_init = this%id
+
+  END FUNCTION dbd_init
+
+
+
+  FUNCTION dbd_add_block(this, block_name, init_block, start_block, end_block, &
+      final_block, any_key_text, any_key_value, any_key_numeric_value, &
+      any_key_stack, block_remapper, c_init_block, c_start_block, c_end_block, &
+      c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
+      c_any_key_stack, c_block_remapper)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: block_name
+
+    PROCEDURE(block_generic_callback), OPTIONAL :: init_block, final_block
+    PROCEDURE(block_callback), OPTIONAL :: start_block, end_block
+    PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
+    PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
+    PROCEDURE(key_numeric_value_callback), OPTIONAL :: any_key_numeric_value
+    PROCEDURE(key_stack_callback), OPTIONAL :: any_key_stack
+    PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
+
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_block, c_final_block
+    PROCEDURE(block_callback_c), OPTIONAL :: c_start_block, c_end_block
+    PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
+    PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
+    PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_any_key_numeric_value
+    PROCEDURE(key_stack_callback_c), OPTIONAL :: c_any_key_stack
+    PROCEDURE(block_remap_callback_c), OPTIONAL :: c_block_remapper
+
+    INTEGER :: dbd_add_block
+    TYPE(eis_deck_block_definition), POINTER :: new
+    CLASS(*), POINTER :: ptr
+
+    ALLOCATE(new)
+    dbd_add_block = &
+        new%init(this%info, block_name, this%depth + 1, this%id, init_block, &
+        start_block, end_block, final_block, any_key_text, any_key_value, &
+        any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
+        c_start_block, c_end_block, c_final_block, c_any_key_text, &
+        c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
+        c_block_remapper)
+
+    ptr => new
+    CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
+    CALL this%info%add_block(new)
+    
+  END FUNCTION dbd_add_block
+
+
+
+  FUNCTION dbd_get_block(this, block_name, status_code, host_state, errcode)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: block_name
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(eis_deck_block_definition), POINTER :: dbd_get_block
+    CLASS(*), POINTER :: ptr
+    CHARACTER(LEN=:), ALLOCATABLE :: remap_name
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_block_name, &
+        c_remap_name
+    TYPE(C_PTR) :: c_block_ptr, c_remap_ptr
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_bitmask) :: this_state
+    INTEGER(eis_error) :: this_errcode
+
+    ptr => this%sub_blocks%get(block_name)
+
+    !Try to remap using the Fortran remapper function first
+    IF (.NOT. ASSOCIATED(ptr) .AND. ASSOCIATED(this%block_remap_fn)) THEN
+      ALLOCATE(CHARACTER(LEN=this%info%longest_block_name)::remap_name)
+      this_status = eis_status_none
+      this_state = 0
+      this_errcode = eis_err_none
+      CALL this%block_remap_fn(block_name, remap_name, this_status, &
+          this_state, this_errcode)
+      status_code = IOR(status_code, this_status)
+      host_state = IOR(host_state, this_state)
+      errcode = IOR(host_state, this_errcode)
+      IF (IAND(this_status, eis_status_not_handled)/=0) THEN
+        errcode = IOR(errcode, eis_err_unknown_block)
+      END IF
+      IF (this_errcode == eis_err_none) THEN
+        ptr => this%sub_blocks%get(TRIM(remap_name))
+      END IF
+      DEALLOCATE(remap_name)
+    END IF
+
+    !If that fails, try the C function next
+    IF (.NOT. ASSOCIATED(ptr) .AND. ASSOCIATED(this%c_block_remap_fn)) THEN 
+      ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
+      ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR):: &
+          c_remap_name(this%info%longest_block_name))
+      CALL f_c_string(block_name, LEN(block_name), c_block_name)
+      c_block_ptr = C_LOC(c_block_name)
+      c_remap_ptr = C_LOC(c_remap_name)
+      this_status = eis_status_none
+      this_state = 0
+      this_errcode = eis_err_none
+      CALL this%c_block_remap_fn(c_block_ptr, &
+          INT(this%info%longest_block_name, C_INT), c_remap_ptr, &
+          this_status, this_state, this_errcode)
+      CALL c_f_string(c_remap_ptr, remap_name)
+      DEALLOCATE(c_remap_name, c_block_name)
+      status_code = IOR(status_code, this_status)
+      host_state = IOR(host_state, this_state)
+      errcode = IOR(host_state, this_errcode)
+      IF (IAND(this_status, eis_status_not_handled)/=0) THEN
+        errcode = IOR(errcode, eis_err_unknown_block)
+      END IF
+      IF (this_errcode == eis_err_none) THEN
+        ptr => this%sub_blocks%get(TRIM(remap_name))
+      END IF
+      DEALLOCATE(remap_name)
+    END IF
+
+    dbd_get_block => NULL()
+    IF (ASSOCIATED(ptr)) THEN
+      SELECT TYPE(ptr)
+        CLASS IS (eis_deck_block_definition)
+          dbd_get_block => ptr
+        CLASS DEFAULT
+          errcode = IOR(errcode, eis_err_unknown_block)
+      END SELECT
+    ELSE
+      errcode = IOR(errcode, eis_err_unknown_block)
+    END IF
+
+
+  END FUNCTION dbd_get_block
+
+
+
+  FUNCTION dbd_get_parent(this)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    CLASS(eis_deck_block_definition), POINTER :: dbd_get_parent
+
+    dbd_get_parent => this%info%get_block(this%parent)
+
+  END FUNCTION dbd_get_parent
+
+
+
+  SUBROUTINE dbd_initialise_block(this, errcode, host_state)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    CHARACTER(LEN=:), ALLOCATABLE :: this_name
+
+    CALL this%get_parents(parent_kind)
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+    IF (this%uninit .AND. ASSOCIATED(this%init_block_fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%init_block_fn(this%name, parent_kind, this_status, &
+          this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+    END IF
+
+    IF (this%uninit .AND. ASSOCIATED(this%c_init_block_fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%init_block_fn(this%name, parent_kind, this_status, &
+          this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+    END IF
+    this%uninit = .FALSE.
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+    DEALLOCATE(parent_kind)
+
+  END SUBROUTINE dbd_initialise_block
+
+
+
+  SUBROUTINE dbd_start_block(this, parents, errcode, host_state, display_name)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    CHARACTER(LEN=:), ALLOCATABLE :: this_name
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+
+    CALL this%get_parents(parent_kind)
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+    this_err = eis_err_none
+    CALL this%initialise_block(this_err, this_bitmask)
+    host_state = IOR(host_state, this_bitmask)
+    errcode = IOR(errcode, this_err)
+
+    IF (ASSOCIATED(this%start_block_fn)) THEN
+      IF (PRESENT(display_name)) THEN
+        ALLOCATE(this_name, SOURCE = display_name)
+      ELSE
+        ALLOCATE(this_name, SOURCE = this%name)
+      END IF
+      this_err = eis_err_none
+      this_status = eis_status_none
+      CALL this%start_block_fn(this_name, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) &
+          this_err = IOR(this_err, eis_err_unknown_block)
+      errcode = IOR(errcode, this_err)
+      DEALLOCATE(this_name)
+    END IF
+
+    IF (ASSOCIATED(this%c_start_block_fn)) THEN
+      IF (PRESENT(display_name)) THEN
+        ALLOCATE(c_this_name(LEN(display_name)))
+        CALL f_c_string(display_name, LEN(display_name), c_this_name)
+      ELSE
+        ALLOCATE(c_this_name(LEN(this%name)))
+        CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      END IF
+      this_err = eis_err_none
+      this_status = eis_status_none
+      CALL this%c_start_block_fn(C_LOC(c_this_name), &
+          SIZE(parents, KIND = C_INT), &
+          INT(parents, C_INT), INT(parent_kind, C_INT), &
+          this_status, this_bitmask, this_err)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) &
+          this_err = IOR(this_err, eis_err_unknown_block)
+      errcode = IOR(errcode, this_err)
+      DEALLOCATE(c_this_name)
+    END IF
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    
+    DEALLOCATE(parent_kind)
+
+  END SUBROUTINE dbd_start_block
+
+
+
+  SUBROUTINE dbd_end_block(this, parents, errcode, host_state, display_name)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    CLASS(eis_deck_block_definition), POINTER :: par
+    INTEGER :: ipar
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    CHARACTER(LEN=:), ALLOCATABLE :: this_name
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+
+    CALL this%get_parents(parent_kind)
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+
+    IF (ASSOCIATED(this%end_block_fn)) THEN
+      IF (PRESENT(display_name)) THEN
+        ALLOCATE(this_name, SOURCE = display_name)
+      ELSE
+        ALLOCATE(this_name, SOURCE = this%name)
+      END IF
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%end_block_fn(this_name, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) &
+          this_err = IOR(this_err, eis_err_unknown_block)
+      errcode = IOR(errcode, this_err)
+    END IF
+
+    IF (ASSOCIATED(this%c_end_block_fn)) THEN
+      IF (PRESENT(display_name)) THEN
+        ALLOCATE(c_this_name(LEN(display_name)))
+        CALL f_c_string(display_name, LEN(display_name), c_this_name)
+      ELSE
+        ALLOCATE(c_this_name(LEN(this%name)))
+        CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      END IF
+      this_err = eis_err_none
+      this_status = eis_status_none
+      CALL this%c_end_block_fn(C_LOC(c_this_name), &
+          INT(SIZE(parents), C_INT), &
+          INT(parents, C_INT), INT(parent_kind, C_INT), &
+          this_status, this_bitmask, this_err)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) &
+          this_err = IOR(this_err, eis_err_unknown_block)
+      errcode = IOR(errcode, this_err)
+      DEALLOCATE(c_this_name)
+    END IF
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    DEALLOCATE(parent_kind)
+
+  END SUBROUTINE dbd_end_block
+
+
+
+  SUBROUTINE dbd_finalise_block(this, errcode, host_state)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    CLASS(eis_deck_block_definition), POINTER :: par
+    INTEGER :: ipar
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+
+    CALL this%get_parents(parent_kind)
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+
+    IF (ASSOCIATED(this%final_block_fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%final_block_fn(this%name, parent_kind, this_status, &
+          this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+    END IF
+
+    IF (ASSOCIATED(this%c_final_block_fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      ALLOCATE(c_this_name(LEN(this%name)))
+      CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      CALL this%c_final_block_fn(C_LOC(c_this_name), &
+          SIZE(parent_kind, KIND = C_INT), INT(parent_kind, C_INT), &
+          this_status, this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+    END IF
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+  END SUBROUTINE dbd_finalise_block
+
+
+
+  SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
+      key_numeric_value_fn, key_stack_fn)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: key_name
+    PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
+    PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
+    PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
+    PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    TYPE(deck_key_definition), POINTER :: new
+    CLASS(*), POINTER :: ptr
+
+    ALLOCATE(new)
+    CALL new%init(key_name, key_text_fn, key_value_fn, key_numeric_value_fn, &
+        key_stack_fn)
+
+    ptr => new
+    CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
+
+  END SUBROUTINE dbd_add_key
+
+
+
+  SUBROUTINE dbd_call_key_text(this, key_text, parents, errcode, host_state, &
+      filename, line_number, value_function)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: key_text
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    PROCEDURE(parser_result_function), OPTIONAL :: value_function
+    CLASS(*), POINTER :: ptr
+    CLASS(deck_key_definition), POINTER :: dkd
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    INTEGER(eis_status) :: base_stat, this_stat
+    INTEGER(eis_error) :: this_err, stack_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    INTEGER :: eindex, cindex, sindex, ct, stack_id
+    LOGICAL :: handled, is_key_value, is_directive
+    CHARACTER(LEN=:), ALLOCATABLE :: key, value
+    TYPE(eis_stack), TARGET :: stack
+    TYPE(eis_stack), POINTER :: stack_ptr
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: value_array
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_key_text, c_key, &
+        c_value
+
+    ptr => NULL()
+    dkd => NULL()
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+
+    ALLOCATE(c_key_text(LEN(key_text)))
+    CALL f_c_string(key_text, LEN(key_text), c_key_text)
+    eindex = INDEX(key_text, '=')
+    cindex = INDEX(key_text, ':')
+    sindex = 0
+    is_directive = .FALSE.
+    IF (eindex > 0 .OR. cindex > 0) THEN
+      IF (cindex == 0) THEN
+        sindex = eindex
+      ELSE IF (eindex == 0) THEN
+        sindex = cindex
+        is_directive = .TRUE.
+      ELSE IF (eindex > cindex) THEN
+        sindex = cindex
+        is_directive = .TRUE.
+      ELSE
+        sindex = eindex
+      END IF
+    END IF
+
+    is_key_value = (sindex > 0 .AND. sindex < LEN(key_text) .AND. sindex > 1)
+    IF (is_key_value) THEN
+      ALLOCATE(key, SOURCE = key_text(1:sindex-1))
+      ALLOCATE(value, SOURCE = key_text(sindex+1:))
+    ELSE
+      IF (PRESENT(value_function)) THEN
+        ALLOCATE(key, SOURCE = key_text)
+        ALLOCATE(value, SOURCE = "{Unknown value}")
+        is_key_value = .TRUE.
+      END IF
+    END IF
+
+    IF (is_key_value) THEN
+      ALLOCATE(c_key(LEN(key)))
+      CALL f_c_string(key, LEN(key), c_key)
+      ALLOCATE(c_value(LEN(value)))
+      CALL f_c_string(value, LEN(value), c_value)
+    END IF
+
+    IF (is_directive) THEN
+      base_stat = eis_status_directive
+    ELSE
+      base_stat = eis_status_none
+    END IF
+
+    IF (is_key_value) THEN
+      ptr => this%keys%get(key)
+      SELECT TYPE(ptr)
+        CLASS IS (deck_key_definition)
+          dkd => ptr
+        CLASS DEFAULT
+          dkd => NULL()
+      END SELECT
+    END IF
+
+    CALL this%get_parents(parent_kind)
+    handled = .FALSE.
+    IF (ASSOCIATED(dkd)) THEN
+      IF (ASSOCIATED(dkd%key_text_fn)) THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        CALL dkd%key_text_fn(key_text, parents, parent_kind, this_stat, &
+            this_bitmask, this_err)
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        CALL dkd%c_key_text_fn(C_LOC(c_key_text), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err)
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF (ASSOCIATED(dkd%key_value_fn) .AND. is_key_value .AND. .NOT. handled) &
+          THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        CALL dkd%key_value_fn(key, value, parents, parent_kind, this_stat, &
+            this_bitmask, this_err)
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF (ASSOCIATED(dkd%c_key_value_fn) .AND. is_key_value .AND. &
+          .NOT. handled) THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        CALL dkd%c_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+            SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
+            INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF (ASSOCIATED(dkd%key_numeric_value_fn) .AND. &
+          ASSOCIATED(this%info%parser) .AND. is_key_value &
+          .AND. .NOT. handled) THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        IF (.NOT. PRESENT(value_function)) THEN
+          ct = this%info%parser%evaluate(value, value_array, this_err)
+        ELSE
+          CALL this%info%parser%set_eval_function(value_function, stack, &
+            this_err)
+          ct = this%info%parser%evaluate(stack, value_array, this_err)
+        END IF
+        IF (this_err == eis_err_none) THEN
+          CALL dkd%key_numeric_value_fn(key, value_array, this%info%parser, &
+              parents, parent_kind, this_stat, this_bitmask, this_err)
+          IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
+        END IF
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF (ASSOCIATED(dkd%c_key_numeric_value_fn) .AND. &
+          ASSOCIATED(this%info%parser) .AND. is_key_value &
+          .AND. .NOT. handled) THEN
+        this_err = eis_err_none
+        this_stat = base_stat
+        IF (.NOT. PRESENT(value_function)) THEN
+          ct = this%info%parser%evaluate(value, value_array, this_err)
+        ELSE
+          CALL this%info%parser%set_eval_function(value_function, stack, &
+              this_err)
+          ct = this%info%parser%evaluate(stack, value_array, this_err)
+        END IF
+        IF (this_err == eis_err_none) THEN
+          CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
+              SIZE(value_array, KIND=C_INT), value_array, &
+              this%info%interop_parser, SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
+        END IF
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) &
+            errcode = IOR(errcode, this_err)
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+      IF ((ASSOCIATED(dkd%key_stack_fn) .OR. ASSOCIATED(dkd%c_key_stack_fn)) &
+          .AND. is_key_value .AND. .NOT. handled) THEN
+        IF (.NOT. PRESENT(value_function)) THEN
+          CALL this%info%parser%tokenize(value, stack, stack_err)
+        ELSE
+          CALL this%info%parser%set_eval_function(value_function, stack, &
+              stack_err)
+        END IF
+        IF (ASSOCIATED(dkd%key_stack_fn) .AND. stack_err == eis_err_none) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%key_stack_fn(key, stack, this%info%parser, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            errcode = IOR(errcode, stack_err)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+        END IF
+        IF (ASSOCIATED(dkd%c_key_stack_fn) .AND. stack_err == eis_err_none &
+            .AND. .NOT. handled) THEN
+          stack_ptr => stack
+          stack_id = eis_add_interop_stack(stack_ptr, &
+              this%info%interop_parser, holds = .FALSE.)
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%c_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &
+              this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          IF (IAND(this_stat, eis_status_retain_stack) == 0) &
+              CALL eis_release_interop_stack(stack_id)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            errcode = IOR(errcode, stack_err)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+        END IF
+      END IF
+    END IF
+
+    IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      CALL this%any_key_text_fn(key_text, parents, parent_kind, this_stat, &
+          this_bitmask, this_err)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF (ASSOCIATED(this%c_any_key_text_fn) .AND. .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      CALL this%c_any_key_text_fn(C_LOC(c_key_text), &
+          SIZE(parents, KIND = C_INT), INT(parents, C_INT), &
+          INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF (ASSOCIATED(this%any_key_value_fn) .AND. is_key_value .AND. &
+        .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      CALL this%any_key_value_fn(key, value, parents, parent_kind, this_stat, &
+          this_bitmask, this_err)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF (ASSOCIATED(this%c_any_key_value_fn) .AND. is_key_value .AND. &
+        .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      CALL this%c_any_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+          SIZE(parents, KIND = C_INT), INT(parents, C_INT), &
+          INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF (ASSOCIATED(this%any_key_numeric_value_fn) .AND. &
+        ASSOCIATED(this%info%parser) .AND. is_key_value &
+        .AND. .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      IF (.NOT. PRESENT(value_function)) THEN
+        ct = this%info%parser%evaluate(value, value_array, this_err)
+      ELSE
+        CALL this%info%parser%set_eval_function(value_function, stack, this_err)
+        ct = this%info%parser%evaluate(stack, value_array, this_err)
+      END IF
+      IF (this_err == eis_err_none) THEN
+        CALL this%any_key_numeric_value_fn(key, value_array, this%info%parser, &
+            parents, parent_kind, this_stat, this_bitmask, this_err)
+      END IF
+      IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF (ASSOCIATED(this%c_any_key_numeric_value_fn) .AND. &
+        ASSOCIATED(this%info%parser) .AND. is_key_value &
+        .AND. .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      IF (.NOT. PRESENT(value_function)) THEN
+        ct = this%info%parser%evaluate(value, value_array, this_err)
+      ELSE
+        CALL this%info%parser%set_eval_function(value_function, stack, this_err)
+        ct = this%info%parser%evaluate(stack, value_array, this_err)
+      END IF
+      IF (this_err == eis_err_none) THEN
+        CALL this%c_any_key_numeric_value_fn(C_LOC(c_key), &
+            SIZE(value_array, KIND = C_INT), value_array, &
+            this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err)
+      END IF
+      IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+    END IF
+    IF ((ASSOCIATED(this%any_key_stack_fn) &
+        .OR. ASSOCIATED(this%c_any_key_stack_fn)) &
+        .AND. ASSOCIATED(this%info%parser) &
+        .AND. is_key_value .AND. .NOT. handled) THEN
+      this_err = eis_err_none
+      this_stat = base_stat
+      IF (.NOT. PRESENT(value_function)) THEN
+        CALL this%info%parser%tokenize(value, stack, stack_err)
+      ELSE
+        CALL this%info%parser%set_eval_function(value_function, stack, &
+            stack_err)
+      END IF
+      IF (stack_err == eis_err_none) THEN
+        CALL this%any_key_stack_fn(key, stack, this%info%parser, parents, &
+            parent_kind, this_stat, this_bitmask, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          errcode = IOR(errcode, stack_err)
+        END IF
+      END IF
+      !If the block is flagged handled then you care about the error code
+      !value
+      IF (IAND(this_stat, eis_status_not_handled) == 0) &
+          errcode = IOR(errcode, this_err)
+      handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      IF (ASSOCIATED(dkd%c_key_stack_fn) .AND. stack_err == eis_err_none &
+          .AND. .NOT. handled) THEN
+        stack_ptr => stack
+        stack_id = eis_add_interop_stack(stack_ptr, &
+            this%info%interop_parser, holds = .FALSE.)
+        this_err = eis_err_none
+        this_stat = base_stat
+        CALL this%c_any_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &
+            this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err)
+        IF (IAND(this_stat, eis_status_retain_stack) == 0) &
+            CALL eis_release_interop_stack(stack_id)
+        !If the block is flagged handled then you care about the error code
+        !value
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          errcode = IOR(errcode, stack_err)
+        END IF
+        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+      END IF
+    END IF
+
+    IF (.NOT. handled) THEN
+      errcode = IOR(errcode, eis_err_unknown_key)
+    END IF
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+    DEALLOCATE(parent_kind)
+    DEALLOCATE(c_key)
+    DEALLOCATE(c_value)
+
+  END SUBROUTINE dbd_call_key_text
+
+
+
+  SUBROUTINE dkd_init(this, key_name, key_text_fn, key_value_fn, &
+      key_numeric_value_fn, key_stack_fn)
+    CLASS(deck_key_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: key_name
+    PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
+    PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
+    PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
+    PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+
+    ALLOCATE(this%name, SOURCE = key_name)
+    IF (PRESENT(key_text_fn)) this%key_text_fn => key_text_fn
+    IF (PRESENT(key_value_fn)) this%key_value_fn => key_value_fn
+    IF (PRESENT(key_numeric_value_fn)) this%key_numeric_value_fn &
+        => key_numeric_value_fn
+    IF (PRESENT(key_stack_fn)) this%key_stack_fn => key_stack_fn
+
+  END SUBROUTINE dkd_init
+
+END MODULE eis_deck_definition_mod

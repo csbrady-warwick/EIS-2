@@ -200,6 +200,33 @@ MODULE eis_eval_stack_mod
     REAL(eis_num) :: where_condition
 
     status = eis_status_none
+    errcode = eis_err_none
+
+    IF (ASSOCIATED(stack%eval_fn)) THEN
+      IF (.NOT. ALLOCATED(result_vals)) ALLOCATE(result_vals(1))
+      IF (SIZE(result_vals) < 1) THEN
+        DEALLOCATE(result_vals)
+        ALLOCATE(result_vals(1))
+      END IF
+      result_count = SIZE(result_vals)
+      CALL stack%eval_fn(result_count, result_vals, host_params, stat_in, &
+          errcode)
+      IF (result_count > SIZE(result_vals) .AND. errcode == eis_err_none) THEN
+        DEALLOCATE(result_vals)
+        ALLOCATE(result_vals(result_count))
+        CALL stack%eval_fn(result_count, result_vals, host_params, stat_in, &
+            errcode)
+      END IF
+      IF (errcode /= eis_err_none .AND. PRESENT(err_handler)) THEN
+        IF (ALLOCATED(stack%eval_string)) THEN
+          CALL err_handler%add_error(eis_err_evaluator, err, &
+              stack%eval_string, 0)
+        ELSE
+          CALL err_handler%add_error(eis_err_evaluator, err)
+        END IF
+      END IF
+      RETURN
+    END IF
 
     DO istack = 1, stack%stack_point
       err = eis_err_none
@@ -275,9 +302,24 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_status) :: stat_in, status
     INTEGER :: result_count
     INTEGER :: istack
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result_temp
 
     status = eis_status_none
     errcode = eis_err_none
+
+    IF (ASSOCIATED(stack%eval_fn)) THEN
+      result_count = SIZE(result_vals)
+      CALL stack%eval_fn(result_count, result_vals, host_params, stat_in, &
+          errcode)
+      IF (result_count > SIZE(result_vals)) THEN
+        ALLOCATE(result_temp(result_count))
+        CALL stack%eval_fn(result_count, result_temp, host_params, stat_in, &
+            errcode)
+        result_vals = result_temp(1:SIZE(result_vals))
+        DEALLOCATE(result_temp)
+      END IF
+      RETURN
+    END IF
 
     this%stack_point = 0
     DO istack = 1, stack%stack_point
@@ -310,7 +352,7 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Evaluate a stack to a set of results in the fastest way possible
+  !> Evaluate a stack to a set of results using an interator
   !> @param[inout] this
   !> @param[in] stack
   !> @param[in] host_params
@@ -337,6 +379,29 @@ MODULE eis_eval_stack_mod
 
     this%stack_point = 0
     run = .TRUE.
+    IF (ASSOCIATED(stack%eval_fn)) THEN
+      IF (.NOT. ALLOCATED(result_vals)) ALLOCATE(result_vals(1))
+      IF (SIZE(result_vals) < 1) THEN
+        DEALLOCATE(result_vals)
+        ALLOCATE(result_vals(1))
+      END IF
+      DO WHILE(run)
+        result_count = SIZE(result_vals)
+        CALL stack%eval_fn(result_count, result_vals, host_params, stat_in, &
+            errcode)
+        IF (result_count > SIZE(result_vals)) THEN
+          DEALLOCATE(result_vals)
+          ALLOCATE(result_vals(result_count))
+          CALL stack%eval_fn(result_count, result_vals, host_params, stat_in, &
+              errcode)
+        END IF
+        CALL store_fn(result_count, result_vals, errcode)
+        run = iter_fn(host_params) /= 0
+      END DO
+      RETURN
+    END IF
+
+    !At this point know that you have a conventional stack
     DO WHILE(run)
       DO istack = 1, stack%stack_point
         IF (this%stack_point == SIZE(this%entries)) &
@@ -354,7 +419,10 @@ MODULE eis_eval_stack_mod
       END DO
 
       result_count = this%stack_point
-      IF (SIZE(result_vals) < result_count) ALLOCATE(result_vals(result_count))
+      IF (SIZE(result_vals) < result_count) THEN
+        IF (ALLOCATED(result_vals)) DEALLOCATE(result_vals)
+        ALLOCATE(result_vals(result_count))
+      END IF
       CALL ees_pop_vector(this, result_count, result_vals, errcode)
       CALL store_fn(result_count, result_vals, errcode)
       run = iter_fn(host_params) /= 0

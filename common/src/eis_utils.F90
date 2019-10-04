@@ -6,6 +6,7 @@ MODULE eis_utils
 
   PRIVATE
 
+  PUBLIC :: eis_default_status
   PUBLIC :: eis_append_string, c_f_string, f_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
@@ -64,6 +65,27 @@ MODULE eis_utils
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Sets null defaults for error codes, status codes and or bitmasks
+  !> @param[out] errcode
+  !> @param[out] status
+  !> @param[out] bitmask
+  PURE SUBROUTINE eis_default_status(errcode, status, bitmask)
+    !> Error code value to be set to default
+    INTEGER(eis_error), INTENT(OUT), OPTIONAL :: errcode
+    !> Status code value to be set to default
+    INTEGER(eis_status), INTENT(OUT), OPTIONAL :: status
+    !> Bitmask value to be set to default
+    INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: bitmask
+
+    IF (PRESENT(errcode)) errcode = eis_err_none
+    IF (PRESENT(status)) status = eis_status_none
+    IF (PRESENT(bitmask)) bitmask = 0
+  END SUBROUTINE eis_default_status
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Function to copy the new string into the old string. The old string is 
   !> allocated or deallocated as needed. If the new string is not allocated
   !> the old string is guaranteed to not be allocated after this function call
@@ -92,7 +114,6 @@ MODULE eis_utils
       END IF
     END IF
     ALLOCATE(str_dest, SOURCE = str_src)
-
 
   END SUBROUTINE eis_copy_string_aa
 

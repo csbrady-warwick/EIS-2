@@ -257,14 +257,18 @@ PROGRAM test
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
   READ(*,'(A)') input
   CALL parser%tokenize(input, stack, errcode)
+  IF (errcode /= eis_err_none) THEN
+    CALL parser%print_errors()
+    STOP
+  END IF
   ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
   IF (errcode /= eis_err_none) THEN
     CALL parser%print_errors()
     STOP
   END IF
-  DO ix = 1, 100
-    item%x = REAL(ix-1, eis_num)/99.0_eis_num
-    DO iy = 1 , 100
+  DO iy = 1, 100
+    DO ix = 1 , 100
+      item%x = REAL(ix-1, eis_num)/99.0_eis_num
       item%y = REAL(iy-1, eis_num)/99.0_eis_num
       ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
       WRITE(10,*) result(1)

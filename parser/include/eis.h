@@ -33,7 +33,7 @@
   const EIS_ERROR eis_err_extra_results = 0x8000;
 
   /*Definitions of the routines in the interoperable interface*/
-  extern int eis_create_parser(int, int, int, int, int);
+  extern int eis_create_parser(EIS_ERROR*, char*, int, int, int, int);
   extern int eis_create_stack (int, void*, long long *, long long *);
   extern int eis_evaluate_stack(int, int, double*, long long *, void*, int*);
   extern void eis_add_function(int, void*, parser_eval_fn, long long, int, int,

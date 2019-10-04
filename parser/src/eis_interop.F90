@@ -46,7 +46,6 @@ MODULE eis_parser_interop
   !> C interoperable function to create a parser and return a unique id that
   !> is used in future calls to the parser system
   !> @param[inout] errcode - Error code from initialising the parser
-  !> @param[in] language - Filename of language pack to use. NULL if none
   !> @param[in] should_simplify - Should this parser auto-simplify? True if != 0
   !> @param[in] should_minify - Should the parser auto-minify? True if !=0
   !> @param[in] no_import - Should the parser suppress import of namespaces.
@@ -54,33 +53,21 @@ MODULE eis_parser_interop
   !> @param[in] physics - Which if any physics modules should be automatically
   !> imported into the global namespace
   !> @return parser_id - Unique ID of the created parser
-  FUNCTION eis_create_parser(errcode, language, should_simplify, &
+  FUNCTION eis_create_parser(errcode, should_simplify, &
       should_minify, no_import, physics) BIND(C) RESULT(parser_id)
 
    INTEGER(eis_error_c), INTENT(INOUT) :: errcode
-   TYPE(C_PTR), VALUE, INTENT(IN) :: language
    INTEGER(C_INT), VALUE, INTENT(IN) :: should_simplify, should_minify
    INTEGER(C_INT), VALUE, INTENT(IN) :: no_import, physics
    INTEGER(C_INT) :: parser_id
    CHARACTER(LEN=:), ALLOCATABLE :: language_f
 
    parser_id = create_new_parser()
-   IF (C_ASSOCIATED(language)) THEN
-     CALL eis_f_string(language, language_f)
-     CALL interop_parsers(parser_id)%contents%init(errcode, &
-         should_simplify = (should_simplify /= 0), &
-         should_minify = (should_minify /= 0), &
-         no_import = (no_import /= 0), &
-         physics = INT(physics), &
-         language_pack = language_f)
-     DEALLOCATE(language_f)
-   ELSE
-     CALL interop_parsers(parser_id)%contents%init(errcode, &
-         should_simplify = (should_simplify /= 0), &
-         should_minify = (should_minify /= 0), &
-         no_import = (no_import /= 0), &
-         physics = INT(physics))
-   END IF
+   CALL interop_parsers(parser_id)%contents%init(errcode, &
+       should_simplify = (should_simplify /= 0), &
+       should_minify = (should_minify /= 0), &
+       no_import = (no_import /= 0), &
+       physics = INT(physics))
 
   END FUNCTION eis_create_parser
 
@@ -112,7 +99,7 @@ MODULE eis_parser_interop
     END IF
 
     stack_id = create_new_stack(INT(parser_id))
-    CALL eis_f_string(expression, fstring)
+    CALL c_f_string(expression, fstring)
     f_errcode = 0_eis_error
     CALL interop_stacks(stack_id)%parser%tokenize(fstring, &
         interop_stacks(stack_id)%contents, f_errcode)
@@ -160,7 +147,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL eis_f_string(name, fstring)
+    CALL c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_function(fstring, fn, errcode, f_bitmask, expected_params, &
@@ -205,7 +192,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL eis_f_string(name, fstring)
+    CALL c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_variable(fstring, fn, errcode, f_bitmask, &
@@ -248,7 +235,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL eis_f_string(name, fstring)
+    CALL c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_constant(fstring, value, errcode, f_bitmask, &
@@ -370,7 +357,7 @@ MODULE eis_parser_interop
 
     parser => eis_get_interop_parser(stack_id)
     CALL parser%get_error_report(error_id, errstr)
-    CALL f_eis_string(errstr, buflen, string_out)
+    CALL f_c_string(errstr, buflen, string_out)
     eis_get_error_report = LEN(errstr) + 1
     DEALLOCATE(errstr)
 

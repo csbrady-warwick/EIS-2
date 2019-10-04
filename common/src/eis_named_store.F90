@@ -4,6 +4,7 @@ MODULE eis_named_store_mod
 
   INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9)
   INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
+  INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
   INTEGER(INT64), PARAMETER :: default_bucket_count = 100
 
   !>Item stored in a named store
@@ -24,6 +25,7 @@ MODULE eis_named_store_mod
     PROCEDURE :: unlink => nsil_unlink
     PROCEDURE :: get => nsil_get
     PROCEDURE :: store => nsil_store
+    PROCEDURE :: delete => nsil_delete
     FINAL :: nsil_destructor
   END TYPE named_store_inner_list
 
@@ -40,6 +42,10 @@ MODULE eis_named_store_mod
     PROCEDURE, PUBLIC :: store => ns_store
     PROCEDURE, PUBLIC :: hold => ns_hold
     PROCEDURE, PUBLIC :: unlink => ns_unlink
+    PROCEDURE, PUBLIC :: optimise => ns_optimise
+    PROCEDURE, PUBLIC :: optimize => ns_optimise
+    PROCEDURE, PUBLIC :: delete => ns_delete
+    PROCEDURE :: rebucket => ns_rebucket
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
     GENERIC, PUBLIC :: init => init_i8, init_i4
@@ -203,6 +209,38 @@ CONTAINS
   END SUBROUTINE nsil_store
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Delete an item from the list
+  !> @param[in] this
+  !> @param[in] name
+  !> @return nsil_delete
+  FUNCTION nsil_delete(this, name)
+    CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name of the item to delete
+    LOGICAL :: nsil_delete
+    INTEGER :: iindex
+    TYPE(named_store_item), DIMENSION(:), POINTER :: list
+    nsil_delete = .FALSE.
+    IF (.NOT. ASSOCIATED(this%list)) RETURN
+    iindex = this%get_index(name)
+    IF (iindex > 0) THEN
+      nsil_delete = .TRUE.
+      ALLOCATE(list(SIZE(this%list)-1))
+      IF (iindex > 1) THEN
+        list(1:iindex-1) = this%list(1:iindex-1)
+      END IF
+      IF (iindex < SIZE(this%list)) THEN
+        list(iindex:) = this%list(iindex+1:)
+      END IF
+      CALL this%unlink()
+      DEALLOCATE(this%list)
+      this%list => list
+    END IF
+
+  END FUNCTION nsil_delete
+
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -226,15 +264,24 @@ CONTAINS
   !> Implementation of djb2 hash
   !> @param[in] this
   !> @param[in] name
+  !> @param[in] bucket_count
   !> @return hash
-  FUNCTION ns_hash(this, name) RESULT(hash)
+  FUNCTION ns_hash(this, name, bucket_count) RESULT(hash)
 
     CLASS(named_store), INTENT(IN) :: this !< self pointer
     CHARACTER(LEN=*), INTENT(IN) :: name !< name to look up
+    !> Optional number of buckets to use when calculating the hash lookup
+    !> If not present then uses the number of buckets currently allocated
+    INTEGER(INT64), INTENT(IN), OPTIONAL :: bucket_count
+
     INTEGER(INT64) :: hash, nb, i
 
     hash = 5381
-    nb = SIZE(this%buckets, KIND=INT64)
+    IF (PRESENT(bucket_count)) THEN
+      nb = bucket_count
+    ELSE
+      nb = SIZE(this%buckets, KIND=INT64)
+    END IF
     DO i = 1, LEN_TRIM(name)
       hash = MOD((ISHFT(hash, 5) + hash) + INT(IACHAR(name(i:i)), INT64), nb)
     END DO
@@ -326,6 +373,26 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Delete an item specified by name
+  !> @param[in] this
+  !> @param[in] name
+  SUBROUTINE ns_delete(this, name)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER(INT64) :: bucket
+
+    IF (.NOT. ALLOCATED(this%buckets)) RETURN
+
+    bucket = this%hash(name)
+    IF (this%buckets(bucket)%delete(name)) this%count = this%count - 1
+
+  END SUBROUTINE ns_delete
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Unlink all of the items in all of the buckets
   !> needed when copying the list
   !> @param[in] this
@@ -345,11 +412,84 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Optimise the performance of the hash table by optimising the number
+  !> of buckets to match the number of stored items
+  !> @param[in] this
+  !> @param[in] item_bucket_fact
+  !> @param[in] optimise_down
+  SUBROUTINE ns_optimise(this, item_bucket_factor, optimise_down)
+
+    CLASS(named_store), INTENT(INOUT) :: this !< self pointer
+    !> Factor to apply to the number of items to calculate the number of
+    !> buckets. Higher values reduce the likelihood of a hash collision
+    !> (if the hashing algorithm is working well) but increases the memory
+    !> foot print. Optional, default 1
+    REAL(REAL64), INTENT(IN), OPTIONAL :: item_bucket_factor
+    !> Whether to reduce the number of buckets below the current number
+    !> if the number of items is smaller than the number of buckets. Optional,
+    !> default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: optimise_down
+    REAL(REAL64) :: mult
+    LOGICAL :: od
+    INTEGER(INT64) :: newcount
+
+    mult = 1.0_REAL64
+    IF (PRESENT(item_bucket_factor)) mult = item_bucket_factor
+
+    od = .FALSE.
+    IF (PRESENT(optimise_down)) od = optimise_down
+
+    IF (.NOT. ALLOCATED(this%buckets)) RETURN
+    IF (REAL(this%count, REAL64) * mult < SIZE(this%buckets) &
+        .AND. .NOT. od) RETURN
+
+    newcount = MAX(default_bucket_count, INT(REAL(this%count, REAL64) * mult, &
+        INT64))
+
+    CALL this%rebucket(newcount)
+
+  END SUBROUTINE ns_optimise
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to move the stored items into a new bucket system with
+  !> a different number of buckets
+  !> @param[inout] this
+  !> @param[in] bucket_count
+  SUBROUTINE ns_rebucket(this, bucket_count)
+    CLASS(named_store), INTENT(INOUT) :: this !< self pointer
+    INTEGER(INT64), INTENT(IN) :: bucket_count
+    TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: new_buckets
+    INTEGER(INT64) :: ibucket, ilist, h
+    TYPE(named_store_item), POINTER :: item
+
+    ALLOCATE(new_buckets(bucket_count))
+
+    DO ibucket = 1, SIZE(this%buckets)
+      IF (ASSOCIATED(this%buckets(ibucket)%list)) THEN
+        DO ilist = 1, SIZE(this%buckets(ibucket)%list)
+          item => this%buckets(ibucket)%list(ilist)
+          h = this%hash(item%name, bucket_count)
+          CALL new_buckets(h)%store(item%name, item%item, owns = item%owns)
+        END DO
+        CALL this%buckets(ibucket)%unlink()
+      END IF
+    END DO
+    DEALLOCATE(this%buckets)
+    CALL MOVE_ALLOC(new_buckets, this%buckets)
+
+  END SUBROUTINE ns_rebucket
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Initialise a hash table to a given size
   !> from an I8 integer
   !> @param[in] this
-  !> @param[in] name
-  !> @param[in] item
+  !> @param[in] bucket_count
   SUBROUTINE ns_init_i8(this, bucket_count)
 
     CLASS(named_store), INTENT(INOUT) :: this
@@ -373,8 +513,7 @@ CONTAINS
   !> Initialise a hash table to a given size
   !> from an I4 integer
   !> @param[in] this
-  !> @param[in] name
-  !> @param[in] item
+  !> @param[in] bucket_count
   SUBROUTINE ns_init_i4(this, bucket_count)
 
     CLASS(named_store), INTENT(INOUT) :: this

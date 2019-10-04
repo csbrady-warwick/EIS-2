@@ -81,7 +81,8 @@ MODULE eis_parser_mod
     PRIVATE
     TYPE(eis_registry) :: registry
     TYPE(eis_eval_stack) :: evaluator
-    TYPE(eis_error_handler) :: err_handler
+    TYPE(eis_error_handler), POINTER :: err_handler => NULL()
+    LOGICAL :: owns_err_handler
     INTEGER :: last_block_type, last_block_value, last_charindex
     CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
     LOGICAL :: is_init = .FALSE.
@@ -122,6 +123,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
+    PROCEDURE, PUBLIC :: set_eval_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
     PROCEDURE, PUBLIC :: simplify => eip_simplify
     PROCEDURE, PUBLIC :: minify => eip_minify
@@ -135,6 +137,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
 
+    FINAL :: eip_destructor
   END TYPE eis_parser
 
   PRIVATE
@@ -142,6 +145,7 @@ MODULE eis_parser_mod
   PUBLIC :: interop_stack_count, interop_parsers, interop_stacks
   PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
   PUBLIC :: eis_add_interop_parser, eis_add_interop_stack
+  PUBLIC :: eis_release_interop_parser, eis_release_interop_stack
   PUBLIC :: eis_fast_evaluate, eis_iter_evaluate
 
 CONTAINS
@@ -155,7 +159,12 @@ CONTAINS
     IF (ASSOCIATED(this%contents) .AND. this%holds_stack) &
         DEALLOCATE(this%contents)
   END SUBROUTINE sh_destructor
-
+  PURE ELEMENTAL SUBROUTINE eip_destructor(this)
+    TYPE(eis_parser), INTENT(INOUT) :: this
+    IF (ASSOCIATED(this%err_handler) .AND. this%owns_err_handler) THEN
+      DEALLOCATE(this%err_handler)
+    END IF
+  END SUBROUTINE eip_destructor
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -171,6 +180,7 @@ CONTAINS
     IF (index < 1 .OR. index > interop_parser_count) RETURN
     eis_get_interop_parser => interop_parsers(index)%contents
   END FUNCTION eis_get_interop_parser
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -231,7 +241,7 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Get a pointer to an interoperable parser
+  !> Create an interoperable stack
   !> @param[in] index
   !> @param[in] parser_index
   !> @param[in] holds
@@ -271,6 +281,43 @@ CONTAINS
   END FUNCTION eis_add_interop_stack
 
 
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Release an interoperable parser
+  !> @param[in] index
+  SUBROUTINE eis_release_interop_parser(index)
+    !> Parser index to release
+    INTEGER, INTENT(IN) :: index
+
+    IF (index < 1 .OR. index > interop_parser_count) RETURN
+    IF (interop_parsers(index)%holds) DEALLOCATE(interop_parsers(index)&
+        %contents)
+    interop_parsers(index)%contents => NULL()
+
+  END SUBROUTINE eis_release_interop_parser
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Release an interoperable stack
+  !> @param[in] index
+  SUBROUTINE eis_release_interop_stack(index)
+    !> Stack index to release
+    INTEGER, INTENT(IN) :: index
+
+    IF (index < 1 .OR. index > interop_stack_count) RETURN
+    CALL deallocate_stack(interop_stacks(index)%contents)
+    IF (interop_stacks(index)%holds_stack) THEN
+      DEALLOCATE(interop_stacks(index)%contents)
+      interop_stacks(index)%contents => NULL()
+    END IF
+
+  END SUBROUTINE eis_release_interop_stack
+
+
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Initialise a parser
@@ -284,20 +331,22 @@ CONTAINS
   !> Optional, default .FALSE.
   !> @param[in] physics - What (if any) physics module should be loaded
   !> Optional, default no physics
-  !> @param[in] language_pack - Use a language pack to report errors in
-  !> a different language. Optional, default use English errors
+  !> @param[in] err_handler - Pass in a pointer to an externally supplied error
+  !> handler
   SUBROUTINE eip_init(this, errcode, should_simplify, should_minify, &
-      no_import, physics, language_pack)
+      no_import, physics, err_handler)
 
     CLASS(eis_parser) :: this
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
     INTEGER, INTENT(IN), OPTIONAL :: physics
-    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: language_pack
+    CLASS(eis_error_handler), POINTER, INTENT(IN), OPTIONAL :: err_handler
     INTEGER(eis_error) :: err
     REAL(eis_num), PARAMETER :: pi = 3.141592653589793238462643383279503_eis_num
     REAL(eis_num) :: c
     LOGICAL :: no_import_l
+
+    IF (this%is_init) RETURN
 
     no_import_l = .FALSE.
     IF (PRESENT(should_simplify)) this%should_simplify = should_simplify
@@ -305,7 +354,15 @@ CONTAINS
     IF (PRESENT(physics)) this%physics_units = physics
     IF (PRESENT(no_import)) no_import_l = no_import
 
-    CALL this%err_handler%init(errcode, language_pack = language_pack)
+    IF (PRESENT(err_handler)) THEN
+      this%err_handler => err_handler
+      this%owns_err_handler = .FALSE.
+    ELSE
+      ALLOCATE(this%err_handler)
+      this%owns_err_handler = .TRUE.
+    END IF
+
+    CALL this%err_handler%init(errcode)
 
     this%is_init = .TRUE.
 
@@ -694,6 +751,52 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Function to set a stack's eval_fn to a specified function
+  !> @param[inout] this
+  !> @param[in] function_in
+  !> @param[inout] output
+  !> @param[inout] err
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] char_offset
+  SUBROUTINE eip_set_eval_function(this, function_in, output, err, &
+      filename, line_number, char_offset)
+
+    CLASS(eis_parser) :: this
+    !> Function to be called when the stack is evaluated
+    PROCEDURE(parser_result_function) :: function_in
+    !> Stack to contain the output. If stack is not empty then new values
+    !> are pushed to the end of the stack. This will usually cause multi valued
+    !> results
+    TYPE(eis_stack), INTENT(INOUT) :: output
+    !> Error code for errors during tokenize
+    INTEGER(eis_error), INTENT(INOUT) :: err
+    !> The filename of the file containing the expression
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> The line number of the expression within the file
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> The character offset of the expression within the line
+    INTEGER, INTENT(IN), OPTIONAL :: char_offset
+
+    CALL initialise_stack(output)
+    output%eval_fn => function_in
+    IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
+    IF (PRESENT(line_number)) THEN
+      output%line_number = line_number
+    ELSE
+      output%line_number = -1
+    END IF
+    IF (PRESENT(char_offset)) THEN
+      output%char_offset = char_offset
+    ELSE
+      output%char_offset = 0
+    END IF
+
+  END SUBROUTINE eip_set_eval_function
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Function to tokenize an expression to a stack
   !> @param[inout] this
   !> @param[in] expression_in
@@ -701,7 +804,11 @@ CONTAINS
   !> @param[inout] err
   !> @param[in] simplify
   !> @param[in] minify
-  SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify)
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] char_offset
+  SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify, &
+      filename, line_number, char_offset)
 
     CLASS(eis_parser) :: this
     !> Expression to convert to stack
@@ -718,6 +825,12 @@ CONTAINS
     !> Should the stack be minified after generation. Optional, default value
     !> set in call to "init"
     LOGICAL, INTENT(IN), OPTIONAL :: minify
+    !> The filename of the file containing the expression
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> The line number of the expression within the file
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> The character offset of the expression within the line
+    INTEGER, INTENT(IN), OPTIONAL :: char_offset
     LOGICAL :: maybe_e, should_simplify, should_minify
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
@@ -734,6 +847,21 @@ CONTAINS
 
     IF (.NOT. this%is_init) CALL this%init(err)
     IF (.NOT. output%init) CALL initialise_stack(output)
+    IF (ALLOCATED(output%filename)) DEALLOCATE(output%filename)
+
+    IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
+    IF (PRESENT(line_number)) THEN
+      output%line_number = line_number
+    ELSE
+      output%line_number = -1
+    END IF
+    IF (PRESENT(char_offset)) THEN
+      output%char_offset = char_offset
+    ELSE
+      output%char_offset = 0
+    END IF
+
+    IF (ASSOCIATED(output%eval_fn)) NULLIFY(output%eval_fn)
 
     IF (expression_in(1:6) == 'where(') THEN
       output%where_stack = .TRUE.
@@ -775,7 +903,7 @@ CONTAINS
         current_pointer = current_pointer+1
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-            cap_bits, charindex, err)
+            cap_bits, charindex + output%char_offset, err)
         charindex = i
         IF (err /= eis_err_none) THEN
           err = IOR(err, eis_err_parser)
@@ -2210,8 +2338,6 @@ CONTAINS
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     !> Evaluator object. Optional, default use internal
     TYPE(eis_eval_stack), INTENT(INOUT), OPTIONAL, TARGET :: eval
-    !> Parser object. Optional, default do not report errors
-!    TYPE(eis_parser), INTENT(INOUT), OPTIONAL :: parser
     !> Number of results returned by the evaluation
     INTEGER :: eis_fast_evaluate
     TYPE(C_PTR) :: params

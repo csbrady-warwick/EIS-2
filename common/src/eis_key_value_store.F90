@@ -309,6 +309,8 @@ CONTAINS
     INTEGER :: istr, rstr
     LOGICAL :: recording_name, ok
 
+    IF (.NOT. ALLOCATED(text)) RETURN
+
     ALLOCATE(CHARACTER(LEN=LEN(text), KIND=ASCII) :: temp)
     recording_name = .FALSE.
     rstr = 1
