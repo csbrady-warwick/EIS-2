@@ -141,6 +141,7 @@ MODULE eis_parser_mod
   END TYPE eis_parser
 
   PRIVATE
+  PUBLIC :: eis_stack, eis_status_no_simplify, eis_status_no_emplace
   PUBLIC :: eis_parser, stack_holder, parser_holder, interop_parser_count
   PUBLIC :: interop_stack_count, interop_parsers, interop_stacks
   PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
@@ -807,8 +808,9 @@ CONTAINS
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] char_offset
+  !> @param[in] append
   SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify, &
-      filename, line_number, char_offset)
+      filename, line_number, char_offset, append)
 
     CLASS(eis_parser) :: this
     !> Expression to convert to stack
@@ -825,13 +827,19 @@ CONTAINS
     !> Should the stack be minified after generation. Optional, default value
     !> set in call to "init"
     LOGICAL, INTENT(IN), OPTIONAL :: minify
-    !> The filename of the file containing the expression
+    !> The filename of the file containing the expression. Optional, default
+    !> do not use filename when reporting error
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
-    !> The line number of the expression within the file
+    !> The line number of the expression within the file. Optional, default
+    !> do not use line number when reporting error
     INTEGER, INTENT(IN), OPTIONAL :: line_number
-    !> The character offset of the expression within the line
+    !> The character offset of the expression within the line. Optional,
+    !> default 0
     INTEGER, INTENT(IN), OPTIONAL :: char_offset
-    LOGICAL :: maybe_e, should_simplify, should_minify
+    !> Whether the newly parsed value should be appended to
+    !> the values in the stack or no. Optional, default false
+    LOGICAL, INTENT(IN), OPTIONAL :: append
+    LOGICAL :: maybe_e, should_simplify, should_minify, should_dealloc
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
@@ -846,7 +854,8 @@ CONTAINS
     IF (PRESENT(simplify)) should_simplify = simplify
 
     IF (.NOT. this%is_init) CALL this%init(err)
-    IF (.NOT. output%init) CALL initialise_stack(output)
+    should_dealloc = .TRUE.
+    IF (PRESENT(append)) should_dealloc = .NOT. append
     IF (ALLOCATED(output%filename)) DEALLOCATE(output%filename)
 
     IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
@@ -862,6 +871,8 @@ CONTAINS
     END IF
 
     IF (ASSOCIATED(output%eval_fn)) NULLIFY(output%eval_fn)
+    IF (should_dealloc) CALL deallocate_stack(output)
+    IF (.NOT. output%init) CALL initialise_stack(output)
 
     IF (expression_in(1:6) == 'where(') THEN
       output%where_stack = .TRUE.
@@ -1823,7 +1834,7 @@ CONTAINS
     IF (PRESENT(global)) is_global = global
 
     CALL initialise_stack(stack)
-    CALL this%tokenize(string, stack, errcode)
+    CALL this%tokenize(string, stack, errcode, simplify = .FALSE.)
     IF (is_global) THEN
       CALL global_registry%add_stack_variable(name, stack, errcode, &
           err_handler = this%err_handler)
