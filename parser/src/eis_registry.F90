@@ -545,7 +545,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to store under
     TYPE(late_bind_fn_holder), INTENT(in) :: holder !< Holder type
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code from store
-    !> Number of expected parameters. Optional, default 0
+    !> Number of expected parameters. Optional, default -1
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     !> Optional error handler
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
@@ -563,14 +563,15 @@ CONTAINS
       END SELECT
     END IF
 
-    IF (ASSOCIATED(temp_ptr) &
-        .AND. temp_ptr%index_type == eis_reg_index_emplaced) THEN
-      index = this%emplaced_registry%store(holder, index = temp_ptr%value)
+    IF (ASSOCIATED(temp_ptr)) THEN
+      IF(temp_ptr%index_type == eis_reg_index_emplaced) &
+          index = this%emplaced_registry%store(holder, index = temp_ptr%value)
     ELSE
       temp_ptr => temp
       index = this%emplaced_registry%store(holder)
     END IF
 
+    temp_ptr%expected_parameters = -1
     IF (PRESENT(expected_parameters)) temp_ptr%expected_parameters &
         = expected_parameters
     temp_ptr%ptype = eis_pt_emplaced_function

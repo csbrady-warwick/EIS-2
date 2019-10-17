@@ -94,6 +94,7 @@ MODULE eis_tree_mod
 
     simplified%cap_bits = stack%cap_bits
     simplified%has_deferred = stack%has_deferred
+    simplified%has_emplaced = stack%has_emplaced
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -177,7 +178,9 @@ MODULE eis_tree_mod
           RETURN
         END IF
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify &
-            .AND. .NOT. tree%nodes(inode)%co_value%defer
+            .AND. .NOT. tree%nodes(inode)%co_value%defer &
+            .AND. .NOT. (tree%nodes(inode)%value%ptype &
+            /= eis_pt_emplaced_function)
       END DO
 
       IF (can_simplify) THEN

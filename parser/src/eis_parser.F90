@@ -1072,6 +1072,8 @@ CONTAINS
     errcode = eis_err_none
 
     CALL this%tokenize(str, stack, errcode, simplify, minify)
+    IF (stack%has_emplaced) CALL this%emplace(stack, errcode, &
+        host_params = host_params)
     IF (errcode == eis_err_none) THEN
       eip_evaluate_string = this%evaluate(stack, result, errcode, &
           host_params = host_params, is_no_op = is_no_op)
@@ -1218,8 +1220,9 @@ CONTAINS
   !> @param[in] host_params
   !> @param[out] remaining_functions
   !> @param[inout] capbits
+  !> @param[inout] errcode
   RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, host_params, &
-      remaining_functions, capbits)
+      remaining_functions, capbits, errcode)
     CLASS(eis_parser) :: this
     TYPE(eis_tree_item), INTENT(INOUT) :: tree_node !< Node to operate on
     TYPE(C_PTR), INTENT(IN) :: host_params !< Host code specified parameters
@@ -1228,8 +1231,10 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: remaining_functions
     !> Capability bits for this node.
     INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
+    !> Error code for this node
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_tree_item), POINTER :: new_node
-    INTEGER(eis_error) :: errcode
+    INTEGER(eis_error) :: errcode_l
     INTEGER :: inode, nparams, sp
     TYPE(eis_stack), TARGET :: temp_stack
     TYPE(eis_stack), POINTER :: emplace_stack
@@ -1242,12 +1247,12 @@ CONTAINS
     INTEGER(C_INT) :: interop_stack_id
 
     status_code = 0_eis_bitmask
-    errcode = 0_eis_error
+    errcode_l = eis_err_none
 
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
         CALL this%emplace_node(tree_node%nodes(inode), host_params, &
-            remaining_functions, capbits)
+            remaining_functions, capbits, errcode)
       END DO
     END IF
 
@@ -1259,16 +1264,23 @@ CONTAINS
     IF (ASSOCIATED(tree_node%nodes)) THEN
       nparams = SIZE(tree_node%nodes)
       ALLOCATE(params(nparams))
+      errcode_l = eis_err_none
       DO inode = 1, nparams
         CALL initialise_stack(temp_stack)
         CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
-        rcount = this%evaluate(temp_stack, results, errcode, &
+        rcount = this%evaluate(temp_stack, results, errcode_l, &
             host_params = host_params)
         params(inode) = results(1)
         CALL deallocate_stack(temp_stack)
+        errcode = IOR(errcode, errcode_l)
       END DO
     ELSE
       ALLOCATE(params(nparams))
+    END IF
+
+    IF (errcode_l /= eis_err_none) THEN
+      DEALLOCATE(params)
+      RETURN
     END IF
 
     CALL this%registry%get_stored_emplacement(tree_node%value%value, &
@@ -1278,14 +1290,29 @@ CONTAINS
       CALL initialise_stack(temp_stack)
       emplace_stack => temp_stack
       CALL late_bind_fn(nparams, params, host_params, temp_stack, status_code, &
-          errcode)
+          errcode_l)
+      errcode = IOR(errcode, errcode_l)
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+            tree_node%co_value%text, tree_node%co_value%charindex)
+      ELSE
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+      END IF
     ELSE
       ALLOCATE(params_interop(nparams))
       params_interop = REAL(params, eis_num_c)
+      errcode_l = eis_err_none
       CALL late_bind_fn_c(nparams, params_interop, host_params, &
-          interop_stack_id, status_code, errcode)
+          interop_stack_id, status_code, errcode_l)
+      errcode = IOR(errcode, errcode_l)
       emplace_stack => eis_get_interop_stack(interop_stack_id) 
       DEALLOCATE(params_interop)
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+            tree_node%co_value%text, tree_node%co_value%charindex)
+      ELSE
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+      END IF
     END IF
     DEALLOCATE(params)
 
@@ -1293,7 +1320,7 @@ CONTAINS
     IF (.NOT. ASSOCIATED(emplace_stack)) RETURN
     IF (.NOT. emplace_stack%init) RETURN
     IF (emplace_stack%stack_point == 0) RETURN
-      
+
     IF (emplace_stack%has_emplaced) CALL this%emplace(emplace_stack, errcode, &
         host_params = host_params)
 
@@ -1305,6 +1332,7 @@ CONTAINS
       CALL eis_build_node(emplace_stack, sp, new_node)
       DEALLOCATE(tree_node%nodes)
       tree_node = new_node
+      new_node%nodes => NULL()
       DEALLOCATE(new_node)
       remaining_functions = .FALSE.
     ELSE
@@ -1372,7 +1400,7 @@ CONTAINS
     capbits = sptr%cap_bits
     sp = sptr%stack_point + 1
     CALL eis_build_node(stack, sp, root)
-    CALL this%emplace_node(root, params, remaining_functions, capbits)
+    CALL this%emplace_node(root, params, remaining_functions, capbits, errcode)
     CALL deallocate_stack(sptr)
     CALL initialise_stack(sptr)
     CALL eis_tree_to_stack(root, sptr)
@@ -2098,8 +2126,9 @@ CONTAINS
 
     ELSE IF (iblock%ptype == eis_pt_function .OR. iblock%ptype &
         == eis_pt_emplaced_function) THEN
-      IF (iblock%ptype == eis_pt_emplaced_function) &
+      IF (iblock%ptype == eis_pt_emplaced_function) THEN
           this%output%has_emplaced = .TRUE.
+      END IF
       CALL push_to_stack(this%stack, iblock, icoblock)
       iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock, icoblock)
