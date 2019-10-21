@@ -1,0 +1,11 @@
+begin:block1
+  key2 = "my key"
+
+  begin:block2
+    new_key = 7+12
+  end:block2
+end:block1
+
+begin:block1
+  key1 = sin(pi/3)
+end:block1

@@ -1,0 +1,4 @@
+begin:block1
+  scalar_value = 1
+  array_value = 1,2,3,4
+end:block1
