@@ -926,7 +926,7 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = this%info%parser%evaluate(value, value_array, this_err)
         ELSE
-          CALL this%info%parser%set_eval_function(value_function, stack, &
+          CALL this%info%parser%set_result_function(value_function, stack, &
             this_err)
           ct = this%info%parser%evaluate(stack, value_array, this_err)
         END IF
@@ -949,7 +949,7 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = this%info%parser%evaluate(value, value_array, this_err)
         ELSE
-          CALL this%info%parser%set_eval_function(value_function, stack, &
+          CALL this%info%parser%set_result_function(value_function, stack, &
               this_err)
           ct = this%info%parser%evaluate(stack, value_array, this_err)
         END IF
@@ -972,7 +972,7 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           CALL this%info%parser%tokenize(value, stack, stack_err)
         ELSE
-          CALL this%info%parser%set_eval_function(value_function, stack, &
+          CALL this%info%parser%set_result_function(value_function, stack, &
               stack_err)
         END IF
         IF (ASSOCIATED(dkd%key_stack_fn) .AND. stack_err == eis_err_none) THEN
@@ -1068,7 +1068,8 @@ MODULE eis_deck_definition_mod
       IF (.NOT. PRESENT(value_function)) THEN
         ct = this%info%parser%evaluate(value, value_array, this_err)
       ELSE
-        CALL this%info%parser%set_eval_function(value_function, stack, this_err)
+        CALL this%info%parser%set_result_function(value_function, stack, &
+            this_err)
         ct = this%info%parser%evaluate(stack, value_array, this_err)
       END IF
       IF (this_err == eis_err_none) THEN
@@ -1090,7 +1091,8 @@ MODULE eis_deck_definition_mod
       IF (.NOT. PRESENT(value_function)) THEN
         ct = this%info%parser%evaluate(value, value_array, this_err)
       ELSE
-        CALL this%info%parser%set_eval_function(value_function, stack, this_err)
+        CALL this%info%parser%set_result_function(value_function, stack, &
+            this_err)
         ct = this%info%parser%evaluate(stack, value_array, this_err)
       END IF
       IF (this_err == eis_err_none) THEN
@@ -1116,7 +1118,7 @@ MODULE eis_deck_definition_mod
       IF (.NOT. PRESENT(value_function)) THEN
         CALL this%info%parser%tokenize(value, stack, stack_err)
       ELSE
-        CALL this%info%parser%set_eval_function(value_function, stack, &
+        CALL this%info%parser%set_result_function(value_function, stack, &
             stack_err)
       END IF
       IF (stack_err == eis_err_none) THEN

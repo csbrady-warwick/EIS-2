@@ -24,7 +24,6 @@ MODULE eis_parser_header
       TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
-      REAL(eis_num) :: parser_eval_fn
     END SUBROUTINE
 
     FUNCTION parser_param_update_fn(user_params) BIND(C)

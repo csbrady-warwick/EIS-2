@@ -182,8 +182,7 @@ $(LIB): $(OBJDIR) $(MODDIR) $(INCDIR) $(LIBDIR) $(OBJS)
 	$(RM) -f $@
 	$(AR) -crs $@ $(addprefix $(OBJDIR)/,$(OBJS))
 	$(RANLIB) $@
-	@cp $(MODDIR)/eis_parser_mod.mod $(INCDIR)
-	@cp $(MODDIR)/eis_parser_header.mod $(INCDIR)
+	@cp $(MODDIR)/*.mod $(INCDIR)
 
 $(OBJDIR):
 	$(MKDIR) -p $(OBJDIR)

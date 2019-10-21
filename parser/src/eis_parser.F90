@@ -123,7 +123,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
-    PROCEDURE, PUBLIC :: set_eval_function => eip_set_eval_function
+    PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
     PROCEDURE, PUBLIC :: simplify => eip_simplify
     PROCEDURE, PUBLIC :: minify => eip_minify
