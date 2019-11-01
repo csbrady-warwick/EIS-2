@@ -83,6 +83,7 @@ MODULE eis_parser_header
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
     INTEGER :: charindex = -1
+    INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
     CHARACTER(LEN=:), ALLOCATABLE :: text
   END TYPE eis_stack_co_element
@@ -103,7 +104,7 @@ MODULE eis_parser_header
     TYPE(eis_stack_element), ALLOCATABLE :: entries(:)
     TYPE(eis_stack_co_element), ALLOCATABLE :: co_entries(:)
     PROCEDURE(parser_result_function), POINTER, NOPASS :: eval_fn => NULL()
-    CHARACTER(LEN=:), ALLOCATABLE :: eval_string
+    CHARACTER(LEN=:), ALLOCATABLE :: eval_string, full_line
     CHARACTER(LEN=:), ALLOCATABLE :: filename
     INTEGER :: line_number = 0
     INTEGER :: char_offset = 0

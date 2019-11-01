@@ -138,6 +138,7 @@ MODULE eis_stack_mod
     END DO
 
     DEALLOCATE(stack%co_entries)
+    DEALLOCATE(stack%full_line)
 
     CALL grow_stack(stack, stack%stack_point)
 

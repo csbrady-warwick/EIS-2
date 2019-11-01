@@ -10,7 +10,7 @@ MODULE eis_utils
   PUBLIC :: eis_append_string, c_f_string, f_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
-  PUBLIC :: eis_compare_string
+  PUBLIC :: eis_compare_string, eis_present_and_alloc
 
 
   INTERFACE eis_copy_string
@@ -805,5 +805,24 @@ MODULE eis_utils
     CLOSE(lun)
 
  END SUBROUTINE eis_load_file_to_string
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Tests if an optional string parameters is both present and allocated
+  !> @param[in] string
+  !> @result eis_present_and_alloc
+  FUNCTION eis_present_and_alloc(string)
+    !> Allocatable optional string to test
+    CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(IN) :: string
+    !Is this character string both present and allocated if present
+    LOGICAL :: eis_present_and_alloc
+
+    eis_present_and_alloc = PRESENT(string)
+    IF (eis_present_and_alloc) eis_present_and_alloc = eis_present_and_alloc &
+        .AND. ALLOCATED(string)
+
+  END FUNCTION eis_present_and_alloc
 
 END MODULE eis_utils

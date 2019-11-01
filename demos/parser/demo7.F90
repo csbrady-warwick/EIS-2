@@ -10,6 +10,29 @@ MODULE mymod
 
   CONTAINS
 
+  !Function to implement the Cauchy distribution
+  !https://en.wikipedia.org/wiki/Cauchy_distribution
+  FUNCTION cauchy_dist(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+    REAL(eis_num), PARAMETER :: pi = 4.0_eis_num * ATAN(1.0_eis_num)
+
+    !params(1) - x, dependent variable
+    !params(2) - x0, location parameter
+    !params(3) - gamma, scale parameter
+
+    res = 1.0/(pi * params(3)) * (params(3)**2 / (params(1) - params(2))**2 &
+        + params(3)**2)
+
+  END FUNCTION cauchy_dist
+
+
+
   FUNCTION get_x(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C)
     INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
@@ -20,11 +43,11 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%x
 
   END FUNCTION get_x
-
 
 
   FUNCTION get_y(nparams, params, host_params, status_code, errcode) &
@@ -37,6 +60,7 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%y
 
@@ -62,6 +86,7 @@ PROGRAM test
 
   CALL parser%add_variable('x', get_x, errcode, can_simplify = .FALSE.)
   CALL parser%add_variable('y', get_y, errcode, can_simplify = .FALSE.)
+  CALL parser%add_function('cauchy', cauchy_dist, errcode, expected_params = 3)
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
   READ(*,'(A)') input

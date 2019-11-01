@@ -11,12 +11,14 @@ MODULE eis_error_mod
     !> String representation of the source of the error
     CHARACTER(LEN=:), ALLOCATABLE :: errstring
     CHARACTER(LEN=:), ALLOCATABLE :: filename
+    CHARACTER(LEN=:), ALLOCATABLE :: full_line
     !> Numerical representation of the type of the error
     INTEGER(eis_error) :: errcode = eis_err_none
     !> Character offset from start of the string of the error
     INTEGER :: charindex = -1
     !> Line number for an error on a specific line of a file
     INTEGER :: line_number = -1
+    INTEGER :: full_line_pos = -1
   END TYPE eis_error_item
 
   !>Error handler class
@@ -165,6 +167,9 @@ MODULE eis_error_mod
           &"{errtext}:')
       CALL this%strings%store('err_report_place', 'In block with text &
           &"{errtext}" starting at character position {charpos}: ')
+      CALL this%strings%store('err_report_file_text_place',' In file &
+          &"{errfile}" the block with text "{errtext}" at character &
+          &position {charpos} :')
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
           &error. Errors are :')
     END IF
@@ -181,8 +186,10 @@ MODULE eis_error_mod
   !> @param[in] errstring
   !> @param[in] charindex
   !> @param[in] line_number
+  !> @param[in] full_line
+  !> @param[in] full_line_pos
   SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, &
-      charindex, filename, line_number)
+      charindex, filename, line_number, full_line, full_line_pos)
 
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
     !> Type code for source of error (tokenize, evalaute etc.)
@@ -197,6 +204,10 @@ MODULE eis_error_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
     !> Line number of the error in multiple lines
     INTEGER, OPTIONAL, INTENT(IN) :: line_number
+    !> Full line containing the error
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
+    !> Position of the error in the full line
+    INTEGER, INTENT(IN), OPTIONAL :: full_line_pos
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz
     INTEGER(eis_error) :: err
@@ -226,6 +237,8 @@ MODULE eis_error_mod
     IF (PRESENT(filename)) ALLOCATE(temp(sz)%filename, SOURCE = filename)
     IF (PRESENT(charindex)) temp(sz)%charindex = charindex
     IF (PRESENT(line_number)) temp(sz)%line_number = line_number
+    IF (PRESENT(full_line)) ALLOCATE(temp(sz)%full_line, SOURCE = full_line)
+    IF (PRESENT(full_line_pos)) temp(sz)%full_line_pos = full_line_pos
     CALL MOVE_ALLOC(temp, this%errors)
 
   END SUBROUTINE eeh_add_error
@@ -477,7 +490,7 @@ MODULE eis_error_mod
         filename
     CHARACTER(LEN=9) :: posstr, linestr
     CHARACTER(LEN=19) :: format_str
-    INTEGER :: charpos, nchar, line_number
+    INTEGER :: charpos, nchar, line_number, spos, epos
     TYPE(eis_key_value_store) :: errstr_store
     LOGICAL :: ok
     INTEGER(eis_error) :: err
@@ -498,8 +511,18 @@ MODULE eis_error_mod
     CALL this%get_error_string(index, errstring, err_source)
 
     CALL eis_append_string(report, REPEAT("=", 80))
-
     CALL eis_append_string(report, err_source)
+    IF (ALLOCATED(this%errors(index)%full_line)) THEN
+      CALL eis_append_string(report, "")
+      spos = MAX(1, this%errors(index)%full_line_pos-10)
+      epos = MIN(LEN(this%errors(index)%full_line), &
+          this%errors(index)%full_line_pos+10)
+      CALL eis_append_string(report, this%errors(index)%full_line(spos:epos))
+      CALL eis_append_string(report, REPEAT(" ", &
+          this%errors(index)%full_line_pos - spos) // "^")
+    END IF
+
+    CALL eis_append_string(report, "")
 
     IF (charpos > 0 .OR. line_number > 0) THEN
 

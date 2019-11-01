@@ -886,6 +886,8 @@ CONTAINS
     this%output => output
 
     ALLOCATE(CHARACTER(LEN=LEN(expression))::current)
+    IF (ALLOCATED(output%full_line)) DEALLOCATE(output%full_line)
+    ALLOCATE(output%full_line, SOURCE = expression)
 
     current(:) = ' '
     current(1:1) = expression(1:1)
@@ -914,7 +916,8 @@ CONTAINS
         current_pointer = current_pointer+1
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-            cap_bits, charindex + output%char_offset, err)
+            cap_bits, charindex + output%char_offset, charindex, err, &
+            filename, line_number, expression)
         charindex = i
         IF (err /= eis_err_none) THEN
           err = IOR(err, eis_err_parser)
@@ -935,7 +938,8 @@ CONTAINS
     END DO
 
     CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-        cap_bits,charindex,  err)
+        cap_bits, charindex + output%char_offset,  charindex, err, filename, &
+        line_number, expression)
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
@@ -945,7 +949,8 @@ CONTAINS
             err = IOR(err, eis_err_wrong_parameters)
             CALL this%err_handler%add_error(eis_err_parser, err, &
                 this%stack%co_entries(i)%text, &
-                this%stack%co_entries(i)%charindex)
+                this%stack%co_entries(i)%charindex, &
+                filename = filename, line_number = line_number)
           ELSE
             this%stack%entries(i)%actual_params = 0
           END IF
@@ -1033,9 +1038,12 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] host_params
   !> @param[out] is_no_op
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] char_offset
   !> @return eip_evaluate_string
   FUNCTION eip_evaluate_string(this, str, result, errcode, host_params, &
-      is_no_op, simplify, minify)
+      is_no_op, simplify, minify, filename, line_number, char_offset)
     CLASS(eis_parser) :: this
     !> String to evaluate as maths
     CHARACTER(LEN=*), INTENT(IN) :: str
@@ -1058,6 +1066,12 @@ CONTAINS
     !> evaluation. Not usually beneficial for single direct string to value
     !> evaluations. Optional, default same as set during init
     LOGICAL, INTENT(IN), OPTIONAL :: minify
+    !> Filename containing the original text
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Line number of the original text
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Character position offset in parse
+    INTEGER, INTENT(IN), OPTIONAL :: char_offset
     !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_string
     TYPE(eis_stack) :: stack
@@ -1071,7 +1085,8 @@ CONTAINS
 
     errcode = eis_err_none
 
-    CALL this%tokenize(str, stack, errcode, simplify, minify)
+    CALL this%tokenize(str, stack, errcode, simplify, minify, filename, &
+        line_number, char_offset)
     IF (stack%has_emplaced) CALL this%emplace(stack, errcode, &
         host_params = host_params)
     IF (errcode == eis_err_none) THEN
@@ -1941,9 +1956,14 @@ CONTAINS
   !> @param[inout] icoblock
   !> @param[inout] cap_bits
   !> @param[in] charindex
+  !> @param[in] trim_charindex
   !> @param[inout] err
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] full_line
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
-      cap_bits, charindex, err)
+      cap_bits, charindex, trim_charindex, err, filename, line_number, &
+      full_line)
 
     CLASS(eis_parser) :: this
     !> Text to parse
@@ -1957,8 +1977,18 @@ CONTAINS
     !> Character index for "current" in the original string
     !> used for error reporting
     INTEGER, INTENT(IN) :: charindex
+    !> Character index for current in the trimmed string
+    !> used for error reporting
+    INTEGER, INTENT(IN) :: trim_charindex
     !> Error code from parsing this element
     INTEGER(eis_error), INTENT(INOUT) :: err
+    !> Filename containing error. Optional, default do not use
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Line number in file containing error. Optional, default
+    !> do not use
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Full version of the line being parsed
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
     LOGICAL :: stack_empty
@@ -1969,9 +1999,12 @@ CONTAINS
     ! Populate the block
     CALL this%load_block(current, iblock, icoblock, cap_bits)
     icoblock%charindex = charindex
+    icoblock%full_line_pos = trim_charindex
     IF (iblock%ptype == eis_pt_bad) THEN
       err = eis_err_not_found
-      CALL this%err_handler%add_error(eis_err_parser, err, current, charindex)
+      CALL this%err_handler%add_error(eis_err_parser, err, current, charindex, &
+        filename = filename, line_number = line_number, full_line = full_line, &
+        full_line_pos = trim_charindex)
       CALL deallocate_stack(this%stack)
       RETURN
     END IF
@@ -1991,7 +2024,9 @@ CONTAINS
       ELSE
         err = IOR(err, eis_err_malformed)
         CALL this%err_handler%add_error(eis_err_parser, err, &
-            this%last_block_text, this%last_charindex)
+            this%last_block_text, this%last_charindex, &
+            filename = filename, line_number = line_number, &
+            full_line = full_line, full_line_pos = trim_charindex)
         RETURN
       END IF
     END IF
@@ -2003,7 +2038,9 @@ CONTAINS
           .OR. this%last_block_type == eis_pt_constant) THEN
         err = IOR(err, eis_err_bracketed_constant)
         CALL this%err_handler%add_error(eis_err_parser, err, &
-            this%last_block_text, this%last_charindex)
+            this%last_block_text, this%last_charindex, &
+            filename = filename, line_number = line_number, &
+            full_line = full_line, full_line_pos = trim_charindex)
         RETURN
       END IF
     END IF
@@ -2016,7 +2053,9 @@ CONTAINS
         .AND. iblock%value == eis_paren_right_bracket))) THEN
       err = IOR(err, eis_err_malformed)
       CALL this%err_handler%add_error(eis_err_parser, err, &
-          this%last_block_text, this%last_charindex)
+          this%last_block_text, this%last_charindex, filename = filename, &
+          line_number = line_number, full_line = full_line, &
+          full_line_pos = trim_charindex)
     END IF
 
     !If current block is a binary operator then previous block must not be
@@ -2029,7 +2068,8 @@ CONTAINS
             .AND. this%last_block_value == eis_paren_left_bracket)) THEN
           err = IOR(err, eis_err_malformed)
           CALL this%err_handler%add_error(eis_err_parser, err, current, &
-              charindex)
+              charindex, filename = filename, line_number = line_number, &
+              full_line = full_line, full_line_pos = trim_charindex)
         END IF
       ELSE !No ternary operators so must be unary
         IF (.NOT. (this%last_block_type == eis_pt_null &
@@ -2039,7 +2079,8 @@ CONTAINS
             .AND. this%last_block_value == eis_paren_left_bracket))) THEN
           err = IOR(err, eis_err_malformed)
           CALL this%err_handler%add_error(eis_err_parser, err, current, &
-              charindex)
+              charindex, filename = filename, line_number = line_number, &
+              full_line = full_line, full_line_pos = trim_charindex)
         END IF
       END IF
     END IF
@@ -2101,7 +2142,9 @@ CONTAINS
                   IF (ALLOCATED(this%stack%co_entries)) THEN
                     CALL this%err_handler%add_error(eis_err_parser, err, &
                         this%stack%co_entries(this%stack%stack_point)%text, &
-                        this%stack%co_entries(this%stack%stack_point)%charindex)
+                        this%stack%co_entries(this%stack%stack_point)%charindex&
+                        , filename = filename, line_number = line_number, &
+                        full_line = full_line, full_line_pos = trim_charindex)
                   ELSE
                     CALL this%err_handler%add_error(eis_err_parser, err, &
                         "{unknown}", charindex)
@@ -2117,7 +2160,9 @@ CONTAINS
             IF (stack_empty) THEN
               err = IOR(err, eis_err_extra_bracket)
               CALL this%err_handler%add_error(eis_err_parser, err, &
-                  ")", charindex)
+                  ")", charindex, filename = filename, &
+                  line_number = line_number, full_line = full_line, &
+                  full_line_pos = trim_charindex)
               RETURN
             END IF
           END IF
@@ -2146,7 +2191,8 @@ CONTAINS
             IF (block2%value /= eis_paren_left_bracket) THEN
               err = IOR(err, eis_err_malformed)
               CALL this%err_handler%add_error(eis_err_parser, err, current, &
-                  charindex)
+                  charindex, filename = filename, line_number = line_number, &
+                  full_line = full_line, full_line_pos = trim_charindex)
               RETURN
             END IF
             IF (this%brackets%stack_point > 0) THEN

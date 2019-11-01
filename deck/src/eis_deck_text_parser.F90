@@ -57,6 +57,7 @@ MODULE eis_string_deck_mod
     PROCEDURE, PUBLIC :: generate_blocklist => esd_generate_blocklist
     PROCEDURE, PUBLIC :: get_block_count => esd_get_block_count
     PROCEDURE, PUBLIC :: get_block => esd_get_block
+    PROCEDURE, PUBLIC :: get_block_name => esd_get_block_name
     PROCEDURE, PUBLIC :: get_error_count => esd_get_error_count
     PROCEDURE, PUBLIC :: get_error_report => esd_get_error_report
     PROCEDURE, PUBLIC :: get_error_info => esd_get_error_info
@@ -189,14 +190,17 @@ MODULE eis_string_deck_mod
   !> Get a specified line of text
   !> @param[in] index
   !> @param[out] line
-  SUBROUTINE esdb_get_line(this, index, line, line_number, filename)
+  SUBROUTINE esdb_get_line(this, index, line, line_number, filename, &
+      trimmed_white_space_length)
     CLASS(eis_string_deck_block), INTENT(IN) :: this
     INTEGER, INTENT(IN) :: index
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: line
     INTEGER, INTENT(OUT), OPTIONAL :: line_number
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
+    INTEGER, INTENT(OUT), OPTIONAL :: trimmed_white_space_length
     INTEGER :: i, iblock, istart
     LOGICAL :: ok
+    CHARACTER(LEN=:), ALLOCATABLE :: temp
 
     IF (.NOT. ALLOCATED(this%iends)) RETURN
     IF (index < 1 .OR. index > this%line_count) RETURN
@@ -206,7 +210,9 @@ MODULE eis_string_deck_mod
         istart = this%iends(i) - (this%ends(i) - this%starts(i))
         iblock = this%starts(i) + (index - istart) - 1
         ok = this%parser_data%strings%get(iblock,line, &
-            line_number = line_number, filename = filename)
+            line_number = line_number, filename = temp, &
+            trimmed_white_space_length = trimmed_white_space_length)
+        IF (PRESENT(filename)) ALLOCATE(filename, SOURCE = temp)
         EXIT
       END IF
     END DO
@@ -510,7 +516,7 @@ MODULE eis_string_deck_mod
     !> Error code
     INTEGER(eis_error), INTENT(OUT) :: errcode
     !> Filename to associate with the strings when reporting errors
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
     INTEGER, DIMENSION(2) :: ranges
     INTEGER(eis_error) :: ierr
 
@@ -923,6 +929,29 @@ MODULE eis_string_deck_mod
     block => this%data%blocks(idx)
 
   END FUNCTION esd_get_block
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a block name by index.
+  !> @detail
+  !> The actual block indices run from 0 to the value of get_block_count
+  !> Item 0 is the root item.
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[out] name
+  SUBROUTINE esd_get_block_name(this, index, name)
+    CLASS(eis_string_deck), INTENT(IN) :: this
+    !> Index of block to get. Optional, default 0 (root item)
+    INTEGER, INTENT(IN), OPTIONAL :: index
+    !> Name of the found block
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    CLASS(eis_string_deck_block), POINTER :: block
+
+    block => this%get_block(index)
+    IF (ASSOCIATED(block)) ALLOCATE(name, SOURCE = block%block_name)
+
+  END SUBROUTINE esd_get_block_name
 
 
 

@@ -21,6 +21,7 @@ MODULE mymod
     TYPE(data_item), POINTER :: dat
     REAL(eis_num), PARAMETER :: pi = 4.0_eis_num * ATAN(1.0_eis_num)
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     values(1) = SIN(4.0_eis_num * pi * (dat%x-0.5_eis_num)) * COS(6.0_eis_num*pi*(dat%y-0.5_eis_num))
     nvalues = 1

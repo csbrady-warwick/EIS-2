@@ -17,6 +17,7 @@ MODULE eis_string_store_mod
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: text
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: filename
     INTEGER :: minline = -1, maxline = -1
+    INTEGER :: whitespace_len = 0
     CONTAINS
     FINAL :: sh_destructor
   END TYPE string_holder
@@ -281,10 +282,12 @@ CONTAINS
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] line_number_max
+  !> @param[in] trimmed_white_space_length
   !> @param[in] default_line_info
   !> @return index_out
   FUNCTION ess_store_string_ascii(this, text, store_index, filename, &
-      line_number, line_number_max, default_line_info) RESULT(index_out)
+      line_number, line_number_max, trimmed_white_space_length, &
+      default_line_info) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: text
@@ -300,6 +303,10 @@ CONTAINS
     !> lines
     !> Optional, default no maximum line number is stored
     INTEGER, INTENT(IN), OPTIONAL :: line_number_max
+    !> Number of white space characters removed from the left of the string
+    !> when `remove_whitespace` is called.
+    !> Optional, default stores 0
+    INTEGER, INTENT(IN), OPTIONAL :: trimmed_white_space_length
     !> Logical flag. If true then even when overwriting an existing
     !> item the line number and filename metadata will not be recovered
     !> Index of stored string
@@ -310,7 +317,7 @@ CONTAINS
     TYPE(string_holder) :: temp
     LOGICAL :: ok, recover
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str_old, fname
-    INTEGER :: ln, lnm
+    INTEGER :: ln, lnm, wsl
 
     ALLOCATE(temp%text, SOURCE = text)
     IF (PRESENT(store_index)) THEN
@@ -318,12 +325,14 @@ CONTAINS
       IF (PRESENT(default_line_info)) recover = .NOT. default_line_info
       IF (recover) THEN
         ok = this%get(store_index, str_old, filename = fname, &
-            line_number = ln, line_number_max = lnm)
+            line_number = ln, line_number_max = lnm, &
+            trimmed_white_space_length = wsl)
         IF (ok) THEN
           CALL eis_copy_string(fname, temp%filename)
           IF (ALLOCATED(fname)) DEALLOCATE(fname)
           temp%minline = ln
           temp%maxline = lnm
+          temp%whitespace_len = wsl
         END IF
       END IF
     END IF
@@ -338,6 +347,8 @@ CONTAINS
       temp%maxline = line_number
     END IF
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
+    IF (PRESENT(trimmed_white_space_length)) temp%whitespace_len = &
+        trimmed_white_space_length
     index_out = this%strings%store(temp, store_index)
 
   END FUNCTION ess_store_string_ascii
@@ -419,9 +430,10 @@ CONTAINS
   !> @param[out] filename
   !> @param[out] line_number
   !> @param[out] line_number_max
+  !> @param[out] trimmed_white_space_length
   !> @return ess_get_string_ascii
   FUNCTION ess_get_string_ascii(this, get_index, text, filename, line_number, &
-      line_number_max)
+      line_number_max, trimmed_white_space_length)
     CLASS(eis_string_store), INTENT(IN) :: this
     !> Key to retrieve
     INTEGER(eis_i4), INTENT(IN) :: get_index
@@ -434,6 +446,8 @@ CONTAINS
     INTEGER, INTENT(OUT), OPTIONAL :: line_number
     !> Maximum line number in original source associated with line
     INTEGER, INTENT(OUT), OPTIONAL :: line_number_max
+    !> Number of removed whitespace characters on left of string
+    INTEGER, INTENT(OUT), OPTIONAL :: trimmed_white_space_length
     LOGICAL :: ess_get_string_ascii !< Was index found in store
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
@@ -449,10 +463,14 @@ CONTAINS
     END IF
 
     ess_get_string_ascii = ASSOCIATED(temp)
+
     IF (ess_get_string_ascii) THEN
-      IF (PRESENT(filename)) CALL eis_copy_string(temp%filename, filename)
+      IF (PRESENT(filename) .AND. ALLOCATED(temp%filename)) &
+          CALL eis_copy_string(temp%filename, filename)
       IF (PRESENT(line_number)) line_number = temp%minline
       IF (PRESENT(line_number_max)) line_number_max = temp%maxline
+      IF (PRESENT(trimmed_white_space_length)) trimmed_white_space_length = &
+          temp%whitespace_len
       CALL eis_copy_string(temp%text, text)
     END IF
 
@@ -1049,7 +1067,9 @@ CONTAINS
     this%strings%can_disorder = .TRUE.
     DO istr = 1, this%get_size()
       ok = this%get(istr, str)
-      sindex = this%store(TRIM(ADJUSTL(str)), istr)
+      sindex = this%store(TRIM(ADJUSTL(str)), istr, &
+          trimmed_white_space_length = LEN(TRIM(str)) &
+          - LEN(TRIM(ADJUSTL(str))))
     END DO
     this%strings%can_disorder = disorder
 

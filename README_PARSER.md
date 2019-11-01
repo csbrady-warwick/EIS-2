@@ -36,7 +36,9 @@ Deck Variable - A stack that is known by name to the parser so that it can be us
 
 Deferred - A Function, Variable or Constant that is assigned a name not assigned an evaluation function or value when it is first registered. A defered but can be used to create stacks anyway. An evaluation function or value must be assigned before the stack can be evaluated
 
-Emplaced - A function that should return a stack rather than a value when it is evaluated. The stack is then put into place 
+Emplaced - A function that should return a stack rather than a value when it is evaluated. The stack is then put into place
+
+Capability bits - Any variable, function or constant can have capability bits associated with them. These capability bits are combined when a stack is parsed and the capability bits of the stack is the bitwise OR of the capability bits of it's contents
 
 ## Simple EIS parser program
 
@@ -103,7 +105,7 @@ END PROGRAM test
 
 ```
 
-##EIS performance
+## EIS performance
 
 An important question is approximately how fast is each operation in an EIS expression evaluated. EIS is interpreted so it will be substantially slower than native code, especially since it evaluates numbers in a scalar rather than vector manner. Performance will depend on your compiler (especially how well it performs with OO Fortran code) and the performance of your machine. To give a rough estimate, on an AMD Ryzen Threadripper 1950X compiling with gfortran 9 a single core at 4GHz executes EIS stacks at about 10ns/operation. This means that is takes about 40 CPU cycles per operation and this result seems to be similar on other platforms.
 
@@ -237,9 +239,16 @@ END PROGRAM test
 
 ## Parser Simplifier
 
-To improve the performance of the parser it uses an abstract syntax tree based simplification system. This works by representing the tokenized stack as a tree, then recursively going through every node replacing the node with a constant value if possible and then rebuilding the simplified tree into a new stack. This replacement only happens if the node is flagged as being `simplifiable`, otherwise the simplifier simplifies as many nodes as possible and leaves the remaining nodes to be evaluated every time the stack is evaluated. By default all constants, variables and functions are simplifiable. Constants have a constant value so are always simplifiable, but the `add_variable` and `add_function` functions have an optional logical parameter called `can_simplify`. If `can_simplify` is set to `.FALSE.` when adding a variable or function then the simplifier will not simplify a tree node containing this function or variable.
+To improve the performance of the parser it uses an abstract syntax tree based simplification system. This works by converting every operator, variable and function to a node on a tree with each node having subnodes representing the parameters (where relevant). It then recursively goes through those nodes replacing them with a constant value if possible and then rebuilding the simplified tree into a new stack. To calculate the constant value for the simplifier the code evaluates the nodes and passes a `C_PTR_NULL` pointer as the host parameters. This replacement only happens if the node is flagged as being `simplifiable`, otherwise the simplifier simplifies as many nodes as possible and leaves the remaining nodes to be evaluated every time the stack is evaluated. By default all constants, variables and functions are simplifiable. Constants have a constant value so are always simplifiable, but the `add_variable` and `add_function` functions have an optional logical parameter called `can_simplify`. If `can_simplify` is set to `.FALSE.` when adding a variable or function then the simplifier will not simplify a tree node containing this function or variable.
 
-This behaviour of the simplifier explains why we specified `can_simplify` for the 
+This behaviour of the simplifier explains why we specified `can_simplify = .FALSE.` in the previous section. Since that getter function does not always return the same value it should not be simplified away. In the simple code above this wouldn't matter because the stack is only evaluated and parsed once but if the expression was parsed to a stack and the stack repeatedly evaluated you need to specify `can_simplify`.
+
+It is also possible to turn off simplification for a parser at various points
+
+1. By passing `should_simplify = .FALSE.` to the `init` method of a parser. This will mean that by default no simplification of any stacks will be performed
+2. By passing `simplify = .FALSE.` to the `tokenize` method of a parser then no simplification of the stack produced in that tokenization is performed. If the parser default simplification was set to `.FALSE.` in `init` then setting `simplify = .TRUE` here turns it on for this stack.
+3. By passing `simplify = .FALSE.` to the `evaluate` method of a parser when evaluating a string (*NOT* a stack) no simplification of the stack will take place before it is evaluated.
+4. A getter function can also set the `status_code` parameter to `eis_status_no_simplify` to prevent simplification of a tree node during the simplification stage.
 
 ## Using Host Parameters
 
@@ -300,6 +309,7 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%x
 
@@ -317,6 +327,7 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%y
 
@@ -369,6 +380,8 @@ END PROGRAM test
 ```
 
 This test code will evaluate an expression using `x` and `y` to specify the location in a 2D spatial domain with each axis running from 0->1. The expression that you enter will be written to a file called `fort.10` in formatted form in Fortran column major ordering. Reading the data will show that it contains the function that you defined in your expression.
+
+*It is important to note that even if you always specify host parameters there may be occasions where EIS will call a getter function with the host parameters set to `C_NULL_PTR` so if your getter functions use the host parameters they shoud always test for this and deal with it accordingly.*
 
 ## Adding functions
 
@@ -423,6 +436,7 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%x
 
@@ -440,6 +454,7 @@ MODULE mymod
     REAL(eis_num) :: res
     TYPE(data_item), POINTER :: dat
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     res = dat%y
 
@@ -576,6 +591,11 @@ If you use the version of the `evaluate` method that takes a string rather than 
 
 You can change the behaviour of a parser item by simply calling `add_constant`, `add_variable`, `add_function` or `add_stack_variable`again with the same name but a different value or getter function. The previous behaviour for that name is forgotten and all future stacks that are tokenized by this parser will use the new behaviour. Stacks that have _already_ been tokenized by this parser are unaffected and will continue to evaluate with the original values and getter functions in place. If you want to be able to change the behaviour of a stack after it has been tokenized you will have to use emplaced functions.
 
+
+## Capability bits
+
+Quite commonly you will want to flag a stack as having certain effects. Examples of this would be flagging a stack as being time varying or space varying. This can be automated for you by using _capability bits_. Capability bits are a 64 bit bitmask that you can optionally specify to any variables, functions or constants using the `cap_bits` optional parameter to `add_variable`, `add_function` or `add_constant`. When a stack is generated the `cap_bits` parameter of the `eis_stack` object is set to be the bitwise OR of the `cap_bits` of all of the elements that make up the stack. So if a variable that indicates `time` is specified and sets the `is_time_varying` capability bit then any stack containing that variable will be flagged as time varying automatically.
+
 ## Multiple Parser Objects
 
 Parsers are, by default, fully self contained. Changes to one parser do not make changes to another parser. Adding a function, variable or constant to a parser only adds it to that parser by default and all other parsers will still be unaware of your newly added item. You can override this behaviour and add an item to all parsers by setting the `global` optional parameter to `add_constant`, `add_variable`, `add_function`, `add_stack_variable` and `add_emplaced_function` to `.TRUE.`. Items are searched for in each parser's local list of items before checking the global list so you can hide global items for a single parser by adding an item with the same name without the `global` flag for that parser.
@@ -594,9 +614,9 @@ To use a single parser in multiple threads you *have* to call the `init` method 
 
 The built in parser items are just added to the global lists of constants, variables and functions when the parser is initialised. As such they can be overriden by custom items simply by specifying items with the same name. If you specify an item with the same name as a global item no warning is given.
 
-## Parser evaluation functions
+## Parser result functions
 
-Sometimes a host code might want to be able to just specify a function that returns the values from a stack rather than evaluating a textual expression. This might be to provide higher performance for common operations. This is supported through a parser result function which must have the signature
+Sometimes a host code might want to be able to just specify a function that returns the values from a stack rather than evaluating a textual expression. This might be to provide higher performance for common operations, to allow the code to override user specified expressions or to allow tying of a scripting language to a program using the EIS parser system. This is supported through a parser result function which must have the signature
 
 ```fortran
     SUBROUTINE parser_result_function(nresults, results, host_params, &
@@ -639,6 +659,7 @@ MODULE mymod
     TYPE(data_item), POINTER :: dat
     REAL(eis_num), PARAMETER :: pi = 4.0_eis_num * ATAN(1.0_eis_num)
 
+    IF (.NOT. C_ASSOCIATED(host_params)) RETURN
     CALL C_F_POINTER(host_params, dat)
     values(1) = SIN(4.0_eis_num * pi * (dat%x-0.5_eis_num)) * COS(6.0_eis_num*pi*(dat%y-0.5_eis_num))
     nvalues = 1
@@ -663,7 +684,7 @@ PROGRAM test
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
 
-  CALL parser%set_eval_function(get_values, stack, errcode)
+  CALL parser%set_result_function(get_values, stack, errcode)
   DO iy = 1, 100
     item%y = REAL(iy-1, eis_num)/99.0_eis_num
     DO ix = 1 , 100

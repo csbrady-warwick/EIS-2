@@ -163,10 +163,11 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Add an item to the inner list. Takes a copy of the item
+  !> Add an item to the inner list. Does not take a copy of item
   !> @param[in] this
   !> @param[in] name
   !> @param[in] item
+  !> @param[in] owns
   SUBROUTINE nsil_store(this, name, item, owns)
 
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
@@ -346,7 +347,7 @@ CONTAINS
   !> @brief
   !> Add an item to the hash table storing the passed item NOT a copy.
   !> By default is set to assume that it owns the item after adding
-  !> and deletes it when the store is closed. Set "owns = .FALSE." if this
+  !> and deletes it when the store is closed. Set "owns = .FALSE." if
   !> you have other pointers to the item
   !> @param[in] this
   !> @param[in] name

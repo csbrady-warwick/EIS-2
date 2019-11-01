@@ -1,7 +1,6 @@
 PROGRAM test
 
   USE eis_parser_mod
-  !USE eis_parser_header
   USE eis_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input

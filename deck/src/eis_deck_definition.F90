@@ -94,6 +94,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: end_block => dbd_end_block
     PROCEDURE :: finalise_block => dbd_finalise_block
     PROCEDURE :: finalize_block => dbd_finalise_block
+    PROCEDURE :: get_id => dbd_get_id
 
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
@@ -109,8 +110,10 @@ MODULE eis_deck_definition_mod
 
     CONTAINS
     PROCEDURE :: init => dd_init
+    PROCEDURE :: reset => dd_reset
     PROCEDURE :: get_root => dd_get_root
     PROCEDURE :: get_block => dd_get_block
+    PROCEDURE :: get_block_name => dd_get_block_name
     PROCEDURE :: initialize_blocks => dd_init_blocks
     PROCEDURE :: initialise_blocks => dd_init_blocks
     PROCEDURE :: finalize_blocks => dd_finalise_blocks
@@ -247,6 +250,20 @@ MODULE eis_deck_definition_mod
 
 
 
+  SUBROUTINE dd_reset(this)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    INTEGER :: i
+    TYPE(eis_deck_block_definition), POINTER :: block
+
+    DO i = 1, this%info%get_block_count()
+      block => this%info%get_block(i)
+      block%uninit = .TRUE.
+    END DO
+
+  END SUBROUTINE dd_reset
+
+
+
   FUNCTION dd_get_root(this) RESULT(root)
     CLASS(eis_deck_definition), INTENT(IN) :: this
     CLASS(eis_deck_block_definition), POINTER :: root
@@ -265,6 +282,19 @@ MODULE eis_deck_definition_mod
     block => this%info%get_block(id)
 
   END FUNCTION dd_get_block
+
+
+
+  SUBROUTINE dd_get_block_name(this, id, name)
+    CLASS(eis_deck_definition), INTENT(IN) :: this
+    INTEGER, INTENT(IN) :: id
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    CLASS(eis_deck_block_definition), POINTER :: block
+
+    block => this%info%get_block(id)
+    IF (ASSOCIATED(block)) ALLOCATE(name, SOURCE = block%name)
+
+  END SUBROUTINE dd_get_block_name
 
 
 
@@ -421,22 +451,22 @@ MODULE eis_deck_definition_mod
     PROCEDURE(key_stack_callback_c), OPTIONAL :: c_any_key_stack
     PROCEDURE(block_remap_callback_c), OPTIONAL :: c_block_remapper
 
-    INTEGER :: dbd_add_block
-    TYPE(eis_deck_block_definition), POINTER :: new
+    TYPE(eis_deck_block_definition), POINTER :: dbd_add_block
     CLASS(*), POINTER :: ptr
+    INTEGER :: id
 
-    ALLOCATE(new)
-    dbd_add_block = &
-        new%init(this%info, block_name, this%depth + 1, this%id, init_block, &
-        start_block, end_block, final_block, any_key_text, any_key_value, &
-        any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
-        c_start_block, c_end_block, c_final_block, c_any_key_text, &
-        c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-        c_block_remapper)
+    ALLOCATE(dbd_add_block)
+    id = &
+        dbd_add_block%init(this%info, block_name, this%depth + 1, this%id, &
+        init_block, start_block, end_block, final_block, any_key_text, &
+        any_key_value, any_key_numeric_value, any_key_stack, block_remapper, &
+        c_init_block, c_start_block, c_end_block, c_final_block, &
+        c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
+        c_any_key_stack, c_block_remapper)
 
-    ptr => new
+    ptr => dbd_add_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
-    CALL this%info%add_block(new)
+    CALL this%info%add_block(dbd_add_block)
     
   END FUNCTION dbd_add_block
 
@@ -712,7 +742,7 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dbd_finalise_block(this, errcode, host_state)
-    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
@@ -750,9 +780,21 @@ MODULE eis_deck_definition_mod
       errcode = IOR(errcode, this_err)
     END IF
 
+    this%uninit = .TRUE.
+
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
 
   END SUBROUTINE dbd_finalise_block
+
+
+
+  FUNCTION dbd_get_id(this)
+    CLASS(eis_deck_block_definition), INTENT(IN) :: this
+    INTEGER :: dbd_get_id
+
+    dbd_get_id = this%id
+
+  END FUNCTION dbd_get_id
 
 
 
@@ -779,7 +821,8 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dbd_call_key_text(this, key_text, parents, errcode, host_state, &
-      filename, line_number, value_function)
+      filename, line_number, white_space_length, value_function, parser, &
+      interop_parser_id)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
@@ -787,7 +830,11 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
     INTEGER, INTENT(IN), OPTIONAL :: line_number
+    INTEGER, INTENT(IN), OPTIONAL :: white_space_length
     PROCEDURE(parser_result_function), OPTIONAL :: value_function
+    TYPE(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
+    INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
+
     CLASS(*), POINTER :: ptr
     CLASS(deck_key_definition), POINTER :: dkd
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
@@ -802,6 +849,26 @@ MODULE eis_deck_definition_mod
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: value_array
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_key_text, c_key, &
         c_value
+    TYPE(eis_parser), POINTER :: ps
+    INTEGER :: interop_parser, wsl
+
+    IF (PRESENT(parser)) THEN
+      ps => parser
+    ELSE
+      ps => this%info%parser
+    END IF
+
+    IF (PRESENT(interop_parser_id)) THEN
+      interop_parser = interop_parser_id
+    ELSE
+      interop_parser = this%info%interop_parser
+    END IF
+
+    IF (PRESENT(white_space_length)) THEN
+      wsl = white_space_length
+    ELSE
+      wsl = 0
+    END IF
 
     ptr => NULL()
     dkd => NULL()
@@ -919,19 +986,21 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%key_numeric_value_fn) .AND. &
-          ASSOCIATED(this%info%parser) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_value &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = this%info%parser%evaluate(value, value_array, this_err)
+          ct = ps%evaluate(value, value_array, this_err, &
+              filename = filename, line_number = line_number, &
+              char_offset = sindex - 1 + wsl)
         ELSE
-          CALL this%info%parser%set_result_function(value_function, stack, &
-            this_err)
-          ct = this%info%parser%evaluate(stack, value_array, this_err)
+          CALL ps%set_result_function(value_function, stack, &
+              this_err)
+          ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
-          CALL dkd%key_numeric_value_fn(key, value_array, this%info%parser, &
+          CALL dkd%key_numeric_value_fn(key, value_array, ps, &
               parents, parent_kind, this_stat, this_bitmask, this_err)
           IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         END IF
@@ -942,21 +1011,23 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%c_key_numeric_value_fn) .AND. &
-          ASSOCIATED(this%info%parser) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_value &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = this%info%parser%evaluate(value, value_array, this_err)
+          ct = ps%evaluate(value, value_array, this_err, &
+              filename = filename, line_number = line_number, &
+              char_offset = sindex - 1 + wsl)
         ELSE
-          CALL this%info%parser%set_result_function(value_function, stack, &
+          CALL ps%set_result_function(value_function, stack, &
               this_err)
-          ct = this%info%parser%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
               SIZE(value_array, KIND=C_INT), value_array, &
-              this%info%interop_parser, SIZE(parents, KIND=C_INT), &
+              interop_parser, SIZE(parents, KIND=C_INT), &
               INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
               this_bitmask, this_err)
           IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
@@ -970,15 +1041,15 @@ MODULE eis_deck_definition_mod
       IF ((ASSOCIATED(dkd%key_stack_fn) .OR. ASSOCIATED(dkd%c_key_stack_fn)) &
           .AND. is_key_value .AND. .NOT. handled) THEN
         IF (.NOT. PRESENT(value_function)) THEN
-          CALL this%info%parser%tokenize(value, stack, stack_err)
+          CALL ps%tokenize(value, stack, stack_err)
         ELSE
-          CALL this%info%parser%set_result_function(value_function, stack, &
+          CALL ps%set_result_function(value_function, stack, &
               stack_err)
         END IF
         IF (ASSOCIATED(dkd%key_stack_fn) .AND. stack_err == eis_err_none) THEN
           this_err = eis_err_none
           this_stat = base_stat
-          CALL dkd%key_stack_fn(key, stack, this%info%parser, parents, &
+          CALL dkd%key_stack_fn(key, stack, ps, parents, &
               parent_kind, this_stat, this_bitmask, this_err)
           !If the block is flagged handled then you care about the error code
           !value
@@ -992,11 +1063,11 @@ MODULE eis_deck_definition_mod
             .AND. .NOT. handled) THEN
           stack_ptr => stack
           stack_id = eis_add_interop_stack(stack_ptr, &
-              this%info%interop_parser, holds = .FALSE.)
+              interop_parser, holds = .FALSE.)
           this_err = eis_err_none
           this_stat = base_stat
           CALL dkd%c_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &
-              this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+              interop_parser, SIZE(parents, KIND = C_INT), &
               INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
               this_bitmask, this_err)
           IF (IAND(this_stat, eis_status_retain_stack) == 0) &
@@ -1061,19 +1132,21 @@ MODULE eis_deck_definition_mod
       handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
     END IF
     IF (ASSOCIATED(this%any_key_numeric_value_fn) .AND. &
-        ASSOCIATED(this%info%parser) .AND. is_key_value &
+        ASSOCIATED(ps) .AND. is_key_value &
         .AND. .NOT. handled) THEN
       this_err = eis_err_none
       this_stat = base_stat
       IF (.NOT. PRESENT(value_function)) THEN
-        ct = this%info%parser%evaluate(value, value_array, this_err)
+        ct = ps%evaluate(value, value_array, this_err, &
+            filename = filename, line_number = line_number, &
+            char_offset = sindex - 1 + wsl)
       ELSE
-        CALL this%info%parser%set_result_function(value_function, stack, &
+        CALL ps%set_result_function(value_function, stack, &
             this_err)
-        ct = this%info%parser%evaluate(stack, value_array, this_err)
+        ct = ps%evaluate(stack, value_array, this_err)
       END IF
       IF (this_err == eis_err_none) THEN
-        CALL this%any_key_numeric_value_fn(key, value_array, this%info%parser, &
+        CALL this%any_key_numeric_value_fn(key, value_array, ps, &
             parents, parent_kind, this_stat, this_bitmask, this_err)
       END IF
       IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
@@ -1084,21 +1157,23 @@ MODULE eis_deck_definition_mod
       handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
     END IF
     IF (ASSOCIATED(this%c_any_key_numeric_value_fn) .AND. &
-        ASSOCIATED(this%info%parser) .AND. is_key_value &
+        ASSOCIATED(ps) .AND. is_key_value &
         .AND. .NOT. handled) THEN
       this_err = eis_err_none
       this_stat = base_stat
       IF (.NOT. PRESENT(value_function)) THEN
-        ct = this%info%parser%evaluate(value, value_array, this_err)
+        ct = ps%evaluate(value, value_array, this_err, &
+            filename = filename, line_number = line_number, &
+            char_offset = sindex - 1 + wsl)
       ELSE
-        CALL this%info%parser%set_result_function(value_function, stack, &
+        CALL ps%set_result_function(value_function, stack, &
             this_err)
-        ct = this%info%parser%evaluate(stack, value_array, this_err)
+        ct = ps%evaluate(stack, value_array, this_err)
       END IF
       IF (this_err == eis_err_none) THEN
         CALL this%c_any_key_numeric_value_fn(C_LOC(c_key), &
             SIZE(value_array, KIND = C_INT), value_array, &
-            this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+            interop_parser, SIZE(parents, KIND = C_INT), &
             INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
             this_bitmask, this_err)
       END IF
@@ -1111,18 +1186,18 @@ MODULE eis_deck_definition_mod
     END IF
     IF ((ASSOCIATED(this%any_key_stack_fn) &
         .OR. ASSOCIATED(this%c_any_key_stack_fn)) &
-        .AND. ASSOCIATED(this%info%parser) &
+        .AND. ASSOCIATED(ps) &
         .AND. is_key_value .AND. .NOT. handled) THEN
       this_err = eis_err_none
       this_stat = base_stat
       IF (.NOT. PRESENT(value_function)) THEN
-        CALL this%info%parser%tokenize(value, stack, stack_err)
+        CALL ps%tokenize(value, stack, stack_err)
       ELSE
-        CALL this%info%parser%set_result_function(value_function, stack, &
+        CALL ps%set_result_function(value_function, stack, &
             stack_err)
       END IF
       IF (stack_err == eis_err_none) THEN
-        CALL this%any_key_stack_fn(key, stack, this%info%parser, parents, &
+        CALL this%any_key_stack_fn(key, stack, ps, parents, &
             parent_kind, this_stat, this_bitmask, this_err)
         IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
           errcode = IOR(errcode, this_err)
@@ -1138,11 +1213,11 @@ MODULE eis_deck_definition_mod
           .AND. .NOT. handled) THEN
         stack_ptr => stack
         stack_id = eis_add_interop_stack(stack_ptr, &
-            this%info%interop_parser, holds = .FALSE.)
+            interop_parser, holds = .FALSE.)
         this_err = eis_err_none
         this_stat = base_stat
         CALL this%c_any_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &
-            this%info%interop_parser, SIZE(parents, KIND = C_INT), &
+            interop_parser, SIZE(parents, KIND = C_INT), &
             INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
             this_bitmask, this_err)
         IF (IAND(this_stat, eis_status_retain_stack) == 0) &
@@ -1158,7 +1233,11 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (.NOT. handled) THEN
-      errcode = IOR(errcode, eis_err_unknown_key)
+      IF (ASSOCIATED(dkd)) THEN
+        errcode = IOR(errcode, eis_err_bad_value)
+      ELSE
+        errcode = IOR(errcode, eis_err_unknown_key)
+      END IF
     END IF
 
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)

@@ -80,7 +80,12 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_simplify_tree(root, params, errcode, err_handler)
+      IF (ALLOCATED(stack%full_line)) THEN
+        CALL eis_simplify_tree(root, params, errcode, err_handler, &
+            stack%filename, stack%line_number, stack%full_line)
+      ELSE
+        CALL eis_simplify_tree(root, params, errcode, err_handler)
+      END IF
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
         RETURN
@@ -95,6 +100,8 @@ MODULE eis_tree_mod
     simplified%cap_bits = stack%cap_bits
     simplified%has_deferred = stack%has_deferred
     simplified%has_emplaced = stack%has_emplaced
+    IF (ALLOCATED(stack%full_line)) ALLOCATE(simplified%full_line, &
+        SOURCE = stack%full_line)
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -152,11 +159,15 @@ MODULE eis_tree_mod
   !> @param[inout] errcode - Error code returned by simplify operation
   !> @param[inout] err_handler - Error handler object. Optional, default no
   !> error reporting
-  RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode, err_handler)
+  RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode, err_handler, &
+      filename, line_number, full_line)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     INTEGER :: inode
     LOGICAL :: can_simplify
     REAL(eis_num) :: res
@@ -171,7 +182,8 @@ MODULE eis_tree_mod
       can_simplify = .TRUE.
        
       DO inode = SIZE(tree%nodes), 1, -1
-        CALL eis_simplify_tree(tree%nodes(inode), params, errcode, err_handler)
+        CALL eis_simplify_tree(tree%nodes(inode), params, errcode, &
+            err_handler, filename, line_number, full_line)
         IF (tree%nodes(inode)%value%ptype /= eis_pt_constant) THEN
           !This can only happen if one of the nodes downstream returned a
           !no simplify status
@@ -208,7 +220,10 @@ MODULE eis_tree_mod
           IF (PRESENT(err_handler)) THEN
             IF (ALLOCATED(tree%co_value%text)) THEN
               CALL err_handler%add_error(eis_err_simplifier, err, &
-                  tree%co_value%text, tree%co_value%charindex)
+                  tree%co_value%text, tree%co_value%charindex, &
+                  filename = filename, line_number = line_number, &
+                  full_line = full_line, full_line_pos = &
+                  tree%co_value%full_line_pos)
             ELSE
               CALL err_handler%add_error(eis_err_simplifier, err)
             END IF

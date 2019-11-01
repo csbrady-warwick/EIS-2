@@ -1,12 +1,16 @@
 # The EPOCH input system (EIS)
 
+## Funding and support
+
+This work was funded under the embedded CSE programme of the ARCHER UK National Supercomputing Service (http://www.archer.ac.uk).
+
 ## Overview
 
 EIS is intended to be an easy to use but powerful and performant system to allow control of Fortran and C codes from external user specified files using standard mathematical expressions. It is split into three sections, two of which are currently released.
 
 1) eis\_common (common subdirectory) - The common core of the EIS library, used by the other parts
-2) eis\_parser (parser subdirectory) - The maths expression parser - currently released
-3) eis\_deck - The input deck parser - not currently released
+2) eis\_parser (parser subdirectory) - The maths expression parser
+3) eis\_deck (deck subdirectory) - The input deck parser
 
 ## Terms
 
@@ -67,4 +71,9 @@ Some parts of EIS are written using the Fortran 2003 Fortran/C interoperability 
 Details of the modules in EIS are provided in the guide on using the library, but to compile codes using EIS you must add the directories `common/include`, `parser/include` and `deck/include` in your compilation instructions
 
 ## Linking against EIS
+
 By default EIS builds to one static library per section, with each section depending on the sections before it. So to link against eis\_deck you have to compile using `gfortran {host_code_files} libeis_deck.a libeis_parser.a libeis_common.a`.
+
+## Optional parameters to methods
+
+Many of the methods of the objects in EIS have optional parameters. No order is given or required for these optional parameters in the definition of the methods and optional parameters to EIS should always be given using keyword calling
