@@ -743,6 +743,8 @@ CONTAINS
           CALL append_stack(output, temp)
         END IF
       END IF
+      output%has_emplaced = output%has_emplaced .OR. temp%has_emplaced
+      output%has_deferred = output%has_deferred .OR. temp%has_deferred
     END IF
 
   END SUBROUTINE eir_copy_in

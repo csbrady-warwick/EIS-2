@@ -89,7 +89,6 @@ MODULE eis_parser_mod
     LOGICAL :: should_simplify = .TRUE.
     LOGICAL :: should_minify = .FALSE.
     TYPE(eis_stack) :: stack, brackets
-    TYPE(eis_stack), POINTER :: output
     INTEGER :: physics_units = eis_physics_none
     CONTAINS
     PROCEDURE :: init => eip_init
@@ -883,7 +882,6 @@ CONTAINS
 
     CALL initialise_stack(this%stack)
     CALL initialise_stack(this%brackets)
-    this%output => output
 
     ALLOCATE(CHARACTER(LEN=LEN(expression))::current)
     IF (ALLOCATED(output%full_line)) DEALLOCATE(output%full_line)
@@ -916,7 +914,7 @@ CONTAINS
         current_pointer = current_pointer+1
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-            cap_bits, charindex + output%char_offset, charindex, err, &
+            cap_bits, charindex + output%char_offset, charindex, output, err, &
             filename, line_number, expression)
         charindex = i
         IF (err /= eis_err_none) THEN
@@ -938,8 +936,8 @@ CONTAINS
     END DO
 
     CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-        cap_bits, charindex + output%char_offset,  charindex, err, filename, &
-        line_number, expression)
+        cap_bits, charindex + output%char_offset,  charindex, output, err, &
+        filename, line_number, expression)
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
@@ -955,7 +953,7 @@ CONTAINS
             this%stack%entries(i)%actual_params = 0
           END IF
         END IF
-        CALL pop_to_stack(this%stack, this%output)
+        CALL pop_to_stack(this%stack, output)
       END DO
     ELSE
       err = IOR(err, eis_err_parser)
@@ -967,9 +965,9 @@ CONTAINS
 
     IF (err /= eis_err_none) RETURN
 
-    IF (should_simplify) CALL this%simplify(this%output, err, &
+    IF (should_simplify) CALL this%simplify(output, err, &
         host_params = C_NULL_PTR)
-    IF (should_minify) CALL this%minify(this%output, err)
+    IF (should_minify) CALL this%minify(output, err)
 
   END SUBROUTINE eip_tokenize
 
@@ -1151,7 +1149,7 @@ CONTAINS
         END IF
         IF (stack%entries(ipt)%ptype == eis_pt_stored_variable) THEN
           CALL this%registry%copy_in_stored(stack%entries(ipt)%value, &
-              this%output, this%err_handler, ipt)
+              stack, this%err_handler, ipt)
         END IF
         DEALLOCATE(str)
       END IF
@@ -1957,12 +1955,13 @@ CONTAINS
   !> @param[inout] cap_bits
   !> @param[in] charindex
   !> @param[in] trim_charindex
+  !> @param[inout] output
   !> @param[inout] err
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] full_line
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
-      cap_bits, charindex, trim_charindex, err, filename, line_number, &
+      cap_bits, charindex, trim_charindex, output, err, filename, line_number, &
       full_line)
 
     CLASS(eis_parser) :: this
@@ -1980,6 +1979,8 @@ CONTAINS
     !> Character index for current in the trimmed string
     !> used for error reporting
     INTEGER, INTENT(IN) :: trim_charindex
+    !> Output stack
+    CLASS(eis_stack), INTENT(INOUT) :: output
     !> Error code from parsing this element
     INTEGER(eis_error), INTENT(INOUT) :: err
     !> Filename containing error. Optional, default do not use
@@ -2020,7 +2021,7 @@ CONTAINS
           == 0) THEN
         !Functions that take no parameters
         this%stack%entries(this%stack%stack_point)%actual_params = 0
-        CALL pop_to_stack(this%stack, this%output)
+        CALL pop_to_stack(this%stack, output)
       ELSE
         err = IOR(err, eis_err_malformed)
         CALL this%err_handler%add_error(eis_err_parser, err, &
@@ -2085,16 +2086,16 @@ CONTAINS
       END IF
     END IF
 
-    this%output%has_deferred = this%output%has_deferred .OR. icoblock%defer
+    output%has_deferred = output%has_deferred .OR. icoblock%defer
 
     IF (iblock%ptype == eis_pt_variable &
         .OR. iblock%ptype == eis_pt_constant) THEN
-      CALL push_to_stack(this%output, iblock, icoblock)
+      CALL push_to_stack(output, iblock, icoblock)
 
     ELSE IF (iblock%ptype == eis_pt_stored_variable) THEN
       IF (.NOT. icoblock%defer) THEN
-        CALL this%registry%copy_in_stored(iblock%value, this%output, &
-        this%err_handler)
+        CALL this%registry%copy_in_stored(iblock%value, output, &
+            this%err_handler)
       ELSE
         CALL push_to_stack(this%stack, iblock, icoblock)
       END IF
@@ -2150,13 +2151,13 @@ CONTAINS
                         "{unknown}", charindex)
                   END IF
                 END IF
-                CALL pop_to_stack(this%stack, this%output)
+                CALL pop_to_stack(this%stack, output)
                 CALL pop_to_null(this%brackets)
               END IF
             END IF
             EXIT
           ELSE
-            CALL pop_to_stack(this%stack, this%output, stack_empty)
+            CALL pop_to_stack(this%stack, output, stack_empty)
             IF (stack_empty) THEN
               err = IOR(err, eis_err_extra_bracket)
               CALL this%err_handler%add_error(eis_err_parser, err, &
@@ -2172,7 +2173,7 @@ CONTAINS
     ELSE IF (iblock%ptype == eis_pt_function .OR. iblock%ptype &
         == eis_pt_emplaced_function) THEN
       IF (iblock%ptype == eis_pt_emplaced_function) THEN
-          this%output%has_emplaced = .TRUE.
+          output%has_emplaced = .TRUE.
       END IF
       CALL push_to_stack(this%stack, iblock, icoblock)
       iblock%actual_params = 1
@@ -2186,7 +2187,7 @@ CONTAINS
         ELSE
           CALL stack_snoop(this%stack, block2, 0)
           IF (block2%ptype /= eis_pt_parenthesis) THEN
-            CALL pop_to_stack(this%stack, this%output)
+            CALL pop_to_stack(this%stack, output)
           ELSE
             IF (block2%value /= eis_paren_left_bracket) THEN
               err = IOR(err, eis_err_malformed)
@@ -2225,7 +2226,7 @@ CONTAINS
             ! Operator is full associative or left associative
             IF (icoblock%precedence &
                 <= coblock2%precedence) THEN
-              CALL pop_to_stack(this%stack, this%output)
+              CALL pop_to_stack(this%stack, output)
               CYCLE
             ELSE
               CALL push_to_stack(this%stack, iblock, icoblock)
@@ -2234,7 +2235,7 @@ CONTAINS
           ELSE
             IF (icoblock%precedence &
                 < coblock2%precedence) THEN
-              CALL pop_to_stack(this%stack, this%output)
+              CALL pop_to_stack(this%stack, output)
               CYCLE
             ELSE
               CALL push_to_stack(this%stack, iblock, icoblock)

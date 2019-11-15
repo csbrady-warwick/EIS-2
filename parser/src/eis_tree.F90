@@ -169,7 +169,7 @@ MODULE eis_tree_mod
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     INTEGER :: inode
-    LOGICAL :: can_simplify
+    LOGICAL :: can_simplify, has_nodes
     REAL(eis_num) :: res
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err
@@ -178,7 +178,10 @@ MODULE eis_tree_mod
 
     status = eis_status_none
 
-    IF (ASSOCIATED(tree%nodes)) THEN
+    has_nodes = ASSOCIATED(tree%nodes)
+    IF (has_nodes) has_nodes = has_nodes .AND. (SIZE(tree%nodes) > 0)
+
+    IF (has_nodes) THEN
       can_simplify = .TRUE.
        
       DO inode = SIZE(tree%nodes), 1, -1
@@ -192,7 +195,7 @@ MODULE eis_tree_mod
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify &
             .AND. .NOT. tree%nodes(inode)%co_value%defer &
             .AND. .NOT. (tree%nodes(inode)%value%ptype &
-            /= eis_pt_emplaced_function)
+            == eis_pt_emplaced_function)
       END DO
 
       IF (can_simplify) THEN
