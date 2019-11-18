@@ -195,7 +195,7 @@ MODULE eis_tree_mod
         can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify &
             .AND. .NOT. tree%nodes(inode)%co_value%defer &
             .AND. .NOT. (tree%nodes(inode)%value%ptype &
-            == eis_pt_emplaced_function)
+            /= eis_pt_emplaced_function)
       END DO
 
       IF (can_simplify) THEN
