@@ -109,7 +109,7 @@ MODULE eis_parser_header
     INTEGER :: line_number = 0
     INTEGER :: char_offset = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
-    INTEGER :: stack_point, stack_size
+    INTEGER :: stack_point = 0, stack_size = 0
     LOGICAL :: init = .FALSE.
     LOGICAL :: sanity_checked = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.

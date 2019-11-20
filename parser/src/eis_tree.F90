@@ -66,6 +66,7 @@ MODULE eis_tree_mod
     TYPE(eis_stack) :: intermediate
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
+    LOGICAL :: dummy
 
     IF (.NOT. stack%init) RETURN
     IF (.NOT. PRESENT(stack_out)) THEN
@@ -80,11 +81,12 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
+      errcode = eis_err_none
       IF (ALLOCATED(stack%full_line)) THEN
-        CALL eis_simplify_tree(root, params, errcode, err_handler, &
+        dummy = eis_simplify_tree(root, params, errcode, err_handler, &
             stack%filename, stack%line_number, stack%full_line)
       ELSE
-        CALL eis_simplify_tree(root, params, errcode, err_handler)
+        dummy = eis_simplify_tree(root, params, errcode, err_handler)
       END IF
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
@@ -159,8 +161,10 @@ MODULE eis_tree_mod
   !> @param[inout] errcode - Error code returned by simplify operation
   !> @param[inout] err_handler - Error handler object. Optional, default no
   !> error reporting
-  RECURSIVE SUBROUTINE eis_simplify_tree(tree, params, errcode, err_handler, &
-      filename, line_number, full_line)
+  !> @result can_simplify - Whether simplification is possible when this node
+  !> is considered
+  RECURSIVE FUNCTION eis_simplify_tree(tree, params, errcode, err_handler, &
+      filename, line_number, full_line) RESULT(can_simplify)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -169,7 +173,7 @@ MODULE eis_tree_mod
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     INTEGER :: inode
-    LOGICAL :: can_simplify, has_nodes
+    LOGICAL :: can_simplify, has_nodes, simp1
     REAL(eis_num) :: res
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err
@@ -180,64 +184,57 @@ MODULE eis_tree_mod
 
     has_nodes = ASSOCIATED(tree%nodes)
     IF (has_nodes) has_nodes = has_nodes .AND. (SIZE(tree%nodes) > 0)
+    can_simplify = tree%value%can_simplify
 
     IF (has_nodes) THEN
-      can_simplify = .TRUE.
-       
       DO inode = SIZE(tree%nodes), 1, -1
-        CALL eis_simplify_tree(tree%nodes(inode), params, errcode, &
+        simp1 = eis_simplify_tree(tree%nodes(inode), params, errcode, &
             err_handler, filename, line_number, full_line)
-        IF (tree%nodes(inode)%value%ptype /= eis_pt_constant) THEN
-          !This can only happen if one of the nodes downstream returned a
-          !no simplify status
-          RETURN
-        END IF
-        can_simplify = can_simplify .AND. tree%nodes(inode)%value%can_simplify &
-            .AND. .NOT. tree%nodes(inode)%co_value%defer &
-            .AND. .NOT. (tree%nodes(inode)%value%ptype &
-            /= eis_pt_emplaced_function)
+        can_simplify = can_simplify .AND. simp1
       END DO
-
       IF (can_simplify) THEN
         DO inode = SIZE(tree%nodes), 1, -1
           CALL ees_push(eval, tree%nodes(inode)%value%numerical_data, err)
-        END DO
-        err = eis_err_none
-        CALL ees_eval_element(eval, tree%value, params, status, err)
-        CALL ees_pop_scalar(eval, res, err)
-        IF (err == eis_err_none) THEN
-          IF (IAND(status, eis_status_no_simplify) == 0) THEN
-            tree%value%ptype = eis_pt_constant
-            tree%value%numerical_data = res
-            IF (ALLOCATED(tree%co_value%text)) THEN
-              DEALLOCATE(tree%co_value%text)
-              WRITE(rstring,'(G22.17)') res
-              ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
-            END IF
-            DEALLOCATE(tree%nodes)
-          ELSE
-            RETURN
-          END IF
-        ELSE
-          errcode = IOR(errcode, err)
-          IF (PRESENT(err_handler)) THEN
-            IF (ALLOCATED(tree%co_value%text)) THEN
-              CALL err_handler%add_error(eis_err_simplifier, err, &
-                  tree%co_value%text, tree%co_value%charindex, &
-                  filename = filename, line_number = line_number, &
-                  full_line = full_line, full_line_pos = &
-                  tree%co_value%full_line_pos)
-            ELSE
-              CALL err_handler%add_error(eis_err_simplifier, err)
-            END IF
-          END IF
-        END IF
-      ELSE
-        tree%value%can_simplify = .FALSE.
+       END DO
       END IF
     END IF
 
-  END SUBROUTINE eis_simplify_tree
+    IF (can_simplify .AND. tree%value%ptype /= eis_pt_constant) THEN
+      err = eis_err_none
+      CALL ees_eval_element(eval, tree%value, params, status, err)
+      CALL ees_pop_scalar(eval, res, err)
+      IF (err == eis_err_none) THEN
+        can_simplify = can_simplify &
+            .AND. IAND(status, eis_status_no_simplify) == 0
+        IF (IAND(status, eis_status_no_simplify) == 0) THEN
+          tree%value%ptype = eis_pt_constant
+          tree%value%numerical_data = res
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            WRITE(rstring,'(G22.17)') res
+            ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+          END IF
+          IF (has_nodes) DEALLOCATE(tree%nodes)
+        ELSE
+          RETURN
+        END IF
+      ELSE
+        errcode = IOR(errcode, err)
+        IF (PRESENT(err_handler)) THEN
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            CALL err_handler%add_error(eis_err_simplifier, err, &
+                tree%co_value%text, tree%co_value%charindex, &
+                filename = filename, line_number = line_number, &
+                full_line = full_line, full_line_pos = &
+                tree%co_value%full_line_pos)
+          ELSE
+            CALL err_handler%add_error(eis_err_simplifier, err)
+          END IF
+        END IF
+      END IF
+    END IF
+
+  END FUNCTION eis_simplify_tree
 
 
 

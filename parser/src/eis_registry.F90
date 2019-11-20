@@ -500,17 +500,25 @@ CONTAINS
     INTEGER(eis_i4) :: index
 
     gptr => this%stored_items%get(name)
-    temp_ptr => NULL()
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE(co => gptr)
         CLASS IS (eis_function_entry)
           temp_ptr => co
+        CLASS DEFAULT
+          temp_ptr => NULL()
       END SELECT
+    ELSE
+      temp_ptr => NULL()
     END IF
 
-    IF (ASSOCIATED(temp_ptr) .AND. temp_ptr%index_type == eis_reg_index_stack) &
-        THEN
-      index = this%stack_variable_registry%store(stack, index = temp_ptr%value)
+    IF (ASSOCIATED(temp_ptr)) THEN
+      IF (temp_ptr%index_type == eis_reg_index_stack) THEN
+        index = this%stack_variable_registry%store(stack, &
+            index = temp_ptr%value)
+      ELSE
+        temp_ptr => temp
+        index = this%stack_variable_registry%store(stack)
+      END IF
     ELSE
       temp_ptr => temp
       index = this%stack_variable_registry%store(stack)
