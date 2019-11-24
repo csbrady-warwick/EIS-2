@@ -135,6 +135,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: flush_errors => eip_flush_errors
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
+    PROCEDURE, PUBLIC :: get_token_info => eip_get_token_info
 
     FINAL :: eip_destructor
   END TYPE eis_parser
