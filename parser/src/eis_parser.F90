@@ -663,6 +663,37 @@ CONTAINS
   END FUNCTION as_parenthesis
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to load a given block with information from the registry
+  !> @param[in] this
+  !> @param[in] token
+  !> @param[out] token_type
+  !> @param[out] cap_bits
+  !> @result exists
+  FUNCTION eip_get_token_info(this, token, token_type, cap_bits) RESULT(exists)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Name of the token to get information about
+    CHARACTER(LEN=*), INTENT(IN) :: token
+    !> Type of the found token
+    INTEGER, INTENT(OUT), OPTIONAL :: token_type
+    !> Cap bits of the found token
+    INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: cap_bits
+    !> Does the token exist in the token list
+    LOGICAL :: exists
+    TYPE(eis_stack_element) :: iblock
+    TYPE(eis_stack_co_element):: icoblock
+    INTEGER(eis_bitmask) :: icaps
+
+    CALL this%load_block(token, iblock, icoblock, icaps)
+
+    exists = iblock%ptype /= eis_pt_bad
+    IF (PRESENT(token_type)) token_type = iblock%ptype
+    IF (PRESENT(cap_bits)) cap_bits = icaps
+
+  END FUNCTION eip_get_token_info
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
