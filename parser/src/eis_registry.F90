@@ -661,10 +661,9 @@ CONTAINS
   !> @param[inout] block_in
   !> @param[inout] coblock_in
   !> @param[in] unary_ops
-  !> @param[out] cap_bits
   !> @param[inout] err_handler
   SUBROUTINE eir_fill_block(this, name, block_in, coblock_in, unary_ops, &
-      cap_bits, err_handler)
+      err_handler)
 
     CLASS(eis_registry) :: this
     !> Name extracted from the parsed string. This will be looked up
@@ -675,15 +674,12 @@ CONTAINS
     TYPE(eis_stack_co_element), INTENT(INOUT) :: coblock_in
     !> Is it possible that "name" could describe a unary operator
     LOGICAL, INTENT(IN) :: unary_ops
-    !> Capability bits associated with the name
-    INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     CLASS(*), POINTER :: gptr
     TYPE(eis_function_entry), POINTER :: temp
 
     temp => NULL()
     gptr => NULL()
-    cap_bits = 0_eis_bitmask
     IF (unary_ops) THEN
       gptr => this%uop_table%get(name)
     END IF
@@ -698,6 +694,7 @@ CONTAINS
 
     IF (ASSOCIATED(temp)) THEN
       block_in%ptype = temp%ptype
+      coblock_in%cap_bits = temp%cap_bits
       coblock_in%associativity = temp%associativity
       coblock_in%precedence = temp%precedence
       coblock_in%expected_params = temp%expected_parameters
@@ -707,7 +704,6 @@ CONTAINS
       block_in%eval_fn => temp%fn_ptr
       block_in%numerical_data = temp%numerical_data
       block_in%value = temp%value
-      cap_bits = temp%cap_bits
     ELSE
       block_in%ptype = eis_pt_bad
     END IF

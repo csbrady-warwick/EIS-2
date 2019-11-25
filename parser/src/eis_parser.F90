@@ -687,11 +687,11 @@ CONTAINS
     TYPE(eis_stack_co_element):: icoblock
     INTEGER(eis_bitmask) :: icaps
 
-    CALL this%load_block(token, iblock, icoblock, icaps)
+    CALL this%load_block(token, iblock, icoblock)
 
     exists = iblock%ptype /= eis_pt_bad
     IF (PRESENT(token_type)) token_type = iblock%ptype
-    IF (PRESENT(cap_bits)) cap_bits = icaps
+    IF (PRESENT(cap_bits)) cap_bits = icoblock%cap_bits
 
   END FUNCTION eip_get_token_info
 
@@ -703,8 +703,7 @@ CONTAINS
   !> @param[in] name
   !> @param[out] iblock
   !> @param[out] icoblock
-  !> @param[out] cap_bits
-  SUBROUTINE eip_load_block(this, name, iblock, icoblock, cap_bits)
+  SUBROUTINE eip_load_block(this, name, iblock, icoblock)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to look up in registry
@@ -712,8 +711,6 @@ CONTAINS
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
     !> Coblock to fill with registry information
     TYPE(eis_stack_co_element), INTENT(OUT) :: icoblock
-    !> Capability bits for the block retreived from the registry
-    INTEGER(eis_bitmask), INTENT(OUT) :: cap_bits
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
     LOGICAL :: can_be_unary
@@ -724,8 +721,7 @@ CONTAINS
     iblock%numerical_data = 0.0_eis_num
     IF (ALLOCATED(icoblock%text)) DEALLOCATE(icoblock%text)
     ALLOCATE(icoblock%text, SOURCE = TRIM(name))
-    work = 0
-    cap_bits = 0
+    work = 0_eis_i8
 
     IF (LEN(TRIM(name)) == 0) THEN
       iblock%ptype = eis_pt_null
@@ -760,12 +756,11 @@ CONTAINS
           .OR. (this%last_block_type == eis_pt_parenthesis &
           .AND. this%last_block_value == eis_paren_right_bracket))
 
-    CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary, &
-        cap_bits)
+    CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary)
     IF (iblock%ptype /= eis_pt_bad) RETURN
 
-    CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary, &
-        cap_bits)
+    CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
+
     IF (iblock%ptype /= eis_pt_bad) RETURN
 
     value = parse_string_as_real(name, work)
@@ -1171,7 +1166,7 @@ CONTAINS
         stored_params = stack%entries(ipt)%actual_params
         stored_charpos = stack%co_entries(ipt)%charindex
         CALL this%load_block(str, stack%entries(ipt), &
-            stack%co_entries(ipt), cap_bits)
+            stack%co_entries(ipt))
         stack%entries(ipt)%actual_params = stored_params
         stack%co_entries(ipt)%charindex = stored_charpos
         IF (stack%co_entries(ipt)%defer) THEN
@@ -1184,10 +1179,9 @@ CONTAINS
               stack, this%err_handler, ipt)
         END IF
         DEALLOCATE(str)
+        stack%cap_bits = IOR(stack%cap_bits, stack%co_entries(ipt)%cap_bits)
       END IF
     END DO
-
-    stack%cap_bits = IOR(stack%cap_bits, cap_bits)
 
     IF (this%should_minify) CALL this%minify(stack, errcode)
     IF (this%should_simplify) CALL this%simplify(stack, errcode, &
@@ -2030,7 +2024,8 @@ CONTAINS
     IF (ICHAR(current(1:1)) == 0) RETURN
 
     ! Populate the block
-    CALL this%load_block(current, iblock, icoblock, cap_bits)
+    CALL this%load_block(current, iblock, icoblock)
+    cap_bits = icoblock%cap_bits
     icoblock%charindex = charindex
     icoblock%full_line_pos = trim_charindex
     IF (iblock%ptype == eis_pt_bad) THEN
