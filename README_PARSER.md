@@ -570,9 +570,10 @@ Stack variables allow replacing a single name with an existing stack, but someti
 
 Emplaced functions work much like normal functions but are defined by a different getter function, normally termed an _emplacement function_.
 ```fortran
-    SUBROUTINE parser_emplace_fn(nparams, params, host_params, stack_out, &
-        status_code, errcode)
+    SUBROUTINE parser_emplace_fn(orig_string, nparams, params, host_params, &
+        stack_out, status_code, errcode)
       IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
+      CHARACTER(LEN=*), INTENT(IN) :: orig_string
       INTEGER, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: host_params
@@ -581,9 +582,11 @@ Emplaced functions work much like normal functions but are defined by a differen
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_emplace_fn
 ```
-This getter is very similar to the one for normal functions but now no longer returns a value and has an extra parameter `stack_out`. As usual, you can access the parameters to the function using the `params` array and you can access the host code parameters through the `host_params`. You should use the information from these two sources to select a stack variable and set the `stack_out` parameter equal to that stack. If the parameters are invalid then error codes should be returned in the same way as for a normal function.
+This getter is very similar to the one for normal functions but now no longer returns a value, has an extra parameter `stack_out` and tells you the exact symbol that was encountered to cause the emplacement action in the `orig_string` parameter. As usual, you can access the parameters to the function using the `params` array and you can access the host code parameters through the `host_params`. You should use the information from these two sources to select a stack variable and set the `stack_out` parameter equal to that stack. If the parameters are invalid then error codes should be returned in the same way as for a normal function.
 
 When a user specifies an emplaced function in an expression it produces a special emplacement item in the produced stack. Until an _emplacement action_ is performed on the stack it is not valid and cannot be executed. You can cause emplacement of a stack by using the `emplace` method of the parser object. The emplace method optionally takes a `host_params` argument that is passed to the emplacement function. By default the `emplace` method permanently changes the stack that is passed to it, removing the emplacement item from the stack and replacing it with the stack that is returned from the emplacement function. You can optionally specify another stack in the `destination` argument to the `emplace` method and that will cause the emplaced, valid stack to be created in the specified `destination` stack and leave the original stack with the emplacement item so it can be emplaced multiple times.
+
+`orig_string` is used to allow you to have several different strings that will trigger the emplacement action. This is particularly useful if you want to be able to have an emplacement function where the symbol that should cause emplacement is determined from user input rather than already known to the host code.
 
 If you use the version of the `evaluate` method that takes a string rather than a stack and the string includes emplaced functions then the emplacement will happen automatically during evaluation. This behaviour does _not_ happen with the version of evaluate that takes a stack since the stack would be permanently changed by the emplacement.
 
@@ -591,6 +594,7 @@ If you use the version of the `evaluate` method that takes a string rather than 
 
 You can change the behaviour of a parser item by simply calling `add_constant`, `add_variable`, `add_function` or `add_stack_variable`again with the same name but a different value or getter function. The previous behaviour for that name is forgotten and all future stacks that are tokenized by this parser will use the new behaviour. Stacks that have _already_ been tokenized by this parser are unaffected and will continue to evaluate with the original values and getter functions in place. If you want to be able to change the behaviour of a stack after it has been tokenized you will have to use emplaced functions.
 
+There is no way to prevent this overriding behaviour in the parser but a host code can check if a symbol is already known to the parser using the `get_token_info` function. This takes a string holding the name of the symbol to test and returns a logical for whether or not the symbol is known to the parser. It will return `.TRUE.` if the requested symbol is a variable, constant, function, operator or emplacement function regardless of whether the symbol is currently deferred or not. Optionally you can specify a `cap_bits` parameter that will be filled with the `cap_bits` value specified when the symbol was defined or the `deferred` option that is set to `.TRUE.` if the symbol is deferred and `.FALSE.` if not.
 
 ## Capability bits
 

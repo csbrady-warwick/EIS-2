@@ -120,9 +120,10 @@ MODULE eis_parser_header
 
   INTERFACE
     !> description of the function that is used to emplace a function
-    SUBROUTINE parser_late_bind_fn(nparams, params, host_params, stack_out, &
-        status_code, errcode)
+    SUBROUTINE parser_late_bind_fn(orig_string, nparams, params, host_params, &
+        stack_out, status_code, errcode)
       IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
+      CHARACTER(LEN=*), INTENT(IN) :: orig_string
       INTEGER, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: host_params
@@ -134,9 +135,10 @@ MODULE eis_parser_header
   !> description of the function that is used to emplace a function through the
   !> interoperability interface
   INTERFACE
-    SUBROUTINE parser_late_bind_interop_fn(nparams, params, host_params, &
-        stack_id_out, status_code, errcode) BIND(C)
+    SUBROUTINE parser_late_bind_interop_fn(orig_string, nparams, params, &
+        host_params, stack_id_out, status_code, errcode) BIND(C)
       IMPORT eis_num_c, C_PTR, eis_error_c, eis_status_c, C_INT
+      TYPE(C_PTR), INTENT(IN) :: orig_string
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparams
       REAL(eis_num_c), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: host_params

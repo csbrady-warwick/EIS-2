@@ -671,8 +671,10 @@ CONTAINS
   !> @param[in] token
   !> @param[out] token_type
   !> @param[out] cap_bits
+  !> @param[out] deferred
   !> @result exists
-  FUNCTION eip_get_token_info(this, token, token_type, cap_bits) RESULT(exists)
+  FUNCTION eip_get_token_info(this, token, token_type, cap_bits, deferred) &
+      RESULT(exists)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     !> Name of the token to get information about
@@ -681,6 +683,8 @@ CONTAINS
     INTEGER, INTENT(OUT), OPTIONAL :: token_type
     !> Cap bits of the found token
     INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: cap_bits
+    !> Is this symbol currently deferred
+    LOGICAL, INTENT(OUT), OPTIONAL :: deferred
     !> Does the token exist in the token list
     LOGICAL :: exists
     TYPE(eis_stack_element) :: iblock
@@ -692,6 +696,9 @@ CONTAINS
     exists = iblock%ptype /= eis_pt_bad
     IF (PRESENT(token_type)) token_type = iblock%ptype
     IF (PRESENT(cap_bits)) cap_bits = icoblock%cap_bits
+    IF (PRESENT(deferred)) deferred = &
+        (iblock%ptype == eis_pt_deferred_variable &
+        .OR. iblock%ptype == eis_pt_deferred_function)
 
   END FUNCTION eip_get_token_info
 
@@ -1284,6 +1291,8 @@ CONTAINS
     INTEGER(eis_status) :: status_code
     INTEGER :: rcount
     INTEGER(C_INT) :: interop_stack_id
+    CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: &
+        interop_name
 
     status_code = 0_eis_bitmask
     errcode_l = eis_err_none
@@ -1328,8 +1337,13 @@ CONTAINS
     IF (ASSOCIATED(late_bind_fn)) THEN
       CALL initialise_stack(temp_stack)
       emplace_stack => temp_stack
-      CALL late_bind_fn(nparams, params, host_params, temp_stack, status_code, &
-          errcode_l)
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        CALL late_bind_fn(tree_node%co_value%text, nparams, params, &
+            host_params, temp_stack, status_code, errcode_l)
+      ELSE
+        CALL late_bind_fn("", nparams, params, &
+            host_params, temp_stack, status_code, errcode_l)
+      END IF
       errcode = IOR(errcode, errcode_l)
       IF (ALLOCATED(tree_node%co_value%text)) THEN
         CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
@@ -1341,8 +1355,17 @@ CONTAINS
       ALLOCATE(params_interop(nparams))
       params_interop = REAL(params, eis_num_c)
       errcode_l = eis_err_none
-      CALL late_bind_fn_c(nparams, params_interop, host_params, &
-          interop_stack_id, status_code, errcode_l)
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        ALLOCATE(interop_name(LEN(tree_node%co_value%text)+1))
+        CALL f_c_string(tree_node%co_value%text, &
+            LEN(tree_node%co_value%text)+1, interop_name)
+      ELSE
+        ALLOCATE(interop_name(1))
+        CALL f_c_string("", 1, interop_name)
+      END IF
+      CALL late_bind_fn_c(C_LOC(interop_name), nparams, params_interop, &
+          host_params, interop_stack_id, status_code, errcode_l)
+      DEALLOCATE(interop_name)
       errcode = IOR(errcode, errcode_l)
       emplace_stack => eis_get_interop_stack(interop_stack_id) 
       DEALLOCATE(params_interop)

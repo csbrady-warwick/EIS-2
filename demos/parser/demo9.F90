@@ -8,15 +8,15 @@ MODULE mymod
 
   CONTAINS
 
-    SUBROUTINE emplace_fn(nparams, params, host_params, stack_out, &
-        status_code, errcode)
+    SUBROUTINE emplace_fn(orig_string, nparams, params, host_params, &
+        stack_out, status_code, errcode)
+      CHARACTER(LEN=*), INTENT(IN) :: orig_string
       INTEGER, INTENT(IN) :: nparams
       REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: host_params
       TYPE(eis_stack), INTENT(INOUT) :: stack_out
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
-
 
       IF (INT(params(1)) > 2 .OR. INT(params(1))<1) THEN
         errcode = eis_err_bad_value

@@ -585,6 +585,7 @@ CONTAINS
     temp_ptr%ptype = eis_pt_emplaced_function
     temp_ptr%index_type = eis_reg_index_emplaced
     temp_ptr%value = index
+    temp_ptr%can_simplify = .FALSE.
 
     CALL this%stored_items%store(name, temp)
 
