@@ -793,8 +793,9 @@ CONTAINS
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] char_offset
+  !> @param[in] cap_bits
   SUBROUTINE eip_set_eval_function(this, function_in, output, err, &
-      filename, line_number, char_offset)
+      filename, line_number, char_offset, cap_bits)
 
     CLASS(eis_parser) :: this
     !> Function to be called when the stack is evaluated
@@ -811,6 +812,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     !> The character offset of the expression within the line
     INTEGER, INTENT(IN), OPTIONAL :: char_offset
+    !> Capability bits for the expression
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
 
     CALL initialise_stack(output)
     output%eval_fn => function_in
@@ -824,6 +827,11 @@ CONTAINS
       output%char_offset = char_offset
     ELSE
       output%char_offset = 0
+    END IF
+    IF (PRESENT(cap_bits)) THEN
+      output%cap_bits = cap_bits
+    ELSE
+      output%cap_bits = 0_eis_bitmask
     END IF
 
   END SUBROUTINE eip_set_eval_function
