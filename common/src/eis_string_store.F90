@@ -835,16 +835,15 @@ CONTAINS
   !> @param[in] filename
   !> @param[inout] errcode
   !> @param[in] index_start
-  !> @param[in] slc_start
-  !> @param[in] mlc_start
-  !> @param[in] mlc_end
+  !> @param[out] raw_text
   !> @result index_range
-  FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start) &
-      RESULT(index_range)
+  FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start, &
+      raw_text) RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: index_start
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
     INTEGER, DIMENSION(2) :: index_range
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str
     INTEGER :: newline_pos, newline_offset, last_pos
@@ -858,6 +857,8 @@ CONTAINS
       errcode = IOR(errcode, eis_err_no_file)
       RETURN
     END IF
+
+    IF (PRESENT(raw_text)) ALLOCATE(raw_text, SOURCE = str)
 
     index_range = this%populate(str, errcode, index_start, filename = filename)
     DEALLOCATE(str)

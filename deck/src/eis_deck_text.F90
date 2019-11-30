@@ -553,13 +553,16 @@ MODULE eis_deck_from_text_mod
   !> and the source line numbers in encoded form
   !> @param[inout] this
   !> @param[in] filename
-  !> @param[in] serial_deck
+  !> @param[out] serial_deck
   !> @param[inout] errcode
-  SUBROUTINE tdp_get_deck_serialised(this, filename, serial_deck, errcode)
+  !> @param[out] raw_text
+  SUBROUTINE tdp_get_deck_serialised(this, filename, serial_deck, errcode, &
+      raw_text)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: serial_deck
     INTEGER(eis_error), INTENT(OUT) :: errcode
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
     TYPE(eis_string_deck) :: sdeck
     TYPE(eis_string_deck_block), POINTER :: block
     INTEGER(eis_error) :: err, host_state, status

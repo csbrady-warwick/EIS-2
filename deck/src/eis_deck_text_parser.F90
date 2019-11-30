@@ -470,7 +470,8 @@ MODULE eis_string_deck_mod
   !> @param[in] filename
   !> @param[in] errcode
   !> @param[out] parsed_text
-  SUBROUTINE esd_parse_deck_file(this, filename, errcode, parsed_text)
+  !> @param[out] raw_text
+  SUBROUTINE esd_parse_deck_file(this, filename, errcode, parsed_text, raw_text)
     CLASS(eis_string_deck), INTENT(INOUT) :: this
     !> Filename of file to read
     CHARACTER(LEN=*), INTENT(IN) :: filename
@@ -479,13 +480,16 @@ MODULE eis_string_deck_mod
     !> Serialised version of the loaded text. Should be used to transfer
     !> file input to other processors in an MPI setup etc.
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: parsed_text
+    !> Raw text from the file
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
     INTEGER, DIMENSION(2) :: ranges
     INTEGER(eis_error) :: ierr
 
     errcode = eis_err_none
     CALL this%init(ierr)
     errcode = IOR(errcode, ierr)
-    ranges = this%data%strings%load_from_ascii_file(filename, errcode)
+    ranges = this%data%strings%load_from_ascii_file(filename, errcode, &
+        raw_text = raw_text)
     IF (errcode /= eis_err_none) THEN
       CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
           filename = filename)
