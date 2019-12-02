@@ -1363,6 +1363,9 @@ The result of calling this function (if it succeeds) is to allocate the characte
 
 `get_deck_serialised` *ONLY* produces the serialised version of the deck. It doesn't parse the deck in any way because this would cause problems for codes that need explicit synchronization in their action functions. To parse the deck that you got from `get_deck_serialised` you have to use the `parse_deck_serialised` method. This is almost identical to `parse_deck_file` and `parse_deck_string` but the CHARACTER parameter that is the filename in `parse_deck_file` and the text to parse in `parse_deck_string` should be replaced with the output from `get_deck_serialised`.
 
+## Threads and the deck parser
+The deck parser is necessarily stateful. At present it is not thread safe and you must have one parser object and one deck definition per active thread. 
+
 ## Error reporting
 
 The `eis_text_parser` object has built in reporting of errors as shown in the example code already given. To find out the number of errors call the `get_error_count` function. To get the report for each error call the `get_error_report` function. This tells you the location of all of the errors that were encountered in both the deck parsing and any maths parsing of keys that occurs. If an error occurs when parsing a maths expression this is will appear as two errors, one for the error in the maths parser and then one for the key where the error occurs

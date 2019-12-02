@@ -415,11 +415,12 @@ MODULE eis_deck_from_text_mod
 
 
 
-  SUBROUTINE tdp_parse_generate(this, definition, errcode, &
+  SUBROUTINE tdp_parse_generate(this, sdeck, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
       unknown_key_is_fatal)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
+    CLASS(eis_string_deck), INTENT(INOUT) :: sdeck
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: pass_number, max_passes
@@ -436,15 +437,14 @@ MODULE eis_deck_from_text_mod
     LOGICAL :: parse_over, first_pass
 
     IF (.NOT. this%is_init) RETURN
-    IF (.NOT. ALLOCATED(this%sdeck)) RETURN
 
     CALL eis_default_status(errcode = err)
-    CALL this%sdeck%generate_blocklist(err, max_level, allow_root_keys, &
+    CALL sdeck%generate_blocklist(err, max_level, allow_root_keys, &
         allow_empty_blocks)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
-    CALL this%parse_deck_object(this%sdeck, definition, err, pass_number, &
+    CALL this%parse_deck_object(sdeck, definition, err, pass_number, &
         max_passes, state = state, initialise_all_blocks &
         = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
@@ -458,7 +458,7 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_parse_deck_file(this, filename, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
-      unknown_key_is_fatal)
+      unknown_key_is_fatal, filename_processor, file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -470,6 +470,8 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
+    PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
+    PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
 
     TYPE(eis_string_deck_block), POINTER :: block
     INTEGER(eis_error) :: err, host_state, status
@@ -481,7 +483,9 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
-    CALL this%sdeck%init(err, this%err_handler)
+    CALL this%sdeck%init(err, this%err_handler, &
+        filename_processor = filename_processor, &
+        file_text_processor = file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
@@ -490,11 +494,12 @@ MODULE eis_deck_from_text_mod
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
-    CALL this%generate_and_parse(definition, err, pass_number = pass_number, &
-        max_passes = max_passes, state = state, initialise_all_blocks &
-        = initialise_all_blocks, unknown_block_is_fatal &
+    CALL this%generate_and_parse(this%sdeck, definition, err, &
+        pass_number = pass_number, max_passes = max_passes, state = state, &
+        initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
-        = unknown_key_is_fatal)
+        = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
+        allow_root_keys = allow_root_keys)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_file
@@ -537,11 +542,12 @@ MODULE eis_deck_from_text_mod
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
-    CALL this%generate_and_parse(definition, err, pass_number = pass_number, &
-        max_passes = max_passes, state = state, initialise_all_blocks &
-        = initialise_all_blocks, unknown_block_is_fatal &
+    CALL this%generate_and_parse(this%sdeck, definition, err, &
+        pass_number = pass_number, max_passes = max_passes, state = state, &
+        initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
-        = unknown_key_is_fatal)
+        = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
+        allow_root_keys = allow_root_keys)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_string
@@ -570,6 +576,8 @@ MODULE eis_deck_from_text_mod
     LOGICAL :: parse_over, first_pass
 
     IF (.NOT. this%is_init) CALL this%init()
+    IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)
+    ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
     CALL sdeck%init(err, this%err_handler)
@@ -621,11 +629,12 @@ MODULE eis_deck_from_text_mod
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
-    CALL this%generate_and_parse(definition, err, pass_number = pass_number, &
-        max_passes = max_passes, state = state, initialise_all_blocks &
-        = initialise_all_blocks, unknown_block_is_fatal &
+    CALL this%generate_and_parse(this%sdeck, definition, err, &
+        pass_number = pass_number, max_passes = max_passes, state = state, &
+        initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
-        = unknown_key_is_fatal)
+        = unknown_key_is_fatal, allow_root_keys = allow_root_keys, &
+        allow_empty_blocks = allow_empty_blocks)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_serialised

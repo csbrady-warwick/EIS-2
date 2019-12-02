@@ -46,7 +46,12 @@ MODULE eis_string_deck_mod
 
   TYPE eis_string_deck
     TYPE(eis_string_deck_data), POINTER :: data => NULL()
+    CHARACTER(LEN=:), ALLOCATABLE :: import_prefix
     LOGICAL :: is_init = .FALSE.
+    PROCEDURE(file_text_processor_proto), POINTER, NOPASS :: &
+        file_text_processor => NULL()
+    PROCEDURE(filename_processor_proto), POINTER, NOPASS :: &
+        filename_processor => NULL()
     CONTAINS
     PRIVATE
     PROCEDURE :: parse_core => esd_parse_core
@@ -380,14 +385,22 @@ MODULE eis_string_deck_mod
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Routine to initialise this object
-  SUBROUTINE esd_init(this, errcode, err_handler)
+  SUBROUTINE esd_init(this, errcode, err_handler, import_prefix, &
+      filename_processor, file_text_processor)
     CLASS(eis_string_deck), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(OUT) :: errcode
     CLASS(eis_error_handler), POINTER, INTENT(IN), OPTIONAL :: err_handler
+    PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
+    PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: import_prefix
 
     errcode = eis_err_none
     IF (this%is_init) RETURN
     this%is_init = .TRUE.
+    IF (PRESENT(filename_processor)) this%filename_processor &
+        => filename_processor
+    IF (PRESENT(file_text_processor)) this%file_text_processor &
+        => file_text_processor
     ALLOCATE(this%data)
     IF (PRESENT(err_handler)) THEN
       this%data%handler => err_handler
@@ -395,6 +408,12 @@ MODULE eis_string_deck_mod
     ELSE
       ALLOCATE(this%data%handler)
       this%data%owns_handler = .TRUE.
+    END IF
+
+    IF (PRESENT(import_prefix)) THEN
+      ALLOCATE(this%import_prefix, SOURCE = import_prefix)
+    ELSE
+      ALLOCATE(this%import_prefix, SOURCE="")
     END IF
 
   END SUBROUTINE esd_init
@@ -410,7 +429,7 @@ MODULE eis_string_deck_mod
     !> Error code
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER :: iline, cloc, ln, lnm
-    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
+    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename, raw
     LOGICAL :: found
     INTEGER, DIMENSION(2) :: ranges
 
@@ -432,8 +451,14 @@ MODULE eis_string_deck_mod
         IF (cloc < LEN(str)) THEN
           iline = iline - 1 !Decrement because deleting line
           found = this%data%strings%delete(iline)
+          ALLOCATE(import_filename, SOURCE = this%import_prefix &
+              // TRIM(ADJUSTL(str(cloc+1:))))
+          errcode = eis_err_none
           ranges = this%data%strings%load_from_ascii_file(&
-              TRIM(ADJUSTL(str(cloc+1:))), errcode, index_start = iline)
+              this%import_prefix // TRIM(ADJUSTL(str(cloc+1:))), errcode, &
+              index_start = iline, &
+              filename_processor = this%filename_processor, &
+              file_text_processor = this%file_text_processor)
           IF (errcode /= eis_err_none) THEN
             IF (ALLOCATED(src_filename)) THEN
               CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
@@ -489,7 +514,8 @@ MODULE eis_string_deck_mod
     CALL this%init(ierr)
     errcode = IOR(errcode, ierr)
     ranges = this%data%strings%load_from_ascii_file(filename, errcode, &
-        raw_text = raw_text)
+        raw_text = raw_text, filename_processor = this%filename_processor, &
+        file_text_processor = this%file_text_processor)
     IF (errcode /= eis_err_none) THEN
       CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
           filename = filename)
@@ -598,7 +624,6 @@ MODULE eis_string_deck_mod
     DO iline = 1, this%data%strings%get_size()
       ok = this%data%strings%get(iline, str, filename = src_filename, &
           line_number = ln)
-!      IF (.NOT. ok) EXIT
       cloc = INDEX(str, ":")
       IF (cloc < 1) CYCLE
       IF (eis_compare_string(TRIM(ADJUSTL(str(1:cloc-1))), 'begin' , &

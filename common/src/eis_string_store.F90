@@ -10,6 +10,23 @@ MODULE eis_string_store_mod
 
   CHARACTER(LEN=10), PRIVATE :: serial_header = 'EISDSER001'
 
+  ABSTRACT INTERFACE
+    SUBROUTINE filename_processor_proto(filename, errcode)
+      IMPORT eis_error
+      CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: filename
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+    END SUBROUTINE filename_processor_proto
+
+    SUBROUTINE file_text_processor_proto(filename, file_contents, errcode)
+      IMPORT eis_error
+      CHARACTER(LEN=*), INTENT(IN) :: filename
+      CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: file_contents
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+    END SUBROUTINE file_text_processor_proto
+  END INTERFACE
+
+  PUBLIC :: filename_processor_proto, file_text_processor_proto
+
   !>@class
   !>Class holding the string within the string store
   !>If compiled with support is UCS4 string
@@ -838,29 +855,43 @@ CONTAINS
   !> @param[out] raw_text
   !> @result index_range
   FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start, &
-      raw_text) RESULT(index_range)
+      raw_text, filename_processor, file_text_processor) RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: index_start
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
+    PROCEDURE(filename_processor_proto), POINTER, OPTIONAL :: filename_processor
+    PROCEDURE(file_text_processor_proto), POINTER, OPTIONAL :: &
+        file_text_processor
     INTEGER, DIMENSION(2) :: index_range
-    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
     INTEGER :: newline_pos, newline_offset, last_pos
     INTEGER :: min_index, max_index, indx
 
     errcode = eis_err_none
 
-    CALL eis_load_file_to_string(filename, str)
+    ALLOCATE(fname, source = filename)
+    IF (PRESENT(filename_processor)) THEN
+      IF (ASSOCIATED(filename_processor)) &
+          CALL filename_processor(fname, errcode)
+    END IF
+     
+    CALL eis_load_file_to_string(fname, str)
     index_range = -1
     IF (.NOT. ALLOCATED(str)) THEN
       errcode = IOR(errcode, eis_err_no_file)
       RETURN
     END IF
 
+    IF (PRESENT(file_text_processor)) THEN
+      IF (ASSOCIATED(file_text_processor)) CALL file_text_processor(fname, &
+          str, errcode)
+    END IF
+
     IF (PRESENT(raw_text)) ALLOCATE(raw_text, SOURCE = str)
 
-    index_range = this%populate(str, errcode, index_start, filename = filename)
+    index_range = this%populate(str, errcode, index_start, filename = fname)
     DEALLOCATE(str)
 
   END FUNCTION ess_load_from_ascii_file

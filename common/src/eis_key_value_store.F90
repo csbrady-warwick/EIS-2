@@ -212,8 +212,10 @@ CONTAINS
           text = temp%text
         ELSE
           DEALLOCATE(text)
-          ALLOCATE(CHARACTER(LEN=LEN(temp%text), KIND = ASCII)::text)
-          text = temp%text
+          IF(ALLOCATED(temp%text)) THEN
+            ALLOCATE(CHARACTER(LEN=LEN(temp%text), KIND = ASCII)::text)
+            text = temp%text
+          END IF
         END IF
       END IF
     END IF
