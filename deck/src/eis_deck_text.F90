@@ -220,15 +220,20 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
     INTEGER(eis_error) :: err
 
-    IF (this%is_init) RETURN
     this%is_init = .TRUE.
+
+    IF (this%owns_handler .AND. ASSOCIATED(this%err_handler)) &
+        DEALLOCATE(this%err_handler)
 
     IF(PRESENT(err_handler)) THEN
       this%err_handler => err_handler
       this%owns_handler = .FALSE.
     ELSE
       ALLOCATE(this%err_handler)
+      this%owns_handler = .TRUE.
     END IF
+
+    IF (this%owns_parser .AND. ASSOCIATED(this%parser)) DEALLOCATE(this%parser)
 
     IF (PRESENT(parser)) THEN
       this%parser => parser

@@ -395,13 +395,19 @@ MODULE eis_string_deck_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: import_prefix
 
     errcode = eis_err_none
-    IF (this%is_init) RETURN
+
     this%is_init = .TRUE.
+    !Clean up possibly already allocated from previous init
+    IF (.NOT. ASSOCIATED(this%data)) ALLOCATE(this%data)
+    IF (this%data%owns_handler .AND. ASSOCIATED(this%data%handler)) &
+        DEALLOCATE(this%data%handler)
+    IF (ALLOCATED(this%import_prefix)) DEALLOCATE(this%import_prefix)
+
     IF (PRESENT(filename_processor)) this%filename_processor &
         => filename_processor
     IF (PRESENT(file_text_processor)) this%file_text_processor &
         => file_text_processor
-    ALLOCATE(this%data)
+
     IF (PRESENT(err_handler)) THEN
       this%data%handler => err_handler
       this%data%owns_handler = .FALSE.

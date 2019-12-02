@@ -347,13 +347,8 @@ CONTAINS
     REAL(eis_num) :: c
     LOGICAL :: no_import_l
 
-    IF (this%is_init) RETURN
-
-    no_import_l = .FALSE.
-    IF (PRESENT(should_simplify)) this%should_simplify = should_simplify
-    IF (PRESENT(should_minify)) this%should_minify = should_minify
-    IF (PRESENT(physics)) this%physics_units = physics
-    IF (PRESENT(no_import)) no_import_l = no_import
+    IF (this%owns_err_handler .AND. ASSOCIATED(this%err_handler)) &
+        DEALLOCATE(this%err_handler)
 
     IF (PRESENT(err_handler)) THEN
       this%err_handler => err_handler
@@ -363,8 +358,14 @@ CONTAINS
       this%owns_err_handler = .TRUE.
     END IF
 
-    CALL this%err_handler%init(errcode)
+    no_import_l = .FALSE.
+    IF (PRESENT(should_simplify)) this%should_simplify = should_simplify
+    IF (PRESENT(should_minify)) this%should_minify = should_minify
+    IF (PRESENT(physics)) this%physics_units = physics
+    IF (PRESENT(no_import)) no_import_l = no_import
 
+    CALL this%err_handler%init(errcode)
+    IF (this%is_init) RETURN
     this%is_init = .TRUE.
 
     IF (.NOT. global_setup) THEN
