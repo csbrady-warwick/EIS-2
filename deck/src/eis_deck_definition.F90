@@ -28,6 +28,7 @@ MODULE eis_deck_definition_mod
 
   TYPE :: deck_key_definition
     CHARACTER(LEN=:), ALLOCATABLE :: name
+    INTEGER :: expected_params = -1
     PROCEDURE(key_text_callback), POINTER, NOPASS  :: key_text_fn  => NULL()
     PROCEDURE(key_text_callback_c), POINTER, NOPASS  :: c_key_text_fn  => NULL()
     PROCEDURE(key_value_callback), POINTER, NOPASS :: key_value_fn => NULL()
@@ -799,19 +800,20 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn)
+      key_numeric_value_fn, key_stack_fn, expected_params)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
 
     ALLOCATE(new)
     CALL new%init(key_name, key_text_fn, key_value_fn, key_numeric_value_fn, &
-        key_stack_fn)
+        key_stack_fn, expected_params)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -1000,8 +1002,12 @@ MODULE eis_deck_definition_mod
           ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
-          CALL dkd%key_numeric_value_fn(key, value_array, ps, &
-              parents, parent_kind, this_stat, this_bitmask, this_err)
+          IF (ct == dkd%expected_params .OR. dkd%expected_params < 1) THEN
+            CALL dkd%key_numeric_value_fn(key, value_array, ps, &
+                parents, parent_kind, this_stat, this_bitmask, this_err)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
           IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         END IF
         !If the block is flagged handled then you care about the error code
@@ -1251,13 +1257,14 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dkd_init(this, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn)
+      key_numeric_value_fn, key_stack_fn, expected_params)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
 
     ALLOCATE(this%name, SOURCE = key_name)
     IF (PRESENT(key_text_fn)) this%key_text_fn => key_text_fn
@@ -1265,6 +1272,7 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(key_numeric_value_fn)) this%key_numeric_value_fn &
         => key_numeric_value_fn
     IF (PRESENT(key_stack_fn)) this%key_stack_fn => key_stack_fn
+    IF (PRESENT(expected_params)) this%expected_params = expected_params
 
   END SUBROUTINE dkd_init
 
