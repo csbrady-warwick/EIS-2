@@ -11,9 +11,10 @@ MODULE mymod
   TYPE(eis_text_deck_parser) :: deck
   CONTAINS
 
-  SUBROUTINE remapper(block_text, remap_text, status_code, &
+  SUBROUTINE remapper(block_text, pass_number, remap_text, status_code, &
       host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
     CHARACTER(LEN=*), INTENT(INOUT) :: remap_text
     INTEGER(eis_status), INTENT(INOUT) :: status_code
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
@@ -26,9 +27,10 @@ MODULE mymod
     END IF
   END SUBROUTINE remapper
 
-  SUBROUTINE init_block(block_text, parent_kind, status, host_state, &
-      errcode)
+  SUBROUTINE init_block(block_text, pass_number, parent_kind, status, &
+      host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
@@ -37,9 +39,10 @@ MODULE mymod
     PRINT *,'Calling init for block : ', block_text
   END SUBROUTINE init_block
 
-  SUBROUTINE final_block(block_text, parent_kind, status, host_state, &
-      errcode)
+  SUBROUTINE final_block(block_text, pass_number, parent_kind, status, &
+      host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
@@ -48,9 +51,10 @@ MODULE mymod
     PRINT *,'Calling final for block : ', block_text
   END SUBROUTINE final_block
 
-  SUBROUTINE start_block(block_text, parents, parent_kind, status, host_state, &
-      errcode)
+  SUBROUTINE start_block(block_text, pass_number, parents, parent_kind, &
+      status, host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status
@@ -60,9 +64,10 @@ MODULE mymod
     PRINT *,'Calling start for block : ', block_text
   END SUBROUTINE start_block
 
-  SUBROUTINE end_block(block_text, parents, parent_kind, status, host_state, &
-      errcode)
+  SUBROUTINE end_block(block_text, pass_number, parents, parent_kind, status, &
+      host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status
@@ -72,10 +77,11 @@ MODULE mymod
     PRINT *,'Calling end for block : ', block_text
   END SUBROUTINE end_block
 
-  SUBROUTINE key_sub(key_text, value_text, parents, &
+  SUBROUTINE key_sub(key_text, value_text, pass_number, parents, &
       parent_kind, status_code, host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     CHARACTER(LEN=*), INTENT(IN) :: value_text
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -114,7 +120,7 @@ PROGRAM testprog
       final_block = final_block, any_key_value = key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo7.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()

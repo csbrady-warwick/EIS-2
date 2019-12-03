@@ -1,0 +1,11 @@
+begin:block1
+  key2 = mykey
+end:block1
+
+begin:block2
+  new_key = Hello!
+end:block2
+
+begin:block1
+  key1 = test_key
+end:block1

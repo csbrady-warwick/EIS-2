@@ -54,6 +54,21 @@ MODULE mymod
     PRINT *,'Calling end for block : ', block_text
   END SUBROUTINE end_block
 
+  SUBROUTINE key_sub(key_text, value_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text, value_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    PRINT *,' Found in block : ', parents
+    PRINT *,' Found in block of type : ', parent_kind
+    PRINT *,' Found known key : ', key_text, ' with value ', value_text
+  END SUBROUTINE key_sub
+
 END MODULE mymod
 
 
@@ -76,15 +91,31 @@ PROGRAM testprog
   root => dfn%init()
   block => root%add_block('block1', init_block = init_block, &
       start_block = start_block, end_block = end_block, &
-      final_block = final_block)
+      final_block = final_block, pass_eq = 1)
+
+  CALL block%add_key('key1', key_value_fn = key_sub)
+  CALL block%add_key('key2', key_value_fn = key_sub)
 
   block => root%add_block('block2', init_block = init_block, &
       start_block = start_block, end_block = end_block, &
-      final_block = final_block)
+      final_block = final_block, pass_eq = 2)
+
+  CALL block%add_key('new_key', key_value_fn = key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('demo1.deck', dfn, errcode, &
-      allow_empty_blocks = .TRUE.)
+  PRINT *,'*** First pass through deck ***'
+  CALL deck%parse_deck_file('demo8.deck', dfn, errcode, &
+      allow_empty_blocks = .TRUE., max_passes = 2, pass_number = 1)
+  IF (errcode /= eis_err_none) THEN
+    DO ierr = 1, deck%get_error_count()
+      CALL deck%get_error_report(ierr, str)
+      PRINT *, str
+    END DO
+  END IF
+
+  PRINT *,'*** Second pass through deck ***'
+  CALL deck%parse_deck_file('demo8.deck', dfn, errcode, &
+      allow_empty_blocks = .TRUE., max_passes = 2, pass_number = 2)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
       CALL deck%get_error_report(ierr, str)

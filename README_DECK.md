@@ -385,7 +385,7 @@ PROGRAM testprog
       final_block = final_block)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo1.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -397,7 +397,7 @@ PROGRAM testprog
 END PROGRAM testprog
 ```
 
-If you create a file called test.deck containing
+If you create a file called demo1.deck containing
 ```
 begin:block1
 end:block1
@@ -539,7 +539,7 @@ PROGRAM testprog
   CALL block%add_key('new_key', key_value_fn = key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo2.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -706,7 +706,7 @@ PROGRAM testprog
   CALL block%add_key('new_key', key_numeric_value_fn = key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo3.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -716,6 +716,22 @@ PROGRAM testprog
   END IF
 
 END PROGRAM testprog
+```
+
+an example deck that would go with this is
+
+```
+begin:block1
+  key2 = 10
+end:block1
+
+begin:block2
+  new_key = (10+20)/20
+end:block2
+
+begin:block1
+  key1 = sin(pi/2)
+end:block1
 ```
 
 ### Mixed keys
@@ -812,7 +828,7 @@ PROGRAM testprog
       key_numeric_value_fn = key_val_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo4.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -1074,7 +1090,7 @@ PROGRAM testprog
       key_numeric_value_fn = key_val_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo6.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -1272,7 +1288,7 @@ PROGRAM testprog
       final_block = final_block, any_key_value = key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo7.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -1324,6 +1340,17 @@ will produce the output
 ```
 
 As you can see from that output when doing block remapping there is a slight change to the behaviour of the init/start/end/final action functions. The init and final action functions are not associated with any particular block so they are called with a `block_text` parameter of the generic block name that is being remapped to. The start and end action functions are specific to a given block so they are passed the text of the block that is actually being encountered in the deck without name remapping. This is how you write the code to be able to deal with different blocks having different behaviours. Since you will often not want the generic block name to be a valid block in the deck you would want to test for the generic name being passed as the `block_text` parameter to the `start` action function and return `eis_err_unknown_block` error if it is found.
+
+### Pass triggering
+When you call to parse a deck you can specify the `pass_number`. This is used to specify that you intend to run through your deck multiple times, presumably doing different things each time. It is associated with another concept `max_passes` which says the number of times that you intend to run through your deck. Block initialisation only happens on pass number 1 and block finalisation only automatically on pass number `max_passes`, but you can also specify certain blocks or keys should only be processed on certain pass numbers. When you create a block or a key you can optionally pass one of the following integer parameters which will restrict which passes a key or block should trigger on.
+
+1. pass_eq - Block should trigger on this pass number
+2. pass_le - Block should trigger if pass number is less than or equal to the parameter
+3. pass_ge - Block should trigger if pass number is greater than or equal to the parameter
+
+If you specify multiple of these parameters then they are combined as OR, so `pass_le = 3, pass_ge = 5` would mean "trigger for all passes except pass 4". You cannot at present specify more complex conditions and should use the `pass_number` parameter to the callback functions and have the function triggered for all passes if you want more complex behaviour.
+
+On a pass which is flagged to not trigger a key they key is not processed. On a pass which is flagged to not trigger a block then block start, init and end behaviours will not trigger. Finalise will occur on the final pass regardless of the block being marked to trigger on the final pass or not. The behaviour is hierarchical by default, so all keys in a block and all subblocks of a block inherit it's pass triggering behaviour by default. Manually specifying a behaviour will override the behaviour from the parent. Thus, a block which is not triggered on a particular pass may have individual sub-blocks or keys that will trigger, but it will *not* trigger any `any key` behaviour for that block. Block remapping will occur under all circumstances and the pass triggering behaviour of the remapped block is the behaviour of the block that it is remapped to.
 
 ## Loading and parsing a deck
 

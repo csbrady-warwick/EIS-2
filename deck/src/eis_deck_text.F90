@@ -55,12 +55,13 @@ MODULE eis_deck_from_text_mod
   !> @param[in] block
   !> @param[inout] status
   !> @param[inout] host_state
+  !> @param[in] pass_number
   !> @param[inout] errcode
   !> @param[in] unknown_block_is_fatal
   !> @param[in] unknown_key_is_fatal
   RECURSIVE SUBROUTINE tdp_call_blocks(this, definition, block, status, &
-      host_state, errcode, unknown_block_is_fatal, unknown_key_is_fatal, &
-      bad_key_is_fatal)
+      host_state, pass_number, errcode, unknown_block_is_fatal, &
+      unknown_key_is_fatal, bad_key_is_fatal)
     CLASS(eis_text_deck_parser), INTENT(IN) :: this
     !> Definition object used to parse the deck against
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: definition
@@ -70,6 +71,8 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_status), INTENT(INOUT) :: status
     !> User code state variable
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    !> Pass number as specified by the host code
+    INTEGER, INTENT(IN) :: pass_number
     !> EIS deck parser error code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Should parsing stop if an unknown block is encountered
@@ -94,7 +97,7 @@ MODULE eis_deck_from_text_mod
 
     CALL eis_default_status(this_errcode, this_status, this_host)
     CALL block%get_parents(block_parents)
-    CALL definition%start_block(block_parents, this_errcode, &
+    CALL definition%start_block(block_parents, pass_number, this_errcode, &
         host_state = this_host, display_name=block%block_name)
     IF (this_errcode /= eis_err_none) THEN
       CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode, &
@@ -111,7 +114,7 @@ MODULE eis_deck_from_text_mod
       CALL block%get_line(i, line, filename = fn, line_number = line_number, &
           trimmed_white_space_length = wsl)
       CALL eis_default_status(this_errcode, this_status, this_host)
-      CALL definition%call_key(line, block_parents, this_errcode, &
+      CALL definition%call_key(line, block_parents, pass_number, this_errcode, &
           host_state = this_host, filename = fn, &
           line_number = line_number, white_space_length = wsl, &
           parser = this%parser, interop_parser_id = this%interop_parser)
@@ -158,7 +161,7 @@ MODULE eis_deck_from_text_mod
       IF (this_errcode == eis_err_none) THEN
         CALL eis_default_status(this_errcode, this_status, this_host)
         CALL this%call_blocks(cdef, block%get_child(i), this_status, &
-            this_host, this_errcode, unknown_block_is_fatal, &
+            this_host, pass_number, this_errcode, unknown_block_is_fatal, &
             unknown_key_is_fatal, bad_key_is_fatal)
         errcode = IOR(errcode, this_errcode)
         status = IOR(status, this_status)
@@ -168,7 +171,7 @@ MODULE eis_deck_from_text_mod
       END IF
     END DO
 
-    CALL definition%end_block(block_parents, this_errcode, &
+    CALL definition%end_block(block_parents, pass_number, this_errcode, &
         host_state = this_host, display_name=block%block_name)
 
   END SUBROUTINE tdp_call_blocks
@@ -370,14 +373,19 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_bitmask) :: host_state
     TYPE(eis_deck_block_definition), POINTER :: bdef
     LOGICAL :: parse_over, first_pass, ubf, ukf, bkf, should_init
+    INTEGER :: gpass
 
     first_pass = .TRUE.
     should_init = .FALSE.
     ubf = this%unknown_block_is_fatal
     ukf = this%unknown_key_is_fatal
     bkf = this%bad_key_is_fatal
+    gpass = 1
     IF (PRESENT(initialise_all_blocks)) should_init = initialise_all_blocks
-    IF (PRESENT(pass_number)) first_pass = (pass_number == 1)
+    IF (PRESENT(pass_number)) THEN
+      first_pass = (pass_number == 1)
+      gpass = pass_number
+    END IF
     IF (PRESENT(unknown_block_is_fatal)) ubf = unknown_block_is_fatal
     IF (PRESENT(unknown_key_is_fatal)) ukf = unknown_key_is_fatal
     IF (PRESENT(bad_key_is_fatal)) bkf = bad_key_is_fatal
@@ -399,7 +407,8 @@ MODULE eis_deck_from_text_mod
     IF (ASSOCIATED(bdef)) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state, &
           status = status)
-      CALL this%call_blocks(bdef, block, status, host_state, err, ubf, ukf, bkf)
+      CALL this%call_blocks(bdef, block, status, host_state, gpass, err, &
+          ubf, ukf, bkf)
       errcode = IOR(errcode, err)
       IF (PRESENT(state)) state = IOR(state, host_state)
     END IF

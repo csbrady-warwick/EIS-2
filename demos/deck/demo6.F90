@@ -7,10 +7,11 @@ MODULE mymod
   CONTAINS
 
 
-  SUBROUTINE key_str_sub(key_text, key_value, &
+  SUBROUTINE key_str_sub(key_text, key_value, pass_number, &
       parents, parent_kind, status_code, host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     CHARACTER(LEN=*), INTENT(IN) :: key_value
+    INTEGER, INTENT(IN) :: pass_number
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -39,10 +40,11 @@ MODULE mymod
   END SUBROUTINE key_str_sub
 
 
-  SUBROUTINE key_val_sub(key_text, values, parser, &
+  SUBROUTINE key_val_sub(key_text, values, pass_number, parser, &
       parents, parent_kind, status_code, host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     REAL(eis_num), DIMENSION(:), INTENT(IN) :: values
+    INTEGER, INTENT(IN) :: pass_number
     TYPE(eis_parser), INTENT(INOUT) :: parser
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
@@ -83,7 +85,7 @@ PROGRAM testprog
       key_numeric_value_fn = key_val_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('test.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demo6.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()

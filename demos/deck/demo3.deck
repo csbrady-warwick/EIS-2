@@ -1,0 +1,11 @@
+begin:block1
+  key2 = 10
+end:block1
+
+begin:block2
+  new_key = (10+20)/20
+end:block2
+
+begin:block1
+  key1 = sin(pi/2)
+end:block1

@@ -5,22 +5,26 @@ MODULE eis_deck_function_mod
   USE eis_parser_header
   USE eis_parser_mod
 
+  IMPLICIT NONE
+
   ABSTRACT INTERFACE
 
-    SUBROUTINE block_generic_callback(block_text, parent_kind, status_code, &
-        host_state, errcode)
+    SUBROUTINE block_generic_callback(block_text, pass_number, parent_kind, &
+        status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: block_text
+      INTEGER, INTENT(IN) :: pass_number
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE block_generic_callback
 
-    SUBROUTINE block_callback(block_text, parents, parent_kind, status_code, &
-        host_state, errcode)
+    SUBROUTINE block_callback(block_text, pass_number, parents, parent_kind, &
+        status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: block_text
+      INTEGER, INTENT(IN) :: pass_number
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
       INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -28,20 +32,22 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE block_callback
 
-    SUBROUTINE block_remap_callback(block_text, remap_text, status_code, &
-        host_state, errcode)
+    SUBROUTINE block_remap_callback(block_text, pass_number, remap_text, &
+        status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: block_text
+      INTEGER, INTENT(IN) :: pass_number
       CHARACTER(LEN=*), INTENT(INOUT) :: remap_text
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE block_remap_callback
 
-    SUBROUTINE key_text_callback(key_text, parents, parent_kind, status_code, &
-        host_state, errcode)
+    SUBROUTINE key_text_callback(key_text, pass_number, parents, parent_kind, &
+        status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: key_text
+      INTEGER, INTENT(IN) :: pass_number
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
       INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -49,10 +55,11 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE key_text_callback
 
-    SUBROUTINE key_value_callback(key_text, value_text, parents, parent_kind, &
-        status_code, host_state, errcode)
+    SUBROUTINE key_value_callback(key_text, value_text, pass_number, parents, &
+        parent_kind, status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: key_text, value_text
+      INTEGER, INTENT(IN) :: pass_number
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
       INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -60,11 +67,12 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE key_value_callback
 
-    SUBROUTINE key_numeric_value_callback(key_text, values, parser, &
-        parents, parent_kind, status_code, host_state, errcode)
+    SUBROUTINE key_numeric_value_callback(key_text, values, pass_number, &
+        parser, parents, parent_kind, status_code, host_state, errcode)
       IMPORT eis_error, eis_status, eis_num, eis_parser, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: key_text
       REAL(eis_num), DIMENSION(:), INTENT(IN) :: values
+      INTEGER, INTENT(IN) :: pass_number
       TYPE(eis_parser), INTENT(INOUT) :: parser
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
@@ -73,11 +81,12 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE key_numeric_value_callback
 
-    SUBROUTINE key_stack_callback(key_text, value_stack, parser, parents, &
-        parent_kind, status_code, host_state, errcode)
+    SUBROUTINE key_stack_callback(key_text, value_stack, pass_number, parser, &
+        parents, parent_kind, status_code, host_state, errcode)
       IMPORT eis_error, eis_stack, eis_status, eis_parser, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: key_text
       TYPE(eis_stack), INTENT(INOUT) :: value_stack
+      INTEGER, INTENT(IN) :: pass_number
       TYPE(eis_parser), INTENT(INOUT) :: parser
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
@@ -88,10 +97,11 @@ MODULE eis_deck_function_mod
   END INTERFACE
 
   INTERFACE
-    SUBROUTINE block_generic_callback_c(block_text, nparents, parent_kind, &
-        status_code, host_state, errcode)
+    SUBROUTINE block_generic_callback_c(block_text, pass_number, nparents, &
+        parent_kind, status_code, host_state, errcode)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: block_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parent_kind
       INTEGER(eis_status_c), INTENT(INOUT) :: status_code
@@ -99,10 +109,11 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE block_generic_callback_c
 
-    SUBROUTINE block_callback_c(block_text, nparents, parents, parent_kind, &
-        status_code, host_state, errcode) BIND(C)
+    SUBROUTINE block_callback_c(block_text, pass_number, nparents, parents, &
+        parent_kind, status_code, host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: block_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parent_kind
@@ -111,10 +122,11 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE block_callback_c
 
-    SUBROUTINE block_remap_callback_c(block_text, len_remap_text, remap_text, &
-        status_code, host_state, errcode)
+    SUBROUTINE block_remap_callback_c(block_text, pass_number, len_remap_text, &
+        remap_text, status_code, host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: block_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: len_remap_text
       TYPE(C_PTR), VALUE, INTENT(IN) :: remap_text
       INTEGER(eis_status_c), INTENT(INOUT) :: status_code
@@ -122,10 +134,11 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE block_remap_callback_c
 
-    SUBROUTINE key_text_callback_c(key_text, nparents, parents, parent_kind, &
-        status_code, host_state, errcode) BIND(C)
+    SUBROUTINE key_text_callback_c(key_text, pass_number, nparents, parents, &
+        parent_kind, status_code, host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: key_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parent_kind
@@ -134,10 +147,12 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE key_text_callback_c
 
-    SUBROUTINE key_value_callback_c(key_text, value_text, nparents, parents, &
-        parent_kind, status_code, host_state, errcode) BIND(C)
+    SUBROUTINE key_value_callback_c(key_text, value_text, pass_number, &
+        nparents, parents, parent_kind, status_code, host_state, errcode) &
+        BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: key_text, value_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parents
       INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parent_kind
@@ -146,11 +161,12 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE key_value_callback_c
 
-    SUBROUTINE key_numeric_value_callback_c(key_text, nvalues, values, parser, &
-        nparents, parents, parent_kind, status_code, host_state, &
-        errcode) BIND(C)
+    SUBROUTINE key_numeric_value_callback_c(key_text, nvalues, values, &
+        pass_number, parser, nparents, parents, parent_kind, status_code, &
+        host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_num_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: key_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: nvalues
       REAL(eis_num_c), DIMENSION(nvalues), INTENT(IN) :: values
       INTEGER(C_INT), VALUE, INTENT(IN) :: parser
@@ -162,10 +178,12 @@ MODULE eis_deck_function_mod
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE key_numeric_value_callback_c
 
-    SUBROUTINE key_stack_callback_c(key_text, value_stack, parser, nparents, &
-        parents, parent_kind, status_code, host_state, errcode) BIND(C)
+    SUBROUTINE key_stack_callback_c(key_text, value_stack, pass_number, &
+        parser, nparents, parents, parent_kind, status_code, host_state, &
+        errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: key_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
       INTEGER(C_INT), VALUE, INTENT(IN) :: value_stack
       INTEGER(C_INT), VALUE, INTENT(IN) :: parser
       INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
