@@ -153,12 +153,10 @@ CONTAINS
     INTEGER, INTENT(IN) :: delete_index
     !> Whether or not the deletion succeded
     LOGICAL :: success
-    LOGICAL :: disorder
 
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     success = this%strings%delete(delete_index)
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END FUNCTION ess_delete
 
@@ -174,15 +172,13 @@ CONTAINS
     CLASS(eis_string_store), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: line_start, line_end
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str2, fname, fname0
-    LOGICAL :: ok, disorder, changed_fname
+    LOGICAL :: ok, changed_fname
     INTEGER :: istr, sindex, flmin, flmax, ln, lnm
 
     IF (line_end <= line_start) RETURN
     IF (line_start < 1 .OR. line_end > this%get_size()) RETURN
 
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
-
+    CALL this%strings%enable_disorder()
     flmin = HUGE(flmin)
     flmax = -1
     changed_fname = .FALSE.
@@ -211,7 +207,7 @@ CONTAINS
       ok = this%delete(istr)
     END DO
 
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END SUBROUTINE ess_combine_lines
 
@@ -595,7 +591,6 @@ CONTAINS
     !> Index of stored string
     INTEGER(eis_i4) :: in_index
     TYPE(string_holder) :: temp
-    LOGICAL :: disorder
 
     ALLOCATE(temp%text, SOURCE = text)
     IF (PRESENT(filename)) ALLOCATE(temp%filename, SOURCE = filename)
@@ -604,10 +599,9 @@ CONTAINS
       temp%maxline = line_number
     END IF
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     in_index = this%strings%insert(temp, dest_index)
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END FUNCTION ess_insert_string_ucs4
 #endif
@@ -635,7 +629,6 @@ CONTAINS
     !> Index of stored string
     INTEGER(eis_i4) :: in_index
     TYPE(string_holder) :: temp
-    LOGICAL :: disorder
 
     ALLOCATE(temp%text, SOURCE = text)
     IF (PRESENT(filename)) ALLOCATE(temp%filename, SOURCE = filename)
@@ -644,10 +637,9 @@ CONTAINS
       temp%maxline = line_number
     END IF
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     in_index = this%strings%insert(temp, dest_index)
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END FUNCTION ess_insert_string_ascii
 
@@ -906,11 +898,10 @@ CONTAINS
     CLASS(eis_string_store), INTENT(INOUT) :: this
     INTEGER :: r_index
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
-    LOGICAL :: ok, disorder
+    LOGICAL :: ok
 
     r_index = this%get_size()
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     DO WHILE (r_index > 0)
       ok = this%get(r_index, str)
       IF (str == "") THEN
@@ -918,7 +909,7 @@ CONTAINS
       END IF
       r_index = r_index - 1
     END DO
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END SUBROUTINE ess_remove_blank_lines
 
@@ -934,11 +925,10 @@ CONTAINS
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: eol_sequence
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str2, fname
-    LOGICAL :: ok, loop, disorder
+    LOGICAL :: ok, loop
     INTEGER :: eol_length, str_length, c_index, sindex, con_start
 
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     loop = .TRUE.
     eol_length = LEN(eol_sequence)
     DO WHILE (loop)
@@ -961,7 +951,7 @@ CONTAINS
         END IF
       END DO
     END DO
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END SUBROUTINE ess_combine_split_lines
 
@@ -985,10 +975,9 @@ CONTAINS
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN), OPTIONAL :: mlc_end
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str_temp
     INTEGER :: istr, ipos, sindex, ipos2
-    LOGICAL :: ok, disorder, in_comment
+    LOGICAL :: ok, in_comment
 
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     !Do single line comments
     IF (PRESENT(slc_start)) THEN
       istr = 1
@@ -1076,7 +1065,7 @@ CONTAINS
         istr = istr + 1
       END DO
     END IF
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
     IF (ALLOCATED(str)) DEALLOCATE(str)
     IF (ALLOCATED(str_temp)) DEALLOCATE(str_temp)
@@ -1095,15 +1084,14 @@ CONTAINS
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
     LOGICAL :: ok, disorder
 
-    disorder = this%strings%can_disorder
-    this%strings%can_disorder = .TRUE.
+    CALL this%strings%enable_disorder()
     DO istr = 1, this%get_size()
       ok = this%get(istr, str)
       sindex = this%store(TRIM(ADJUSTL(str)), istr, &
           trimmed_white_space_length = LEN(TRIM(str)) &
           - LEN(TRIM(ADJUSTL(str))))
     END DO
-    this%strings%can_disorder = disorder
+    CALL this%strings%disable_disorder()
 
   END SUBROUTINE ess_remove_whitespace
 

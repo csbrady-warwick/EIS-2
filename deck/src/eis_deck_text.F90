@@ -31,8 +31,10 @@ MODULE eis_deck_from_text_mod
     PROCEDURE :: parse_deck_file => tdp_parse_deck_file
     PROCEDURE :: parse_deck_string => tdp_parse_deck_string
     PROCEDURE :: parse_deck_object => tdp_parse_deck_object
-    GENERIC :: parse_deck => parse_deck_file, parse_deck_object
+    PROCEDURE :: reparse_deck => tdp_reparse_deck
+    GENERIC :: parse_deck => parse_deck_file, parse_deck_object, reparse_deck
     PROCEDURE, PRIVATE :: call_blocks => tdp_call_blocks
+    PROCEDURE, PRIVATE :: display_blocks => tdp_display_blocks
     PROCEDURE, PRIVATE :: generate_and_parse => tdp_parse_generate
     PROCEDURE :: initialise_deck => tdp_initialise_deck
     PROCEDURE :: initialize_deck => tdp_initialise_deck
@@ -42,6 +44,8 @@ MODULE eis_deck_from_text_mod
     PROCEDURE :: get_error_report => tdp_get_error_report
     PROCEDURE :: flush_errors => tdp_flush_errors
     PROCEDURE :: get_block_name => tdp_get_block_name
+    PROCEDURE :: get_block_parents => tdp_get_block_parents
+    PROCEDURE :: get_block_structure => tdp_get_block_structure
     FINAL :: tdp_destructor
 
   END TYPE eis_text_deck_parser
@@ -175,6 +179,96 @@ MODULE eis_deck_from_text_mod
         host_state = this_host, display_name=block%block_name)
 
   END SUBROUTINE tdp_call_blocks
+
+
+
+  !> @brief
+  !> Parse a specific deck block against a definition
+  !> @param[inout] this
+  !> @param[in] block
+  !> @param[in] include_keys
+  !> @param[inout]] line_id
+  !> @param[in] dot_str
+  !> @param[in] max_depth
+  !> @param[in] max_key_depth
+  RECURSIVE SUBROUTINE tdp_display_blocks(this, block, line_id, dot_str, &
+      include_keys, max_depth, max_key_depth)
+    CLASS(eis_text_deck_parser), INTENT(IN) :: this
+    !> Deck block to parse
+    TYPE(eis_string_deck_block), POINTER, INTENT(IN) :: block
+    !> ID for text lines in the dot output
+    INTEGER, INTENT(INOUT) :: line_id
+    !> String containing the dot output
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: dot_str
+    !> Logical specifying whether to include keys
+    LOGICAL, INTENT(IN), OPTIONAL :: include_keys
+    !> Integer specifying the maximum depth to visualise the stack to
+    INTEGER, INTENT(IN), OPTIONAL :: max_depth
+    !> Integer specifyin the maximum depth to visualise keys to
+    INTEGER, INTENT(IN), OPTIONAL :: max_key_depth
+
+    CHARACTER(LEN=5) :: val1, val2
+    INTEGER :: i
+    CHARACTER(LEN=:), ALLOCATABLE :: line
+    INTEGER, DIMENSION(:), ALLOCATABLE :: block_parents
+    LOGICAL :: do_keys
+    INTEGER :: cpos, epos, spos
+
+    CALL block%get_parents(block_parents)
+    IF (PRESENT(max_depth)) THEN
+      IF (SIZE(block_parents) - 1 > max_depth) THEN
+        DEALLOCATE(block_parents)
+        RETURN
+      END IF
+    END IF
+
+    do_keys = .FALSE.
+    IF (PRESENT(include_keys)) THEN
+      do_keys = include_keys
+      IF (PRESENT(max_key_depth)) THEN
+        do_keys = (SIZE(block_parents) - 1 > max_key_depth)
+      END IF
+    END IF
+
+    WRITE(val1, '(I5.5)') block%id
+    CALL eis_append_string(dot_str, TRIM(val1) // '[label="' &
+        // block%block_name // '"] [shape= diamond];')
+    CALL block%get_parents(block_parents)
+    IF (SIZE(block_parents) > 1) THEN
+      WRITE(val2, '(I5.5)') block_parents(SIZE(block_parents)-1)
+      CALL eis_append_string(dot_str, val2 // ' -- ' // val1 // ';')
+    END IF
+    DO i = 1, block%get_child_count()
+      CALL this%display_blocks(block%get_child(i), line_id, dot_str, &
+          include_keys, max_depth, max_key_depth)
+    END DO
+
+    IF (do_keys) THEN
+      WRITE(val2, '(I5.5)') block_parents(SIZE(block_parents))
+      DO i = 1, block%get_line_count()
+        CALL block%get_line(i, line)
+        cpos = INDEX(line,':')
+        epos = INDEX(line,'=')
+        IF (cpos == 0 .AND. epos == 0) THEN
+          spos = LEN(line) + 1
+        ELSE
+          IF (cpos == 0) cpos = HUGE(cpos)
+          IF (epos == 0) epos = HUGE(epos)
+          spos = MIN(cpos,epos)
+        END IF
+        WRITE(val1,'(I5.5)') line_id
+        CALL eis_append_string(dot_str, TRIM(val1) // '[label="' &
+            // TRIM(ADJUSTL(line(1:spos-1))) // '"] [shape= circle];')
+        CALL eis_append_string(dot_str, val2 // ' -- ' // val1 // ';')
+        line_id = line_id + 1
+      END DO
+      IF (ALLOCATED(line)) DEALLOCATE(line)
+    END IF
+
+    DEALLOCATE(block_parents)
+
+  END SUBROUTINE tdp_display_blocks
+
 
 
   !> @brief
@@ -567,6 +661,44 @@ MODULE eis_deck_from_text_mod
   END SUBROUTINE tdp_parse_deck_string
 
 
+
+  SUBROUTINE tdp_reparse_deck(this, definition, errcode, &
+      pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
+      state, initialise_all_blocks, unknown_block_is_fatal, &
+      unknown_key_is_fatal)
+    CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
+    TYPE(eis_deck_definition), INTENT(INOUT) :: definition
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number, max_passes
+    INTEGER, INTENT(IN), OPTIONAL :: max_level
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_root_keys, allow_empty_blocks
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: state
+    LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
+    LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
+    LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
+
+    TYPE(eis_string_deck_block), POINTER :: block
+    INTEGER(eis_error) :: err, host_state, status
+    TYPE(eis_deck_block_definition), POINTER :: bdef
+    LOGICAL :: parse_over, first_pass
+
+    IF (.NOT. this%is_init) RETURN
+    IF (.NOT. ALLOCATED(this%sdeck)) RETURN
+    IF (.NOT. this%sdeck%is_init) RETURN
+
+    CALL eis_default_status(errcode = err)
+    CALL this%generate_and_parse(this%sdeck, definition, err, &
+        pass_number = pass_number, max_passes = max_passes, state = state, &
+        initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
+        = unknown_block_is_fatal, unknown_key_is_fatal &
+        = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
+        allow_root_keys = allow_root_keys)
+    errcode = IOR(errcode, err)
+
+  END SUBROUTINE tdp_reparse_deck
+
+
+
   !> @brief
   !> Get a serialised text version of a deck file
   !> Contains all of the information about the source filename
@@ -715,5 +847,64 @@ MODULE eis_deck_from_text_mod
     END IF
 
   END SUBROUTINE tdp_get_block_name
+
+
+
+  !> @brief
+  !> Get the parents of a block from the ID
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] parents
+  SUBROUTINE tdp_get_block_parents(this, index, parents)
+    CLASS(eis_text_deck_parser), INTENT(IN) :: this
+    !Index of the block to get name of
+    INTEGER, INTENT(IN) :: index
+    !> Allocatable integer variable to hold the parents
+    INTEGER, DIMENSION(:), ALLOCATABLE, INTENT(OUT) :: parents
+    TYPE(eis_string_deck_block), POINTER :: block
+
+    IF (ALLOCATED(this%sdeck)) THEN
+      block => this%sdeck%get_block(index)
+      IF (ASSOCIATED(block)) CALL block%get_parents(parents)
+    END IF
+
+  END SUBROUTINE tdp_get_block_parents
+
+
+
+  !> @brief
+  !> Get the structure of a deck's blocks and optionally keys
+  !> @param[inout] this
+  !> @param[out] dot_str
+  !> @param[in[ include_keys
+  !> @param[in] max_depth
+  !> @param[in] max_key_depth
+  SUBROUTINE tdp_get_block_structure(this, dot_str, include_keys, max_depth, &
+      max_key_depth)
+    CLASS(eis_text_deck_parser), INTENT(IN) :: this
+    !> String holding the structure of the deck
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: dot_str
+    !> Should the output include keys?
+    LOGICAL, INTENT(IN), OPTIONAL :: include_keys
+    !> Maximum depth of block to display
+    INTEGER, INTENT(IN), OPTIONAL :: max_depth
+    !> Maximum depth at which to show keys
+    INTEGER, INTENT(IN), OPTIONAL :: max_key_depth
+    TYPE(eis_string_deck_block), POINTER :: block
+    INTEGER :: level
+
+    IF (ALLOCATED(this%sdeck)) THEN
+      block => this%sdeck%get_block()
+      IF (ASSOCIATED(block)) THEN
+        level = this%sdeck%max_block_id + 1
+        CALL eis_append_string(dot_str, 'strict graph G {')
+        CALL this%display_blocks(block, level, dot_str, &
+            include_keys = include_keys, max_depth = max_depth, &
+            max_key_depth = max_key_depth)
+        CALL eis_append_string(dot_str, '}')
+      END IF
+    END IF
+
+  END SUBROUTINE tdp_get_block_structure
 
 END MODULE eis_deck_from_text_mod

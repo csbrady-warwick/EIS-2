@@ -19,7 +19,31 @@ MODULE eis_deck_definition_mod
     LOGICAL :: owns_parser = .FALSE.
     CLASS(eis_parser), POINTER :: parser => NULL()
     LOGICAL :: owns_interop = .FALSE.
-    INTEGER :: interop_parser
+    INTEGER :: interop_parser = -1
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_key_success_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_key_success_fn &
+        => NULL()
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_key_failure_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_key_failure_fn &
+        => NULL()
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_key_no_trigger_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_key_no_trigger_fn &
+        => NULL()
+
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_block_start_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_block_start_fn &
+        => NULL()
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_block_end_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_block_end_fn &
+        => NULL()
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_block_failure_fn => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_block_failure_fn &
+        => NULL()
+    PROCEDURE(event_callback), POINTER, NOPASS :: on_block_no_trigger_fn &
+        => NULL()
+    PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_block_no_trigger_fn &
+        => NULL()
+
     CONTAINS
 
     PROCEDURE :: get_id => ddi_get_next_id
@@ -51,6 +75,7 @@ MODULE eis_deck_definition_mod
   TYPE :: eis_deck_block_definition
     TYPE(named_store) :: sub_blocks
     TYPE(named_store) :: keys
+
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
     CHARACTER(LEN=:), ALLOCATABLE :: name
@@ -102,6 +127,8 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: finalise_block => dbd_finalise_block
     PROCEDURE :: finalize_block => dbd_finalise_block
     PROCEDURE :: get_id => dbd_get_id
+    PROCEDURE :: optimise => dbd_optimise
+    PROCEDURE :: visualise => dbd_visualise
 
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
@@ -125,6 +152,10 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: initialise_blocks => dd_init_blocks
     PROCEDURE :: finalize_blocks => dd_finalise_blocks
     PROCEDURE :: finalise_blocks => dd_finalise_blocks
+    PROCEDURE :: optimise => dd_optimise
+    PROCEDURE :: optimize => dd_optimise
+    PROCEDURE :: visualise => dd_visualise
+    PROCEDURE :: get_block_structure => dd_visualise
     FINAL :: dd_destructor
   END TYPE eis_deck_definition
 
@@ -192,7 +223,12 @@ MODULE eis_deck_definition_mod
       any_key_text, any_key_value, any_key_numeric_value, &
       any_key_stack, block_remapper, c_init_deck, c_start_deck, c_end_deck, &
       c_final_deck, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-      c_any_key_stack, c_block_remapper, parser, interop_parser) RESULT(root)
+      c_any_key_stack, c_block_remapper, on_key_success, on_key_failure, &
+      on_key_no_trigger, on_block_start, on_block_end, on_block_no_trigger, &
+      on_block_failure, c_on_key_success, c_on_key_failure, &
+      c_on_key_no_trigger, c_on_block_start, c_on_block_end, &
+      c_on_block_no_trigger, c_on_block_failure, parser, &
+      interop_parser) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
     PROCEDURE(block_callback), OPTIONAL :: start_deck, end_deck
@@ -210,6 +246,22 @@ MODULE eis_deck_definition_mod
     PROCEDURE(key_stack_callback_c), OPTIONAL :: c_any_key_stack
     PROCEDURE(block_remap_callback_c), OPTIONAL :: c_block_remapper
 
+    PROCEDURE(event_callback), OPTIONAL :: on_key_success
+    PROCEDURE(event_callback), OPTIONAL :: on_key_failure
+    PROCEDURE(event_callback), OPTIONAL :: on_key_no_trigger
+    PROCEDURE(event_callback), OPTIONAL :: on_block_start
+    PROCEDURE(event_callback), OPTIONAL :: on_block_end
+    PROCEDURE(event_callback), OPTIONAL :: on_block_no_trigger
+    PROCEDURE(event_callback), OPTIONAL :: on_block_failure
+
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_key_success
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_key_failure
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_key_no_trigger
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_start
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_end
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_no_trigger
+    PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_failure
+
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser
 
@@ -221,6 +273,31 @@ MODULE eis_deck_definition_mod
     this%is_init = .TRUE.
 
     ALLOCATE(this%info)
+    IF (PRESENT(on_key_success)) this%info%on_key_success_fn => on_key_success
+    IF (PRESENT(on_key_failure)) this%info%on_key_failure_fn => on_key_failure
+    IF (PRESENT(on_key_no_trigger)) this%info%on_key_no_trigger_fn &
+        => on_key_no_trigger
+    IF (PRESENT(on_block_start)) this%info%on_block_start_fn => on_block_start
+    IF (PRESENT(on_block_end)) this%info%on_block_end_fn => on_block_end
+    IF (PRESENT(on_block_no_trigger)) this%info%on_block_no_trigger_fn &
+        => on_block_start
+    IF (PRESENT(on_block_failure)) this%info%on_block_failure_fn &
+        => on_block_failure
+
+    IF (PRESENT(c_on_key_success)) this%info%c_on_key_success_fn &
+        => c_on_key_success
+    IF (PRESENT(c_on_key_failure)) this%info%c_on_key_failure_fn &
+        => c_on_key_failure
+    IF (PRESENT(c_on_key_no_trigger)) this%info%c_on_key_no_trigger_fn &
+        => c_on_key_no_trigger
+    IF (PRESENT(c_on_block_start)) this%info%c_on_block_start_fn &
+        => c_on_block_start
+    IF (PRESENT(c_on_block_end)) this%info%c_on_block_end_fn => c_on_block_end
+    IF (PRESENT(c_on_block_no_trigger)) this%info%c_on_block_no_trigger_fn &
+        => c_on_block_start
+    IF (PRESENT(c_on_block_failure)) this%info%c_on_block_failure_fn &
+        => c_on_block_failure
+
     ALLOCATE(this%root_definition)
     dummy = this%root_definition%init(this%info, '{ROOT}', 0, -1, init_deck, &
         start_deck, end_deck, final_deck, any_key_text, any_key_value, &
@@ -348,6 +425,32 @@ MODULE eis_deck_definition_mod
     END DO
 
   END SUBROUTINE dd_finalise_blocks
+
+
+
+  SUBROUTINE dd_optimise(this)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+
+    IF (ASSOCIATED(this%root_definition)) CALL this%root_definition%optimise()
+
+  END SUBROUTINE dd_optimise
+
+
+
+  SUBROUTINE dd_visualise(this, str)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str
+    INTEGER :: level
+
+    IF (.NOT. ASSOCIATED(this%root_definition)) RETURN
+
+    level = this%info%id_max + 1
+    CALL eis_append_string(str,'strict graph G {')
+    CALL this%root_definition%visualise(str, level)
+    CALL eis_append_string(str,'}')
+
+  END SUBROUTINE dd_visualise
+
 
 
 
@@ -507,7 +610,7 @@ MODULE eis_deck_definition_mod
 
     TYPE(eis_deck_block_definition), POINTER :: dbd_add_block
     CLASS(*), POINTER :: ptr
-    INTEGER :: id
+    INTEGER :: id, inx
 
     ALLOCATE(dbd_add_block)
     id = &
@@ -545,6 +648,7 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask) :: this_state
     INTEGER(eis_error) :: this_errcode
     INTEGER :: npass
+    INTEGER, DIMENSION(0) :: dummy
 
     ptr => this%sub_blocks%get(block_name)
 
@@ -611,6 +715,22 @@ MODULE eis_deck_definition_mod
       errcode = IOR(errcode, eis_err_unknown_block)
     END IF
 
+    IF (errcode /= eis_err_none) THEN
+      IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
+        CALL this%info%on_block_failure_fn(block_name, npass, dummy, &
+            dummy, status_code, host_state, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
+        CALL f_c_string(block_name, LEN(block_name), c_block_name)
+        CALL this%info%c_on_block_failure_fn(C_LOC(c_block_name), &
+            INT(npass, C_INT), SIZE(dummy, KIND=C_INT), &
+            INT(dummy, C_INT), INT(dummy, C_INT), status_code, &
+            host_state, errcode)
+        DEALLOCATE(c_block_name)
+      END IF
+    END IF
 
   END FUNCTION dbd_get_block
 
@@ -689,13 +809,40 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
 
+    CALL this%get_parents(parent_kind)
+
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
     IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
     IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
-    IF (.NOT. run) RETURN
+    IF (.NOT. run) THEN
+      IF (PRESENT(display_name)) THEN
+        ALLOCATE(this_name, SOURCE = display_name)
+      ELSE
+        ALLOCATE(this_name, SOURCE = this%name)
+      END IF
+      IF (ASSOCIATED(this%info%on_block_no_trigger_fn)) THEN
+        CALL this%info%on_block_no_trigger_fn(this_name, pass_number, parents, &
+            parent_kind, this_status, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+        host_state = IOR(host_state, this_bitmask)
+      END IF
 
-    CALL this%get_parents(parent_kind)
+      IF (ASSOCIATED(this%info%c_on_block_no_trigger_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
+        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL this%info%c_on_block_no_trigger_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_status, &
+            this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+        host_state = IOR(host_state, this_bitmask)
+        DEALLOCATE(c_this_name)
+      END IF
+      DEALLOCATE(this_name)
+      DEALLOCATE(parent_kind)
+      RETURN
+    END IF
 
     IF (PRESENT(host_state)) THEN
       this_bitmask = host_state
@@ -707,12 +854,13 @@ MODULE eis_deck_definition_mod
     host_state = IOR(host_state, this_bitmask)
     errcode = IOR(errcode, this_err)
 
+    IF (PRESENT(display_name)) THEN
+      ALLOCATE(this_name, SOURCE = display_name)
+    ELSE
+      ALLOCATE(this_name, SOURCE = this%name)
+    END IF
+
     IF (ASSOCIATED(this%start_block_fn)) THEN
-      IF (PRESENT(display_name)) THEN
-        ALLOCATE(this_name, SOURCE = display_name)
-      ELSE
-        ALLOCATE(this_name, SOURCE = this%name)
-      END IF
       this_err = eis_err_none
       this_status = eis_status_none
       CALL this%start_block_fn(this_name, pass_number, parents, parent_kind, &
@@ -720,17 +868,11 @@ MODULE eis_deck_definition_mod
       IF (IAND(this_status, eis_status_not_handled) /= 0) &
           this_err = IOR(this_err, eis_err_unknown_block)
       errcode = IOR(errcode, this_err)
-      DEALLOCATE(this_name)
     END IF
 
     IF (ASSOCIATED(this%c_start_block_fn)) THEN
-      IF (PRESENT(display_name)) THEN
-        ALLOCATE(c_this_name(LEN(display_name)))
-        CALL f_c_string(display_name, LEN(display_name), c_this_name)
-      ELSE
-        ALLOCATE(c_this_name(LEN(this%name)))
-        CALL f_c_string(this%name, LEN(this%name), c_this_name)
-      END IF
+      ALLOCATE(c_this_name(LEN(this_name)))
+      CALL f_c_string(this_name, LEN(this_name), c_this_name)
       this_err = eis_err_none
       this_status = eis_status_none
       CALL this%c_start_block_fn(C_LOC(c_this_name), &
@@ -745,8 +887,41 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+    IF (errcode == eis_err_none) THEN
+      IF (ASSOCIATED(this%info%on_block_start_fn)) THEN
+        CALL this%info%on_block_start_fn(this_name, pass_number, parents, &
+            parent_kind, this_status, host_state, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_block_start_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
+        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL this%info%c_on_block_start_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            host_state, errcode)
+        DEALLOCATE(c_this_name)
+      END IF
+    ELSE
+      IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
+        CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
+            parent_kind, this_status, host_state, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
+        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            host_state, errcode)
+        DEALLOCATE(c_this_name)
+      END IF
+    END IF
     
     DEALLOCATE(parent_kind)
+    DEALLOCATE(this_name)
 
   END SUBROUTINE dbd_start_block
 
@@ -774,6 +949,7 @@ MODULE eis_deck_definition_mod
     IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
     IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
+    !You only trigger block_no_trigger on block starts, not block ends
     IF (.NOT. run) RETURN
 
     CALL this%get_parents(parent_kind)
@@ -784,12 +960,13 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
 
+    IF (PRESENT(display_name)) THEN
+      ALLOCATE(this_name, SOURCE = display_name)
+    ELSE
+      ALLOCATE(this_name, SOURCE = this%name)
+    END IF
+
     IF (ASSOCIATED(this%end_block_fn)) THEN
-      IF (PRESENT(display_name)) THEN
-        ALLOCATE(this_name, SOURCE = display_name)
-      ELSE
-        ALLOCATE(this_name, SOURCE = this%name)
-      END IF
       this_status = eis_status_none
       this_err = eis_err_none
       CALL this%end_block_fn(this_name, pass_number, parents, parent_kind, &
@@ -800,13 +977,8 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (ASSOCIATED(this%c_end_block_fn)) THEN
-      IF (PRESENT(display_name)) THEN
-        ALLOCATE(c_this_name(LEN(display_name)))
-        CALL f_c_string(display_name, LEN(display_name), c_this_name)
-      ELSE
-        ALLOCATE(c_this_name(LEN(this%name)))
-        CALL f_c_string(this%name, LEN(this%name), c_this_name)
-      END IF
+      ALLOCATE(c_this_name(LEN(this_name)))
+      CALL f_c_string(this_name, LEN(this_name), c_this_name)
       this_err = eis_err_none
       this_status = eis_status_none
       CALL this%c_end_block_fn(C_LOC(c_this_name), &
@@ -820,7 +992,41 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+    IF (errcode == eis_err_none) THEN
+      IF (ASSOCIATED(this%info%on_block_end_fn)) THEN
+        CALL this%info%on_block_end_fn(this_name, pass_number, parents, &
+            parent_kind, this_status, host_state, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_block_end_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
+        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL this%info%c_on_block_end_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            host_state, errcode)
+        DEALLOCATE(c_this_name)
+      END IF
+    ELSE
+      IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
+        CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
+            parent_kind, this_status, host_state, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
+        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
+        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            host_state, errcode)
+        DEALLOCATE(c_this_name)
+      END IF
+    END IF
+
     DEALLOCATE(parent_kind)
+    DEALLOCATE(this_name)
 
   END SUBROUTINE dbd_end_block
 
@@ -884,6 +1090,67 @@ MODULE eis_deck_definition_mod
 
 
 
+  SUBROUTINE dbd_optimise(this)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    INTEGER :: i
+    CLASS(*), POINTER :: gptr
+
+    CALL this%keys%optimise()
+    CALL this%sub_blocks%optimise()
+    DO i = 1, this%sub_blocks%get_name_count()
+      gptr => this%sub_blocks%get(i)
+      SELECT TYPE (gptr)
+        CLASS IS (eis_deck_block_definition)
+          CALL gptr%optimise()
+      END SELECT
+    END DO
+
+  END SUBROUTINE dbd_optimise
+
+
+
+  SUBROUTINE dbd_visualise(this, str, key_id)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    INTEGER, INTENT(INOUT) :: key_id
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parents
+    CHARACTER(LEN=5) :: val1, val2
+    INTEGER :: i
+    CLASS(*), POINTER :: gptr
+
+    CALL this%get_parents(parents)
+    WRITE(val1,'(I5.5)') this%id
+    CALL eis_append_string(str,  TRIM(val1) // '[label="' &
+        // this%name // '"] [shape= diamond];')
+    IF (SIZE(parents) > 1) THEN
+      WRITE(val2,'(I5.5)') parents(SIZE(parents)-1)
+      CALL eis_append_string(str, val2 // ' -- ' // val1 // ';')
+    END IF
+
+    DO i = 1, this%sub_blocks%get_name_count()
+      gptr => this%sub_blocks%get(i)
+      SELECT TYPE(gptr)
+        CLASS IS (eis_deck_block_definition)
+          CALL gptr%visualise(str, key_id)
+      END SELECT
+    END DO
+
+    DO i = 1, this%keys%get_name_count()
+      gptr => this%keys%get(i)
+      SELECT TYPE(gptr)
+        CLASS IS (deck_key_definition)
+        WRITE(val2,'(I5.5)') key_id
+        CALL eis_append_string(str,  TRIM(val2) // '[label="' &
+            // gptr%name // '"] [shape= circle];')
+        CALL eis_append_string(str, val1 // ' -- ' // val2 // ';') 
+        key_id = key_id + 1
+      END SELECT
+    END DO
+
+  END SUBROUTINE dbd_visualise
+
+
+
   SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
       key_numeric_value_fn, key_stack_fn, expected_params, pass_eq, pass_le, &
       pass_ge)
@@ -899,6 +1166,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
+    INTEGER :: inx
 
     ALLOCATE(new)
     CALL new%init(this, key_name, key_text_fn, key_value_fn, &
@@ -947,13 +1215,21 @@ MODULE eis_deck_definition_mod
     LOGICAL :: run
 
     IF (PRESENT(parser)) THEN
-      ps => parser
+      IF (ASSOCIATED(this%info%parser)) THEN
+        ps => this%info%parser
+      ELSE
+        ps => parser
+      END IF
     ELSE
       ps => this%info%parser
     END IF
 
     IF (PRESENT(interop_parser_id)) THEN
-      interop_parser = interop_parser_id
+      IF (this%info%interop_parser > 0) THEN
+        interop_parser = this%info%interop_parser
+      ELSE
+        interop_parser = interop_parser_id
+      END IF
     ELSE
       interop_parser = this%info%interop_parser
     END IF
@@ -1035,7 +1311,36 @@ MODULE eis_deck_definition_mod
       IF (dkd%use_eq) run = run .OR. (pass_number == dkd%pass_eq)
       IF (dkd%use_le) run = run .OR. (pass_number <= dkd%pass_le)
       IF (dkd%use_ge) run = run .OR. (pass_number >= dkd%pass_ge)
-      IF (.NOT. run) RETURN
+      IF (.NOT. run) THEN
+        IF (ASSOCIATED(this%info%on_key_no_trigger_fn)) THEN
+          IF (is_key_value) THEN
+            CALL this%info%on_key_no_trigger_fn(key, pass_number, parents, &
+                parent_kind, this_stat, this_bitmask, this_err)
+          ELSE
+            CALL this%info%on_key_no_trigger_fn(key_text, pass_number, &
+                parents, parent_kind, this_stat, this_bitmask, this_err)
+          END IF
+          errcode = IOR(errcode, this_err)
+          IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+        END IF
+
+        IF (ASSOCIATED(this%info%c_on_key_no_trigger_fn)) THEN
+          IF (is_key_value) THEN
+            CALL this%info%c_on_key_no_trigger_fn(C_LOC(c_key), &
+                INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+                INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+                this_bitmask, this_err)
+          ELSE
+            CALL this%info%c_on_key_no_trigger_fn(C_LOC(c_key_text), &
+                INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+                INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+                this_bitmask, this_err)
+          END IF
+          errcode = IOR(errcode, this_err)
+          IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+        END IF
+        RETURN
+      END IF
       IF (ASSOCIATED(dkd%key_text_fn)) THEN
         this_err = eis_err_none
         this_stat = base_stat
@@ -1351,6 +1656,35 @@ MODULE eis_deck_definition_mod
         errcode = IOR(errcode, eis_err_bad_value)
       ELSE
         errcode = IOR(errcode, eis_err_unknown_key)
+      END IF
+    END IF
+
+    IF (errcode == eis_err_none) THEN
+      IF (ASSOCIATED(this%info%on_key_success_fn)) THEN
+        CALL this%info%on_key_success_fn(key_text, pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_key_success_fn)) THEN
+        CALL this%info%c_on_key_success_fn(C_LOC(c_key_text), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+      END IF
+    ELSE
+      IF (ASSOCIATED(this%info%on_key_failure_fn)) THEN
+        CALL this%info%on_key_failure_fn(key_text, pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, errcode)
+      END IF
+
+      IF (ASSOCIATED(this%info%c_on_key_failure_fn)) THEN
+        CALL this%info%c_on_key_failure_fn(C_LOC(c_key_text), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, errcode)
+        errcode = IOR(errcode, this_err)
       END IF
     END IF
 

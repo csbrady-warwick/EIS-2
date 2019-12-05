@@ -1,5 +1,6 @@
 MODULE eis_named_store_mod
 
+  USE eis_ordered_store_mod
   IMPLICIT NONE
 
   INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9)
@@ -33,22 +34,31 @@ MODULE eis_named_store_mod
   TYPE :: named_store
     PRIVATE
     TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: buckets
+    TYPE(ordered_store) :: names
     INTEGER(INT64) :: count
     LOGICAL, PUBLIC :: is_init = .FALSE.
+    LOGICAL, PUBLIC :: needs_optimise = .FALSE.
     CONTAINS
     PRIVATE
     PROCEDURE :: hash => ns_hash
-    PROCEDURE, PUBLIC :: get => ns_get
+    PROCEDURE :: store_name => ns_store_name
+    PROCEDURE :: remove_name => ns_remove_name
+    PROCEDURE :: get_by_name => ns_get_by_name
+    PROCEDURE :: get_by_number => ns_get_by_number
     PROCEDURE, PUBLIC :: store => ns_store
     PROCEDURE, PUBLIC :: hold => ns_hold
     PROCEDURE, PUBLIC :: unlink => ns_unlink
     PROCEDURE, PUBLIC :: optimise => ns_optimise
     PROCEDURE, PUBLIC :: optimize => ns_optimise
     PROCEDURE, PUBLIC :: delete => ns_delete
+    PROCEDURE, PUBLIC :: get_name_count => ns_get_name_count
+    PROCEDURE, PUBLIC :: get_count => ns_get_name_count
+    PROCEDURE, PUBLIC :: get_name => ns_get_name
     PROCEDURE :: rebucket => ns_rebucket
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
     GENERIC, PUBLIC :: init => init_i8, init_i4
+    GENERIC, PUBLIC :: get => get_by_name, get_by_number
     FINAL :: ns_destructor
   END TYPE named_store
 
@@ -163,17 +173,20 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
-  !> Add an item to the inner list. Does not take a copy of item
+  !> Add an item to the inner list. Does not take a copy of item. Returns
+  !> .TRUE. if the item name is new in the list
   !> @param[in] this
   !> @param[in] name
   !> @param[in] item
   !> @param[in] owns
-  SUBROUTINE nsil_store(this, name, item, owns)
+  !> @result nsil_store
+  FUNCTION nsil_store(this, name, item, owns)
 
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to add item under
     CLASS(*), POINTER, INTENT(IN) :: item !< Item to add
     LOGICAL, INTENT(IN), OPTIONAL :: owns
+    LOGICAL :: nsil_store
     TYPE(named_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz, iindex
 
@@ -185,8 +198,11 @@ CONTAINS
       this%list(iindex)%item => item
       this%list(iindex)%owns = .TRUE.
       IF (PRESENT(owns)) this%list(iindex)%owns = owns
+      nsil_store = .FALSE.      
       RETURN
     END IF
+
+    nsil_store = .TRUE.
 
     IF (ASSOCIATED(this%list)) THEN
       sz = SIZE(this%list)
@@ -207,7 +223,7 @@ CONTAINS
     IF (PRESENT(owns)) this%list(sz)%owns = owns
     this%list(sz)%item => item
 
-  END SUBROUTINE nsil_store
+  END FUNCTION nsil_store
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -294,12 +310,65 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Store a name into the name store
+  !> @param[in] this
+  !> @param[in] name
+  SUBROUTINE ns_store_name(this, name)
+
+    CLASS(named_store), INTENT(INOUT) :: this !< self pointer
+    CHARACTER(LEN=*), INTENT(IN) :: name !< name to store
+    INTEGER :: id
+
+    id = this%names%store(name)
+
+  END SUBROUTINE ns_store_name
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Remove a name in the name store
+  !> @param[in] this
+  !> @param[in] name
+  SUBROUTINE ns_remove_name(this, name)
+
+    CLASS(named_store), INTENT(INOUT) :: this !< self pointer
+    CHARACTER(LEN=*), INTENT(IN) :: name !< name to remove
+    INTEGER :: i
+    CHARACTER(LEN=:), POINTER :: cptr
+    CLASS(*), POINTER :: gptr
+    LOGICAL :: success
+
+    CALL this%names%enable_disorder()
+    DO i = 1, this%names%get_size()
+      gptr => this%names%get(i)
+      SELECT TYPE (gptr)
+        TYPE IS (CHARACTER(LEN=*))
+          cptr => gptr
+        CLASS DEFAULT
+          cptr => NULL()
+      END SELECT
+      IF (ASSOCIATED(cptr)) THEN
+        IF (cptr == name) THEN
+          success = this%names%delete(i)
+          EXIT
+        END IF
+      END IF
+    END DO
+    CALL this%names%enable_disorder()
+
+  END SUBROUTINE ns_remove_name
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Get an item from the store by name
   !> return NULL pointer if item is not present
   !> @param[in] this
   !> @param[in] name
   !> @return item
-  FUNCTION ns_get(this, name) RESULT (item)
+  FUNCTION ns_get_by_name(this, name) RESULT (item)
 
     CLASS(named_store), INTENT(IN) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -312,7 +381,32 @@ CONTAINS
     bucket = this%hash(name)
     item => this%buckets(bucket)%get(name)
 
-  END FUNCTION ns_get
+  END FUNCTION ns_get_by_name
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get an item from the store by name number
+  !> return NULL pointer if number is out of range
+  !> @param[in] this
+  !> @param[in] index
+  !> @return item
+  FUNCTION ns_get_by_number(this, index) RESULT (item)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index
+    CLASS(*), POINTER :: item
+    CHARACTER(LEN=:), ALLOCATABLE :: name
+
+    item => NULL()
+    IF (.NOT. ALLOCATED(this%buckets)) RETURN
+    IF (index < 1 .OR. index > this%get_name_count()) RETURN
+    CALL this%get_name(index, name)
+    item => this%get_by_name(name)
+    DEALLOCATE(name)
+
+  END FUNCTION ns_get_by_number
 
 
 
@@ -330,14 +424,10 @@ CONTAINS
     CLASS(*), INTENT(IN) :: item
     CLASS(*), POINTER :: copy
     INTEGER(INT64) :: bucket
+    INTEGER :: id
 
-    IF (.NOT. ALLOCATED(this%buckets)) &
-        CALL this%init(default_bucket_count)
-
-    bucket = this%hash(name)
     ALLOCATE(copy, SOURCE = item)
-    CALL this%buckets(bucket)%store(name, copy)
-    this%count = this%count + 1
+    CALL this%hold(name, copy, owns = .TRUE.)
 
   END SUBROUTINE ns_store
 
@@ -360,12 +450,15 @@ CONTAINS
     CLASS(*), POINTER, INTENT(IN) :: item
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     INTEGER(INT64) :: bucket
+    INTEGER :: id
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)
 
+    this%needs_optimise = .TRUE.
+
     bucket = this%hash(name)
-    CALL this%buckets(bucket)%store(name, item, owns)
+    IF (this%buckets(bucket)%store(name, item, owns)) CALL this%store_name(name)
     this%count = this%count + 1
 
   END SUBROUTINE ns_hold
@@ -386,9 +479,58 @@ CONTAINS
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
 
     bucket = this%hash(name)
-    IF (this%buckets(bucket)%delete(name)) this%count = this%count - 1
+    IF (this%buckets(bucket)%delete(name)) THEN
+      this%count = this%count - 1
+      CALL this%remove_name(name)
+    END IF
 
   END SUBROUTINE ns_delete
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the count of names
+  !> @param[in] this
+  !> @result ns_get_name_count
+  FUNCTION ns_get_name_count(this)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+    INTEGER :: ns_get_name_count
+
+    ns_get_name_count = this%names%get_size()
+
+  END FUNCTION ns_get_name_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the count of names
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[out] name
+  SUBROUTINE ns_get_name(this, index, name)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    CLASS(*), POINTER :: gptr
+    CHARACTER(LEN=:), POINTER :: cptr
+
+    gptr => this%names%get(index)
+    SELECT TYPE (gptr)
+      TYPE IS (CHARACTER(LEN=*))
+        cptr => gptr
+      CLASS DEFAULT
+        cptr => NULL()
+    END SELECT
+
+    IF (ASSOCIATED(cptr)) THEN
+      ALLOCATE(name, SOURCE = cptr)  
+    END IF
+
+  END SUBROUTINE ns_get_name
 
 
 
@@ -434,6 +576,9 @@ CONTAINS
     LOGICAL :: od
     INTEGER(INT64) :: newcount
 
+    IF (.NOT. this%needs_optimise .AND. .NOT. PRESENT(item_bucket_factor)) &
+        RETURN
+
     mult = 1.0_REAL64
     IF (PRESENT(item_bucket_factor)) mult = item_bucket_factor
 
@@ -465,6 +610,7 @@ CONTAINS
     TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: new_buckets
     INTEGER(INT64) :: ibucket, ilist, h
     TYPE(named_store_item), POINTER :: item
+    LOGICAL :: is_new
 
     ALLOCATE(new_buckets(bucket_count))
 
@@ -473,7 +619,7 @@ CONTAINS
         DO ilist = 1, SIZE(this%buckets(ibucket)%list)
           item => this%buckets(ibucket)%list(ilist)
           h = this%hash(item%name, bucket_count)
-          CALL new_buckets(h)%store(item%name, item%item, owns = item%owns)
+          is_new = new_buckets(h)%store(item%name, item%item, owns = item%owns)
         END DO
         CALL this%buckets(ibucket)%unlink()
       END IF

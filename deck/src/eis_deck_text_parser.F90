@@ -52,6 +52,7 @@ MODULE eis_string_deck_mod
         file_text_processor => NULL()
     PROCEDURE(filename_processor_proto), POINTER, NOPASS :: &
         filename_processor => NULL()
+    INTEGER :: max_block_id = -1
     CONTAINS
     PRIVATE
     PROCEDURE :: parse_core => esd_parse_core
@@ -694,6 +695,8 @@ MODULE eis_string_deck_mod
     END DO
 
     IF (errcode /= eis_err_none) RETURN
+
+    this%max_block_id = iblock
 
     !Allocate storage for the blocks
     ALLOCATE(this%data%blocks(0:iblock))

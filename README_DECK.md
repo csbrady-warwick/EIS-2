@@ -52,6 +52,8 @@ Block instance - An actual instance of a block encountered when parsing a deck. 
 
 ID - Each deck block instance and deck block definition gets a unique ID that is used to uniquely identify it. Host codes normally only need to work with IDs if they have hierarchical blocks that need to know the sequence of blocks in the hierarchy
 
+Event - Events occur when a block starts and ends, when a block cannot be found, when a key is either succesfully or unsuccesfully parsed or when a block or key is not triggered because of pass conditions. You can bind event functions to trigger when any event occurs
+
 ## EIS Deck format
 
 EIS Decks are text files that are intended to control a code. They all have a fairly simple structure which is of separate blocks which contain text key/value pairs. For example
@@ -1539,6 +1541,37 @@ begin:block1
   key1 = test_key
 end:block1
 ```
+
+### Event functions
+
+You can bind event functions to a deck definition that will trigger when an event occurs. The event functions are different to action functions because they are triggered by a *type* of action occuring rather than being connected to a specific named block or key. You bind event functions in the `init` function for the deck definition. There are 7 event functions
+
+1. `on_key_success` which occurs when a key is succesfully parsed
+2. `on_key_failure` which occurs when a key has not been able to be parsed, either due to the key not being known (and not being handled by an `any_key` function) or due to a failure in key handling
+3. `on_key_no_trigger` which occurs when a key has not been triggered because of pass triggering rules
+4. `on_block_start` which occurs when a block starts. It occurs for both non-remapped and remapped blocks
+5. `on_block_end` which occurs when a block ends. It occurs for both non-remapped and remapped blocks
+6. `on_block_no_trigger` which occurs when a block would start but does not because of pass triggering rules. There is no matching untriggered block end
+7. `on_block_failure` which occurs when an error occured when starting or ending a block. Usually this is because a block was not found but this even will trigger if any error is reported during a block start or a block end
+
+All of the event functions are of the same type
+
+```fortran
+    SUBROUTINE event_callback(event_text, pass_number, parents, parent_kind, &
+        status_code, host_state, errcode)
+      CHARACTER(LEN=*), INTENT(IN) :: event_text
+      INTEGER, INTENT(IN) :: pass_number
+      INTEGER, DIMENSION(:), INTENT(IN) :: parents
+      INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+    END SUBROUTINE event_callback
+```
+
+The data that is passed to the event functions is mostly always the same, but there are a few differences. The `event_text` parameter contains the name of the block that caused the event for block functions and the entire text (key and value) for key functions. The `parents` and `parent_kind` parameters contain the same information as the equivalent parameters for the action functions _except_ for when the `on_block_failure` event is triggered because of an unknown block in which case both arrays are of zero length. The `errcode` parameter will ususually be `eis_err_none` but in the case of `on_block_failure` and `on_key_failure` events it will be populated with the error code that caused the failure. Overriding this error code will replace the error originally reported. In particular setting it to 'eis_err_none' will prevent the error from triggering.
+
+Event functions are intended for a variety of purposes but the main purpose is to allow for simple reporting of keys and blocks in a deck. You might, for example, bind event functions to `on_block_start`, `on_block_end`, `on_key_success` and `on_key_failure` to simply print the blocks and keys encountered into a file to help with reporting status if a user presents a malformed deck.
 
 ## Loading and parsing a deck
 

@@ -43,6 +43,8 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: store => ern_add_item
     PROCEDURE, PUBLIC :: include_namespace => ern_include_namespace
     PROCEDURE, PUBLIC :: get => ern_get_item
+    PROCEDURE :: optimise => ern_optimise
+    PROCEDURE :: optimize => ern_optimise
   END TYPE eis_namespace
 
   !>@class
@@ -86,6 +88,8 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
     PROCEDURE, PUBLIC :: copy_in_stored => eir_copy_in
     PROCEDURE, PUBLIC :: get_stored_emplacement => eir_get_stored
+    PROCEDURE, PUBLIC :: optimise => eir_optimise
+    PROCEDURE, PUBLIC :: optimize => eir_optimise
     
   END TYPE eis_registry
 
@@ -253,6 +257,29 @@ CONTAINS
     END IF
 
   END FUNCTION ern_get_item
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Optimise the stores inside a namespace
+  !> @param[inout] this
+  SUBROUTINE ern_optimise(this)
+    CLASS(eis_namespace), INTENT(INOUT) :: this
+    CLASS(*), POINTER :: gptr
+    INTEGER :: i
+
+    CALL this%generic_store%optimise()
+    DO i = 1, this%namespaces%get_name_count()
+      gptr => this%namespaces%get(i)
+      SELECT TYPE (gptr)
+        CLASS IS (eis_namespace)
+          CALL gptr%optimise()
+      END SELECT
+    END DO
+
+  END SUBROUTINE ern_optimise
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -787,5 +814,20 @@ CONTAINS
     END IF
 
   END SUBROUTINE eir_get_stored
+
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Optimise the stores in this registry
+  !> @param[inout] this
+  SUBROUTINE eir_optimise(this)
+    CLASS(eis_registry) :: this
+
+    CALL this%uop_table%optimise()
+    CALL this%stored_items%optimise()
+
+  END SUBROUTINE eir_optimise
 
 END MODULE eis_registry_mod

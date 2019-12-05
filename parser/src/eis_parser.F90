@@ -136,6 +136,8 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
     PROCEDURE, PUBLIC :: get_token_info => eip_get_token_info
+    PROCEDURE, PUBLIC :: optimise => eip_optimise
+    PROCEDURE, PUBLIC :: optimize => eip_optimise
 
     FINAL :: eip_destructor
   END TYPE eis_parser
@@ -2473,11 +2475,19 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Evaluate a stack without using objects
+  !> @param[inout] stack
+  !> @param[out] result
+  !> @param[inout] errcode
+  !> @param[in] host_params
+  !> @param[in] eval
+  !> @result eis_fast_evaluate
   FUNCTION eis_fast_evaluate(stack, result, errcode, host_params, eval)
     TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Allocatable array holding all the results from the evaluation.
     !> Will only be reallocated if it is too small to hold all the results
-    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+    REAL(eis_num), DIMENSION(:), INTENT(OUT), ALLOCATABLE :: result
     !> Error code describing any errors that occured
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
@@ -2509,6 +2519,16 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Evaluate a stack without using objects and using iterator function
+  !> @param[inout] stack
+  !> @param[out] result
+  !> @param[inout] errcode
+  !> @param[in] host_params
+  !> @param[in] iter_fn
+  !> @param[in] store_fn
+  !> @param[in] eval
+  !> @result eis_fast_evaluate
   SUBROUTINE eis_iter_evaluate(stack, host_params, iter_fn, store_fn, eval)
     TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Host code parameters provided.
@@ -2532,5 +2552,18 @@ CONTAINS
     CALL ees_evaluate_iter(eval_ptr, stack, host_params, iter_fn, store_fn)
 
   END SUBROUTINE eis_iter_evaluate
+
+
+
+  !> @brief
+  !> Optimise the global and local registries
+  !> @param[inout] this
+  SUBROUTINE eip_optimise(this)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+
+    CALL this%registry%optimise()
+    CALL global_registry%optimise()
+
+  END SUBROUTINE eip_optimise
 
 END MODULE eis_parser_mod

@@ -7,6 +7,7 @@ MODULE eis_ordered_store_mod
 
   TYPE :: ordered_store_item
     CLASS(*), POINTER :: item => NULL()
+    LOGICAL :: owns_item = .TRUE.
     CONTAINS
     PROCEDURE :: cleanup => osi_cleanup
     FINAL :: osi_destructor
@@ -16,15 +17,20 @@ MODULE eis_ordered_store_mod
     PRIVATE
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: items
     LOGICAL, PUBLIC :: is_init = .FALSE.
-    LOGICAL, PUBLIC :: can_disorder = .FALSE.
+    INTEGER :: disorder_level = 0
+!    LOGICAL, PUBLIC :: can_disorder = .FALSE.
     CONTAINS
     PRIVATE
     PROCEDURE, PUBLIC :: get_size => os_get_size
     PROCEDURE, PUBLIC :: get => os_get
+    PROCEDURE :: store_core => os_store_core
     PROCEDURE, PUBLIC :: store => os_store
+    PROCEDURE, PUBLIC :: hold => os_hold
     PROCEDURE, PUBLIC :: delete => os_delete
     PROCEDURE, PUBLIC :: insert => os_insert
     PROCEDURE, PUBLIC :: clear => os_clear
+    PROCEDURE, PUBLIC :: enable_disorder => os_enable_disorder
+    PROCEDURE, PUBLIC :: disable_disorder => os_disable_disorder
     FINAL :: os_destructor
   END TYPE ordered_store
 
@@ -41,7 +47,7 @@ CONTAINS
   PURE ELEMENTAL SUBROUTINE osi_cleanup(this)
     CLASS(ordered_store_item), INTENT(INOUT) :: this !< self pointer
 
-    IF (ASSOCIATED(this%item)) DEALLOCATE(this%item)
+    IF (ASSOCIATED(this%item) .AND. this%owns_item) DEALLOCATE(this%item)
     this%item => NULL()
   END SUBROUTINE osi_cleanup
 
@@ -117,24 +123,33 @@ CONTAINS
   !> Add an item to the ordered store
   !> @param[in] this
   !> @param[in] item
+  !> @param[in] owns
   !> @return os_store
-  FUNCTION os_store(this, item, index)
+  FUNCTION os_store_core(this, item, index, owns) RESULT(os_store)
 
     CLASS(ordered_store), INTENT(INOUT) :: this
-    CLASS(*), TARGET, INTENT(IN) :: item !< Item so store
+    CLASS(*), POINTER, INTENT(IN) :: item !< Item so store
     !> Index to store the item at. Intended to overwrite an existing item
     !> Not to allow storage in an arbitrary location. If index is not an 
     !> existing item index then the item is simply added to the end of the list
     INTEGER, INTENT(IN), OPTIONAL :: index
+    !> Whether the store owns the pointer to the item or not. Optional,
+    !> default true
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
     INTEGER(INT32) :: os_store !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER(INT32) :: sz
+    LOGICAL :: should_own
+
+    should_own = .TRUE.
+    IF (PRESENT(owns)) should_own = owns
 
     IF (PRESENT(index)) THEN
       IF (ALLOCATED(this%items)) THEN
         IF (index >=1 .AND. index <= SIZE(this%items)) THEN
           CALL this%items(index)%cleanup()
-          ALLOCATE(this%items(index)%item, SOURCE = item)
+          this%items(index)%owns_item = should_own
+          this%items(index)%item => item
           os_store = index
           RETURN
         END IF
@@ -154,11 +169,62 @@ CONTAINS
       sz = sz + 1
     END IF
 
-    ALLOCATE(this%items(sz)%item, SOURCE = item)
+    this%items(sz)%owns_item = should_own
+    this%items(sz)%item => item
     os_store = sz
+
+  END FUNCTION os_store_core
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to the ordered store
+  !> @param[in] this
+  !> @param[in] item
+  !> @return os_store
+  FUNCTION os_store(this, item, index)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+    CLASS(*), INTENT(IN) :: item !< Item so store
+    !> Index to store the item at. Intended to overwrite an existing item
+    !> Not to allow storage in an arbitrary location. If index is not an 
+    !> existing item index then the item is simply added to the end of the list
+    INTEGER, INTENT(IN), OPTIONAL :: index
+    INTEGER(INT32) :: os_store !< Index to which the item is stored
+    CLASS(*), POINTER :: item_copy
+
+    ALLOCATE(item_copy, SOURCE = item)
+
+    os_store = this%store_core(item_copy, index)
 
   END FUNCTION os_store
 
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add an item to the ordered store but hold the pointer rather than own it
+  !> @param[in] this
+  !> @param[in] item
+  !> @param[in] owns
+  !> @return os_store
+  FUNCTION os_hold(this, item, index, owns)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+    CLASS(*), POINTER, INTENT(IN) :: item !< Item so store
+    !> Index to store the item at. Intended to overwrite an existing item
+    !> Not to allow storage in an arbitrary location. If index is not an 
+    !> existing item index then the item is simply added to the end of the list
+    INTEGER, INTENT(IN), OPTIONAL :: index
+    !> Whether the store owns the pointer to the item or not. Optional,
+    !> default true
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
+    INTEGER(INT32) :: os_hold !< Index to which the item is stored
+
+    os_hold = this%store_core(item, index, owns)
+
+  END FUNCTION os_hold
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -175,7 +241,7 @@ CONTAINS
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER(INT32) :: sz
 
-    success = this%can_disorder .AND. ALLOCATED(this%items)
+    success = this%disorder_level > 0 .AND. ALLOCATED(this%items)
     IF (.NOT. success) RETURN
 
     IF (index >=1 .AND. index <= SIZE(this%items)) THEN
@@ -214,9 +280,37 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Set disorderable .TRUE.
+  !> @param[in] this
+  SUBROUTINE os_enable_disorder(this)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+
+    this%disorder_level = this%disorder_level + 1
+
+  END SUBROUTINE os_enable_disorder
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Set disorderable .FALSE.
+  !> @param[in] this
+  SUBROUTINE os_disable_disorder(this)
+
+    CLASS(ordered_store), INTENT(INOUT) :: this
+
+    this%disorder_level = this%disorder_level - 1
+
+  END SUBROUTINE os_disable_disorder
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Insert an item before another item specified by index. Only allowed
-  !> if the store has the "can_disorder" flag set to true. Returns -1 if
-  !> insert is not possible (either not can_disorder or index out of range)
+  !> if the store has been set to allow disorder. Returns -1 if
+  !> insert is not possible (either not disorderable or index out of range)
   !> Can specify an index 1 greater than the count to add at the end
   !> @param[in] this
   !> @param[in] item

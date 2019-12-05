@@ -94,6 +94,19 @@ MODULE eis_deck_function_mod
       INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE key_stack_callback
+
+    SUBROUTINE event_callback(event_text, pass_number, parents, parent_kind, &
+        status_code, host_state, errcode)
+      IMPORT eis_error, eis_stack, eis_status, eis_parser, eis_bitmask
+      CHARACTER(LEN=*), INTENT(IN) :: event_text
+      INTEGER, INTENT(IN) :: pass_number
+      INTEGER, DIMENSION(:), INTENT(IN) :: parents
+      INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+    END SUBROUTINE event_callback
+    
   END INTERFACE
 
   INTERFACE
@@ -193,6 +206,20 @@ MODULE eis_deck_function_mod
       INTEGER(eis_bitmask_c), INTENT(INOUT) :: host_state
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE key_stack_callback_c
+
+    SUBROUTINE event_callback_c(event_text, pass_number, &
+        nparents, parents, parent_kind, status_code, host_state, errcode) &
+        BIND(C)
+      IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: event_text
+      INTEGER(C_INT), INTENT(IN) :: pass_number
+      INTEGER(C_INT), VALUE, INTENT(IN) :: nparents
+      INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parents
+      INTEGER(C_INT), DIMENSION(nparents), INTENT(IN) :: parent_kind
+      INTEGER(eis_status_c), INTENT(INOUT) :: status_code
+      INTEGER(eis_bitmask_c), INTENT(INOUT) :: host_state
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+    END SUBROUTINE event_callback_c
   END INTERFACE
 
 END MODULE eis_deck_function_mod
