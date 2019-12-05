@@ -1,0 +1,20 @@
+begin:block1
+  key2 = mykey
+  key1 = out of order key
+end:block1
+
+begin:block2
+  new_key = Hello!
+  bad_key = I am a bad key
+end:block2
+
+begin:block1
+  key1 = test_key
+end:block1
+
+begin:block1
+  key1=outer block value
+  begin:block2
+    new_key=subkey
+  end:block2
+end:block1
