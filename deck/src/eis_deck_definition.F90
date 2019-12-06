@@ -1666,6 +1666,10 @@ MODULE eis_deck_definition_mod
       END IF
     END IF
 
+    !If there are no candidate functions but the block exists then you _have_
+    !handled it
+    handled = handled .OR. (ASSOCIATED(dkd) .AND. .NOT. any_candidates)
+
     IF (.NOT. handled) THEN
       IF (ASSOCIATED(dkd)) THEN
         errcode = IOR(errcode, eis_err_bad_value)
