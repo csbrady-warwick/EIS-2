@@ -1212,7 +1212,7 @@ MODULE eis_deck_definition_mod
         c_value
     TYPE(eis_parser), POINTER :: ps
     INTEGER :: interop_parser, wsl
-    LOGICAL :: run
+    LOGICAL :: run, any_candidates
 
     IF (PRESENT(parser)) THEN
       IF (ASSOCIATED(this%info%parser)) THEN
@@ -1306,7 +1306,21 @@ MODULE eis_deck_definition_mod
 
     CALL this%get_parents(parent_kind)
     handled = .FALSE.
+    any_candidates = .FALSE.
     IF (ASSOCIATED(dkd)) THEN
+      any_candidates = ANY([ASSOCIATED(dkd%key_text_fn), &
+          ASSOCIATED(dkd%c_key_text_fn), &
+          ASSOCIATED(dkd%key_value_fn), &
+          ASSOCIATED(dkd%c_key_value_fn), &
+          ASSOCIATED(dkd%key_numeric_value_fn), &
+          ASSOCIATED(dkd%c_key_numeric_value_fn), &
+          ASSOCIATED(dkd%key_stack_fn), &
+          ASSOCIATED(dkd%c_key_stack_fn)])
+     ELSE
+       any_candidates = .FALSE.
+     END IF
+
+    IF (any_candidates) THEN
       run = .NOT. ANY([dkd%use_eq, dkd%use_le, dkd%use_ge])
       IF (dkd%use_eq) run = run .OR. (pass_number == dkd%pass_eq)
       IF (dkd%use_le) run = run .OR. (pass_number <= dkd%pass_le)
@@ -1498,7 +1512,8 @@ MODULE eis_deck_definition_mod
     IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
 
-    IF (run) THEN
+    IF (run .AND. (.NOT. ASSOCIATED(dkd) .OR. (ASSOCIATED(dkd) &
+        .AND. any_candidates))) THEN
       IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
