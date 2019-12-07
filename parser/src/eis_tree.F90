@@ -90,6 +90,7 @@ MODULE eis_tree_mod
       END IF
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
+        IF (.NOT. PRESENT(stack_out)) DEALLOCATE(simplified)
         RETURN
       END IF
       CALL initialise_stack(intermediate)

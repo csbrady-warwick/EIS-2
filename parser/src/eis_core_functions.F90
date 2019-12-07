@@ -919,6 +919,9 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+#ifdef F2008
+    res = ASINH(params(1))
+#else
     res = params(1)**2 + 1.0_eis_num
     IF (res < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
@@ -930,6 +933,7 @@ MODULE eis_core_functions_mod
       RETURN
     END IF
     res = LOG(res)
+#endif
 
   END FUNCTION eis_asinh
 
@@ -950,6 +954,9 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+#ifdef F2008
+    res = ACOSH(params(1))
+#else
     res = params(1)**2 - 1.0_eis_num
     IF (res < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
@@ -961,6 +968,7 @@ MODULE eis_core_functions_mod
       RETURN
     END IF
     res = LOG(res)
+#endif
 
   END FUNCTION eis_acosh
 
@@ -981,6 +989,9 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+#ifdef F2008
+    res = ATANH(params(1))
+#else
     res = 1.0_eis_num - params(1)
     IF (ABS(res) < eis_tiny) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
@@ -992,9 +1003,9 @@ MODULE eis_core_functions_mod
       RETURN
     END IF
     res = 0.5_eis_num * LOG(res)
+#endif
 
   END FUNCTION eis_atanh
-
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -1020,5 +1031,186 @@ MODULE eis_core_functions_mod
     END IF
 
   END FUNCTION eis_if
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Bessel function of the first kind
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_bessel_j(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    IF (params(1) < 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+
+    res = BESSEL_JN(NINT(params(1), INT64), params(2))
+
+  END FUNCTION eis_bessel_j
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Bessel function of the second kind
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_bessel_y(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C) 
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    IF (params(1) < 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+
+    res = BESSEL_YN(NINT(params(1), INT64), params(2))
+
+  END FUNCTION eis_bessel_y
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Error function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_erf(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = ERF(params(1))
+
+  END FUNCTION eis_erf
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Complementary error function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_erfc(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = ERFC(params(1))
+
+  END FUNCTION eis_erfc
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Exponentially scaled complementary error function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_erfc_scaled(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams      
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = ERFC_SCALED(params(1))
+
+  END FUNCTION eis_erfc_scaled
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Bernoulli gamma function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_gamma_fn(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    IF (params(1) <= 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+
+    res = GAMMA(params(1))
+
+  END FUNCTION eis_gamma_fn
+#endif
+
+#ifdef F2008
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Log of Bernoulli gamma function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_log_gamma_fn(nparams, params, host_params, status_code, &
+      errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    IF (params(1) <= 0.0_eis_num) THEN
+      errcode = IOR(errcode, eis_err_maths_domain)
+      RETURN
+    END IF
+
+    res = LOG_GAMMA(params(1))
+
+  END FUNCTION eis_log_gamma_fn
+#endif
 
 END MODULE eis_core_functions_mod

@@ -25,6 +25,10 @@ endif
 
 FC ?= gfortran
 D = -D
+DEFINES := $(DEFINE)
+ifeq (f2008,$(findstring f2008,$(STANDARD)))
+  DEFINES += $(D)F2008
+endif
 
 # PGI
 # ===
@@ -71,7 +75,11 @@ endif
 # gfortran
 # ========
 ifeq ($(strip $(COMPILER)),gfortran)
-  FFLAGS = -O3 -g -std=f2003
+  ifeq (f2008,$(findstring f2008,$(STANDARD)))
+    FFLAGS = -O3 -g -std=f2008
+  else
+    FFLAGS = -O3 -g -std=f2003
+  endif
   ifeq (debug,$(findstring debug,$(MODE)))
     FFLAGS = -O0 -g -Wall -Wextra -pedantic -fbounds-check \
              -ffpe-trap=invalid,zero,overflow -Wno-unused-parameter \
@@ -128,7 +136,11 @@ ifeq ($(strip $(COMPILER)),ibm)
   endif
   MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
   MODULEFLAG := $(MODFLAG) -qmoddir=$(MODDIR)
-  FC = xlf2003
+  ifeq (f2008,$(findstring f2008,$(STANDARD)))
+    FC = xlf2008
+  else
+    FC = xlf2003
+  endif
 
   # IBM compiler needs a -WF to recognise preprocessor directives
   D = -WF,-D
@@ -145,6 +157,8 @@ ifeq ($(strip $(COMPILER)),cray)
   MODULEFLAG := $(MODFLAG) -J$(MODDIR)
   FC = ftn
 endif
+
+PREPROFLAGS = $(DEFINES)
 
 # utils
 ECHO    = echo
@@ -175,7 +189,7 @@ all: $(LIB)
 
 # implicit rules
 %.o: %.F90
-	$(FC) -c $(FFLAGS) $(MODULEFLAG) -o $(OBJDIR)/$@ $<
+	$(FC) $(PREPROFLAGS) -c $(FFLAGS) $(MODULEFLAG) -o $(OBJDIR)/$@ $<
 
 $(LIB): $(OBJDIR) $(MODDIR) $(INCDIR) $(LIBDIR) $(OBJS)
 	$(RM) -f $@

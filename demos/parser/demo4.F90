@@ -32,7 +32,7 @@ PROGRAM test
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
 
-  CALL parser%add_variable('myvar', get_var, errcode, can_simplify = .FALSE.)
+  CALL parser%add_variable('myvar', get_var, errcode)
   IF (errcode /= eis_err_none) CALL parser%print_errors()
 
   DO WHILE(.TRUE.)

@@ -53,6 +53,27 @@ MODULE eis_deck_definition_mod
   END TYPE eis_deck_definition_info
 
   TYPE :: deck_key_definition
+    INTEGER(INT32), POINTER :: i32data => NULL()
+    INTEGER(INT64), POINTER :: i64data => NULL()
+    REAL(REAL32), POINTER :: r32data => NULL()
+    REAL(REAL64), POINTER :: r64data => NULL()
+    LOGICAL, POINTER :: logicaldata => NULL()
+
+    INTEGER(INT32), DIMENSION(:), POINTER :: i32arraydata => NULL()
+    INTEGER(INT64), DIMENSION(:), POINTER :: i64arraydata => NULL()
+    REAL(REAL32), DIMENSION(:), POINTER :: r32arraydata => NULL()
+    REAL(REAL64), DIMENSION(:), POINTER :: r64arraydata => NULL()
+    LOGICAL, DIMENSION(:), POINTER :: logicalarraydata => NULL()
+
+    TYPE(C_PTR) :: c_i32data = C_NULL_PTR
+    INTEGER :: c_i32len = 1
+    TYPE(C_PTR) :: c_i64data = C_NULL_PTR
+    INTEGER :: c_i64len = 1
+    TYPE(C_PTR) :: c_r32data = C_NULL_PTR
+    INTEGER :: c_r32len = 1
+    TYPE(C_PTR) :: c_r64data = C_NULL_PTR
+    INTEGER :: c_r64len = 1
+
     CHARACTER(LEN=:), ALLOCATABLE :: name
     INTEGER :: expected_params = -1
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
@@ -1150,16 +1171,55 @@ MODULE eis_deck_definition_mod
   END SUBROUTINE dbd_visualise
 
 
-
   SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn, expected_params, pass_eq, pass_le, &
-      pass_ge)
+      key_numeric_value_fn, key_stack_fn, c_key_text_fn, c_key_value_fn, &
+      c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
+      r64value, logicalvalue, i32array, i64array, r32array, r64array, &
+      logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
+      c_i32len, c_i64len, c_r32len, c_r64len, expected_params, pass_eq, &
+      pass_le, pass_ge)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    PROCEDURE(key_text_callback_c), OPTIONAL :: c_key_text_fn
+    PROCEDURE(key_value_callback_c), OPTIONAL :: c_key_value_fn
+    PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_key_numeric_value_fn
+    PROCEDURE(key_stack_callback_c), OPTIONAL :: c_key_stack_fn
+#ifdef F2008
+    INTEGER(INT32), TARGET, OPTIONAL :: i32value
+    INTEGER(INT64), TARGET, OPTIONAL :: i64value
+    REAL(REAL32), TARGET, OPTIONAL :: r32value
+    REAL(REAL64), TARGET, OPTIONAL :: r64value
+    LOGICAL, TARGET, OPTIONAL :: logicalvalue
+    INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
+    INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
+    REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
+    REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
+    LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
+#else
+    INTEGER(INT32), POINTER, OPTIONAL :: i32value
+    INTEGER(INT64), POINTER, OPTIONAL :: i64value
+    REAL(REAL32), POINTER, OPTIONAL :: r32value
+    REAL(REAL64), POINTER, OPTIONAL :: r64value
+    LOGICAL, POINTER, OPTIONAL :: logicalvalue
+    INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
+    INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
+    REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
+    REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
+    LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
+#endif
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_r32value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_r64value
+    INTEGER, INTENT(IN), OPTIONAL :: c_i32len
+    INTEGER, INTENT(IN), OPTIONAL :: c_i64len
+    INTEGER, INTENT(IN), OPTIONAL :: c_r32len
+    INTEGER, INTENT(IN), OPTIONAL :: c_r64len
+
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
@@ -1170,14 +1230,22 @@ MODULE eis_deck_definition_mod
 
     ALLOCATE(new)
     CALL new%init(this, key_name, key_text_fn, key_value_fn, &
-        key_numeric_value_fn, key_stack_fn, expected_params, pass_eq, pass_le, &
-        pass_ge)
+        key_numeric_value_fn, key_stack_fn, expected_params = expected_params, &
+        pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
+        c_key_text_fn = c_key_text_fn, c_key_value_fn = c_key_value_fn, &
+        c_key_numeric_value_fn = c_key_numeric_value_fn, &
+        c_key_stack_fn = c_key_stack_fn, i32value = i32value, &
+        i64value = i64value, r32value = r32value, r64value = r64value, &
+        logicalvalue = logicalvalue, i32array = i32array, i64array = i64array, &
+        r32array = r32array, r64array = r64array, logicalarray = logicalarray, &
+        c_i32value = c_i32value, c_i64value = c_i64value, &
+        c_r32value = c_r32value, c_r64value = c_r64value, c_i32len = c_i32len, &
+        c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
 
   END SUBROUTINE dbd_add_key
-
 
 
   SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, errcode, &
@@ -1212,7 +1280,11 @@ MODULE eis_deck_definition_mod
         c_value
     TYPE(eis_parser), POINTER :: ps
     INTEGER :: interop_parser, wsl
-    LOGICAL :: run, any_candidates
+    LOGICAL :: run, any_candidates, isscalarvar, isarrayvar
+    INTEGER(INT32), DIMENSION(:), POINTER :: c_i32
+    INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
+    REAL(REAL32), DIMENSION(:), POINTER :: c_r32
+    REAL(REAL64), DIMENSION(:), POINTER :: c_r64
 
     IF (PRESENT(parser)) THEN
       IF (ASSOCIATED(this%info%parser)) THEN
@@ -1307,7 +1379,23 @@ MODULE eis_deck_definition_mod
     CALL this%get_parents(parent_kind)
     handled = .FALSE.
     any_candidates = .FALSE.
+    isscalarvar = .FALSE.
+    isarrayvar = .FALSE.
     IF (ASSOCIATED(dkd)) THEN
+      isscalarvar = ANY([ASSOCIATED(dkd%i32data), ASSOCIATED(dkd%i64data), &
+          ASSOCIATED(dkd%r32data), ASSOCIATED(dkd%r64data), &
+          ASSOCIATED(dkd%logicaldata), (C_ASSOCIATED(dkd%c_i32data) &
+          .AND. dkd%c_i32len == 1), (C_ASSOCIATED(dkd%c_i64data) &
+          .AND. dkd%c_i64len == 1), (C_ASSOCIATED(dkd%c_r32data) &
+          .AND. dkd%c_r32len == 1), (C_ASSOCIATED(dkd%c_r64data) &
+          .AND. dkd%c_r64len == 1)])
+      isarrayvar = ANY([ASSOCIATED(dkd%i32arraydata), &
+          ASSOCIATED(dkd%i64arraydata), ASSOCIATED(dkd%r32arraydata), &
+          ASSOCIATED(dkd%r64arraydata), ASSOCIATED(dkd%logicalarraydata), &
+           (C_ASSOCIATED(dkd%c_i32data) .AND. dkd%c_i32len > 1), &
+           (C_ASSOCIATED(dkd%c_i64data) .AND. dkd%c_i64len > 1), &
+           (C_ASSOCIATED(dkd%c_r32data) .AND. dkd%c_r32len > 1), &
+           (C_ASSOCIATED(dkd%c_r64data) .AND. dkd%c_r64len > 1)])
       any_candidates = ANY([ASSOCIATED(dkd%key_text_fn), &
           ASSOCIATED(dkd%c_key_text_fn), &
           ASSOCIATED(dkd%key_value_fn), &
@@ -1316,6 +1404,7 @@ MODULE eis_deck_definition_mod
           ASSOCIATED(dkd%c_key_numeric_value_fn), &
           ASSOCIATED(dkd%key_stack_fn), &
           ASSOCIATED(dkd%c_key_stack_fn)])
+       any_candidates = any_candidates .OR. isscalarvar .OR. isarrayvar
      ELSE
        any_candidates = .FALSE.
      END IF
@@ -1503,6 +1592,149 @@ MODULE eis_deck_definition_mod
             errcode = IOR(errcode, stack_err)
           END IF
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+        END IF
+      END IF
+
+      IF ((isscalarvar .OR. isarrayvar) .AND. is_key_value &
+          .AND. .NOT. handled) THEN
+
+        this_err = eis_err_none
+        IF (.NOT. PRESENT(value_function)) THEN 
+          ct = ps%evaluate(value, value_array, this_err, &
+              filename = filename, line_number = line_number, &
+              char_offset = sindex - 1 + wsl) 
+        ELSE 
+          CALL ps%set_result_function(value_function, stack, &
+              this_err)
+          ct = ps%evaluate(stack, value_array, this_err)
+        END IF
+        IF (this_err == eis_err_none) THEN
+          IF (ct == 1 .AND. isscalarvar) THEN
+            handled = .TRUE.
+            IF (ASSOCIATED(dkd%i32data)) dkd%i32data = NINT(value_array(1),&
+                INT32)
+            IF (ASSOCIATED(dkd%i64data)) dkd%i64data = NINT(value_array(1),&
+                INT64)
+            IF (ASSOCIATED(dkd%r32data)) dkd%r32data = REAL(value_array(1), &
+                REAL32)
+            IF (ASSOCIATED(dkd%r64data)) dkd%r64data = REAL(value_array(1), &
+                REAL64)
+            IF (ASSOCIATED(dkd%logicaldata)) dkd%logicaldata = &
+                .NOT. (ABS(value_array(1)) < 1.0e-6_eis_num)
+            IF (C_ASSOCIATED(dkd%c_i32data)) THEN
+              CALL C_F_POINTER(dkd%c_i32data, c_i32, [1])
+              c_i32(1) = NINT(value_array(1), INT32)
+            END IF
+            IF (C_ASSOCIATED(dkd%c_i64data)) THEN
+              CALL C_F_POINTER(dkd%c_i64data, c_i64, [1])
+              c_i64(1) = NINT(value_array(1), INT64)
+            END IF
+            IF (C_ASSOCIATED(dkd%c_r32data)) THEN
+              CALL C_F_POINTER(dkd%c_r32data, c_r32, [1])
+              c_r32(1) = REAL(value_array(1), REAL32)
+            END IF
+            IF (C_ASSOCIATED(dkd%c_r64data)) THEN
+              CALL C_F_POINTER(dkd%c_r64data, c_r64, [1])
+              c_r64(1) = REAL(value_array(1), REAL64)
+            END IF
+          END IF
+
+          IF (isarrayvar) THEN
+            IF (ASSOCIATED(dkd%i32arraydata)) THEN
+              IF (SIZE(dkd%i32arraydata) >= ct) THEN
+                dkd%i32arraydata(LBOUND(dkd%i32arraydata,1):&
+                    LBOUND(dkd%i32arraydata,1) + ct-1) &
+                    = NINT(value_array(1:ct), INT32)
+                handled = .TRUE.
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (ASSOCIATED(dkd%i64arraydata)) THEN
+              IF (SIZE(dkd%i64arraydata) >= ct) THEN
+                dkd%i64arraydata(LBOUND(dkd%i64arraydata,1):&
+                    LBOUND(dkd%i64arraydata,1) + ct-1) &
+                    = NINT(value_array(1:ct), INT64)
+                handled = .TRUE.
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (ASSOCIATED(dkd%r32arraydata)) THEN
+              IF (SIZE(dkd%r32arraydata) >= ct) THEN
+                dkd%r32arraydata(LBOUND(dkd%r32arraydata,1):&
+                    LBOUND(dkd%r32arraydata,1) + ct-1) &
+                    = REAL(value_array(1:ct), REAL32)
+                handled = .TRUE.
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (ASSOCIATED(dkd%r64arraydata)) THEN
+              IF (SIZE(dkd%r64arraydata) >= ct) THEN
+                dkd%r64arraydata(LBOUND(dkd%r64arraydata,1):&
+                    LBOUND(dkd%r64arraydata,1) + ct-1) &
+                    = REAL(value_array(1:ct), REAL64)
+                handled = .TRUE.
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (ASSOCIATED(dkd%logicalarraydata)) THEN
+              IF (SIZE(dkd%logicalarraydata) >= ct) THEN
+                dkd%logicalarraydata(LBOUND(dkd%logicalarraydata,1):&
+                    LBOUND(dkd%logicalarraydata,1) + ct-1) = &
+                    .NOT. (ABS(value_array(1:ct)) < 1.0e-6_eis_num)
+                handled = .TRUE.
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (C_ASSOCIATED(dkd%c_i32data)) THEN
+              IF (dkd%c_i32len >= ct) THEN
+                CALL C_F_POINTER(dkd%c_i32data, c_i32, [ct])
+                c_i32(1:ct) = NINT(value_array(1:ct), INT32)
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (C_ASSOCIATED(dkd%c_i64data)) THEN
+              IF (dkd%c_i64len >= ct) THEN
+                CALL C_F_POINTER(dkd%c_i64data, c_i64, [ct])
+                c_i64(1:ct) = NINT(value_array(1:ct), INT64)
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (C_ASSOCIATED(dkd%c_r32data)) THEN
+              IF (dkd%c_r32len >= ct) THEN
+                CALL C_F_POINTER(dkd%c_r32data, c_r32, [ct])
+                c_r32(1:ct) = REAL(value_array(1:ct), REAL32)
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+            IF (C_ASSOCIATED(dkd%c_r64data)) THEN
+              IF (dkd%c_r64len >= ct) THEN
+                CALL C_F_POINTER(dkd%c_r64data, c_r64, [ct])
+                c_r64(1:ct) = REAL(value_array(1:ct), REAL64)
+              ELSE
+                this_err = IOR(this_err, eis_err_bad_value)
+              END IF
+            END IF
+
+          END IF
+        END IF
+        IF (handled) THEN
+          errcode = IOR(errcode, this_err)
         END IF
       END IF
     END IF
@@ -1718,8 +1950,11 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dkd_init(this, parent_block, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn, expected_params, pass_eq, pass_le, &
-      pass_ge)
+      key_numeric_value_fn, key_stack_fn, c_key_text_fn, c_key_value_fn, &
+      c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
+      r64value, logicalvalue, i32array, i64array, r32array, r64array, &
+      logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
+      c_i64len, c_r32len, c_r64len, expected_params, pass_eq, pass_le, pass_ge)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -1727,6 +1962,41 @@ MODULE eis_deck_definition_mod
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    PROCEDURE(key_text_callback_c), OPTIONAL :: c_key_text_fn
+    PROCEDURE(key_value_callback_c), OPTIONAL :: c_key_value_fn
+    PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_key_numeric_value_fn
+    PROCEDURE(key_stack_callback_c), OPTIONAL :: c_key_stack_fn
+#ifdef F2008
+    INTEGER(INT32), TARGET, OPTIONAL :: i32value
+    INTEGER(INT64), TARGET, OPTIONAL :: i64value
+    REAL(REAL32), TARGET, OPTIONAL :: r32value
+    REAL(REAL64), TARGET, OPTIONAL :: r64value
+    LOGICAL, TARGET, OPTIONAL :: logicalvalue
+    INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
+    INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
+    REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
+    REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
+    LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
+#else
+    INTEGER(INT32), POINTER, OPTIONAL :: i32value
+    INTEGER(INT64), POINTER, OPTIONAL :: i64value
+    REAL(REAL32), POINTER, OPTIONAL :: r32value
+    REAL(REAL64), POINTER, OPTIONAL :: r64value
+    LOGICAL, POINTER, OPTIONAL :: logicalvalue
+    INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
+    INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
+    REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
+    REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
+    LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
+#endif
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_r32value
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_r64value
+    INTEGER, INTENT(IN), OPTIONAL :: c_i32len
+    INTEGER, INTENT(IN), OPTIONAL :: c_i64len
+    INTEGER, INTENT(IN), OPTIONAL :: c_r32len
+    INTEGER, INTENT(IN), OPTIONAL :: c_r64len
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq, pass_le, pass_ge
     LOGICAL :: inherit
@@ -1737,6 +2007,32 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(key_numeric_value_fn)) this%key_numeric_value_fn &
         => key_numeric_value_fn
     IF (PRESENT(key_stack_fn)) this%key_stack_fn => key_stack_fn
+    IF (PRESENT(c_key_text_fn)) this%c_key_text_fn => c_key_text_fn
+    IF (PRESENT(c_key_value_fn)) this%c_key_value_fn => c_key_value_fn
+    IF (PRESENT(c_key_numeric_value_fn)) this%c_key_numeric_value_fn &
+        => c_key_numeric_value_fn
+    IF (PRESENT(c_key_stack_fn)) this%c_key_stack_fn => c_key_stack_fn
+
+    IF (PRESENT(i32value)) this%i32data => i32value
+    IF (PRESENT(i64value)) this%i64data => i64value
+    IF (PRESENT(r32value)) this%r32data => r32value
+    IF (PRESENT(r64value)) this%r64data => r64value
+
+    IF (PRESENT(i32array)) this%i32arraydata => i32array
+    IF (PRESENT(i64array)) this%i64arraydata => i64array
+    IF (PRESENT(r32array)) this%r32arraydata => r32array
+    IF (PRESENT(r64array)) this%r64arraydata => r64array
+
+    IF (PRESENT(c_i32value)) this%c_i32data = c_i32value
+    IF (PRESENT(c_i64value)) this%c_i64data = c_i64value
+    IF (PRESENT(c_r32value)) this%c_r32data = c_r32value
+    IF (PRESENT(c_r64value)) this%c_r64data = c_r64value
+
+    IF (PRESENT(c_i32len)) this%c_i32len = c_i32len
+    IF (PRESENT(c_i64len)) this%c_i64len = c_i64len
+    IF (PRESENT(c_r32len)) this%c_r32len = c_r32len
+    IF (PRESENT(c_r64len)) this%c_r64len = c_r64len
+
     IF (PRESENT(expected_params)) this%expected_params = expected_params
     inherit = .TRUE.
     IF (PRESENT(pass_eq)) THEN

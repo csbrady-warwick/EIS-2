@@ -58,6 +58,7 @@ MODULE eis_parser_header
   INTEGER, PARAMETER :: eis_pt_deferred_function = 10 !< Type deferred function
   INTEGER, PARAMETER :: eis_pt_emplaced_variable = 11 !< Type emplaced variable
   INTEGER, PARAMETER :: eis_pt_emplaced_function = 12 !< Type emplaced function
+  INTEGER, PARAMETER :: eis_pt_pointer_variable = 13 !< Type pointer variable
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
 
@@ -96,6 +97,10 @@ MODULE eis_parser_header
     INTEGER :: value
     INTEGER :: actual_params = -1
     REAL(eis_num) :: numerical_data
+    INTEGER(INT32), POINTER :: i32data => NULL()
+    INTEGER(INT64), POINTER :: i64data => NULL()
+    REAL(REAL32), POINTER :: r32data => NULL()
+    REAL(REAL64), POINTER :: r64data => NULL()
     LOGICAL :: can_simplify = .TRUE.
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
   END TYPE eis_stack_element

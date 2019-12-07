@@ -56,6 +56,10 @@ MODULE eis_registry_mod
     INTEGER :: index_type = eis_reg_index_none
     INTEGER(eis_i4) :: value = 0_eis_i4
     REAL(eis_num) :: numerical_data = 0.0_eis_num
+    INTEGER(INT32), POINTER :: i32data => NULL()
+    INTEGER(INT64), POINTER :: i64data => NULL()
+    REAL(REAL32), POINTER :: r32data => NULL()
+    REAL(REAL64), POINTER :: r64data => NULL()
     INTEGER :: ptype = eis_pt_null
     INTEGER :: associativity = eis_assoc_null
     INTEGER :: precedence = 0
@@ -351,8 +355,12 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] defer
   !> @param[inout] err_handler
+  !> @param[inout] i32data
+  !> @param[inout] i64data
+  !> @param[inout] r32data
+  !> @param[inout] r64data
   SUBROUTINE eir_add_variable(this, name, fn, errcode, can_simplify, &
-      cap_bits, defer, err_handler)
+      cap_bits, defer, err_handler, i32data, i64data, r32data, r64data)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with constant
@@ -372,10 +380,41 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: defer
     !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+#ifdef F2008
+    !> 32 bit integer point data
+    INTEGER(INT32), TARGET, OPTIONAL :: i32data
+    !> 64 bit integer point data
+    INTEGER(INT64), TARGET, OPTIONAL :: i64data
+    !> 32 bit real point data
+    REAL(REAL32), TARGET, OPTIONAL :: r32data
+    !> 64 bit real point data
+    REAL(REAL64), TARGET, OPTIONAL :: r64data
+#else
+    !> 32 bit integer point data
+    INTEGER(INT32), POINTER, OPTIONAL :: i32data
+    !> 64 bit integer point data
+    INTEGER(INT64), POINTER, OPTIONAL :: i64data
+    !> 32 bit real point data
+    REAL(REAL32), POINTER, OPTIONAL :: r32data
+    !> 64 bit real point data
+    REAL(REAL64), POINTER, OPTIONAL :: r64data
+#endif
     TYPE(eis_function_entry) :: temp
 
-    temp%ptype = eis_pt_variable
-    temp%fn_ptr => fn
+    IF (ANY([PRESENT(i32data), PRESENT(i64data), PRESENT(r32data), &
+        PRESENT(r64data)])) THEN
+      temp%ptype = eis_pt_pointer_variable
+      temp%fn_ptr => NULL()
+
+      IF (PRESENT(i32data)) temp%i32data => i32data
+      IF (PRESENT(i64data)) temp%i64data => i64data
+      IF (PRESENT(r32data)) temp%r32data => r32data
+      IF (PRESENT(r64data)) temp%r64data => r64data
+    ELSE
+      temp%ptype = eis_pt_variable
+      temp%fn_ptr => fn
+    END IF
+
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
     IF (PRESENT(defer)) temp%defer = defer
@@ -732,6 +771,10 @@ CONTAINS
       block_in%eval_fn => temp%fn_ptr
       block_in%numerical_data = temp%numerical_data
       block_in%value = temp%value
+      block_in%i32data => temp%i32data
+      block_in%i64data => temp%i64data
+      block_in%r32data => temp%r32data
+      block_in%r64data => temp%r64data
     ELSE
       block_in%ptype = eis_pt_bad
     END IF

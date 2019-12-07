@@ -1542,6 +1542,99 @@ begin:block1
 end:block1
 ```
 
+### Assignment variables
+
+The final way in which EIS can report key values from a deck is straight into a numerical variable. This requires that a key be of key/value or directive form. The output can be placed into a POINTER variable of the following types : 32 bit integer, 64 bit integer, 32 bit real, 64 bit real default kind logical or any rank 1 array of those types. When they key is encountered it is automatically converted into a numerical representation and placed into the associated variable. Assignment to a scalar variable will only succeed if the key evaluates to a single value and assignment to a rank 1 array will only succeed if the array is at least large enough to hold all of the returned values. If the array is larger than the number of returned values then the values are populated from lowest to highest. If the parser was compiled with F2008 support then TARGET variables can be used as well as POINTER. If assignment variables are combined with action functions then they are considered after all action functions if no action function has handled the key but before any `any` functions are triggered.
+
+i32value, i64value, r32value, &
+      r64value, logicalvalue, i32array, i64array, r32array, r64array, &
+      logicalarray
+
+To return a value from a key to an assignment variable you specify one of the following parameters to the `add_key` function, setting the value to the variable to hold the result for the key
+
+1. i32value - Assign return value to the specified 32 bit integer scalar
+2. i64value - Assign return value to the specified 64 bit integer scalar
+3. r32value - Assign return value to the specified 32 bit real scalar
+4. r64value - Assign return value to the specified 64 bit real scalar
+5. logicalvalue - Assign return value to the specified default kind logical scalar
+6. i32array - Assign return value to the specified 32 bit integer rank 1 array
+7. i64array - Assign return value to the specified 64 bit integer rank 1 array
+8. r32array - Assign return value to the specified 32 bit real rank 1 array
+9. r64array - Assign return value to the specified 64 bit real rank 1 array
+10. logicalarray - Assign return value to the specified default kind logical rank 1 array
+
+The following example code shows a simple use of assignment variables
+
+```fortran
+MODULE mymod
+  
+  USE eis_header
+  IMPLICIT NONE
+  SAVE
+
+  !Must be a POINTER variable in F2003
+  !Can be TARGET in F2008
+  !MUST NOT be a plain variable
+  INTEGER, POINTER :: scalar
+  REAL, DIMENSION(:), POINTER :: array
+
+END MODULE mymod
+
+
+PROGRAM testprog
+
+  USE eis_deck_definition_mod
+  USE eis_deck_from_text_mod
+  USE eis_deck_header
+  USE mymod
+  IMPLICIT NONE
+
+  TYPE(eis_text_deck_parser) :: deck
+  TYPE(eis_deck_definition) :: dfn
+  INTEGER(eis_error) :: errcode
+  TYPE(eis_deck_block_definition), POINTER :: root, block
+  CHARACTER(LEN=:), ALLOCATABLE :: str
+  INTEGER :: ierr
+
+  ALLOCATE(scalar)
+  ALLOCATE(array(4))
+
+  errcode = eis_err_none
+  root => dfn%init()
+  block => root%add_block('block1')
+  CALL block%add_key('scalar_value', i32value = scalar)
+  CALL block%add_key('array_value', r32array = array)
+
+  CALL deck%init()
+  CALL deck%parse_deck_file('demo10.deck', dfn, errcode)
+  IF (errcode /= eis_err_none) THEN
+    DO ierr = 1, deck%get_error_count()
+      CALL deck%get_error_report(ierr, str)
+      PRINT *, str
+    END DO
+    STOP
+  END IF
+
+  PRINT *, 'Scalar value is ', scalar
+  PRINT *, 'Array value is ', array
+
+  DEALLOCATE(scalar)
+  DEALLOCATE(array)
+
+END PROGRAM testprog
+```
+
+and associated deck
+
+```
+begin:block1
+  scalar_value = 1
+  array_value = 1,2,3,4
+end:block1
+```
+
+Assignment variables are very powerful but come with a variety of problems. If a pointer variable is reassigned then the deck key associated with it must be recreated as well or the code will crash when that key is encountered. Also assuming that you are reading variables from the deck for use as your code runs performance of your core code may well be lower using pointer or target variables than using a normal or allocatable variable and using an action function to set it's values.
+
 ### Event functions
 
 You can bind event functions to a deck definition that will trigger when an event occurs. The event functions are different to action functions because they are triggered by a *type* of action occuring rather than being connected to a specific named block or key. You bind event functions in the `init` function for the deck definition. There are 7 event functions

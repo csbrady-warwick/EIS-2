@@ -44,7 +44,7 @@ EIS's makefiles have built in support for the following compilers
 1) Portland Group (command line is pgf90)
 2) Intel (command line is ifort)
 3) gfortran (command line is gfortran)
-4) IBM XL Fortran (command line is xlf{numbers}, EIS must be compiled with xlf2003)
+4) IBM XL Fortran (command line is xlf{numbers}, EIS must be compiled with xlf2003, Fortran 2008 features must be compiled with xlf2008)
 5) Cray Fortran (command line is ftn)
 
 To select a compiler you pass a **COMPILER** command to the make command, e.g. `make COMPILER={flag}`. The compiler commands are
@@ -59,6 +59,8 @@ So to compile EIS with the intel compiler, type `make COMPILER=intel` in the roo
 
 based on information from the [Fortran Wiki compatability matrix] (http://fortranwiki.org/fortran/show/Fortran+2003+status) NAG and Oracle compilers should also work with EIS but since we do not have access to these compilers to test we are not providing compilation information.
 
+## Fortran standards
+EIS-2 requires Fortran 2003 compliance and has optional features that require Fortran 2008 support. If your compiler supports Fortran 2008 you can enable these features using STANDARD=f2008 on the compile line
 
 ## Note on Fortran libraries
 

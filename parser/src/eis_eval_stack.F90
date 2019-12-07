@@ -55,17 +55,28 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
-    IF (ASSOCIATED(element%eval_fn)) THEN
-      IF (.NOT. ALLOCATED(this%fn_call_vals)) THEN
-        ALLOCATE(this%fn_call_vals(element%actual_params))
-      ELSE IF (element%actual_params > SIZE(this%fn_call_vals)) THEN
-        DEALLOCATE(this%fn_call_vals)
-        ALLOCATE(this%fn_call_vals(element%actual_params))
+    IF (element%ptype == eis_pt_pointer_variable) THEN
+      IF (ASSOCIATED(element%i32data)) &
+          CALL ees_push(this, REAL(element%i32data, eis_num), errcode)
+      IF (ASSOCIATED(element%i64data)) &
+          CALL ees_push(this, REAL(element%i64data, eis_num), errcode)
+      IF (ASSOCIATED(element%r32data)) &
+          CALL ees_push(this, REAL(element%r32data, eis_num), errcode)
+      IF (ASSOCIATED(element%r64data)) &
+          CALL ees_push(this, REAL(element%r64data, eis_num), errcode)
+    ELSE
+      IF (ASSOCIATED(element%eval_fn)) THEN
+        IF (.NOT. ALLOCATED(this%fn_call_vals)) THEN
+          ALLOCATE(this%fn_call_vals(element%actual_params))
+        ELSE IF (element%actual_params > SIZE(this%fn_call_vals)) THEN
+          DEALLOCATE(this%fn_call_vals)
+          ALLOCATE(this%fn_call_vals(element%actual_params))
+        END IF
+        CALL ees_pop_vector(this, element%actual_params, this%fn_call_vals, &
+            errcode)
+        CALL ees_push(this, element%eval_fn(element%actual_params, &
+            this%fn_call_vals, host_params, status_code, errcode), errcode)
       END IF
-      CALL ees_pop_vector(this, element%actual_params, this%fn_call_vals, &
-          errcode)
-      CALL ees_push(this, element%eval_fn(element%actual_params, &
-          this%fn_call_vals, host_params, status_code, errcode), errcode)
     END IF
 
   END SUBROUTINE ees_eval_element

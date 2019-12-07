@@ -7,6 +7,8 @@ MODULE eis_constants
   INTEGER, PARAMETER :: INT16 = SELECTED_INT_KIND(4) !< Fortran 16 bit integer
   INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9) !< Fortran 32 bit integer
   INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15) !< Fortran 64 bit integer
+  !> Fortran 32 bit real
+  INTEGER, PARAMETER :: REAL32 = SELECTED_REAL_KIND(6, 37)
   !> Fortran 64 bit real
   INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
   !> Fortran >64 bit real (nominal 128 bit, 80bit on x86)

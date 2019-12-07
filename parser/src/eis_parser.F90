@@ -1,4 +1,5 @@
 !Copyright (c) 2019, C.S.Brady
+
 !All rights reserved.
 
 !Redistribution and use in source and binary forms, with or without
@@ -106,6 +107,11 @@ MODULE eis_parser_mod
     PROCEDURE :: add_function_defer => eip_add_function_defer
     PROCEDURE :: add_variable_now => eip_add_variable_now
     PROCEDURE :: add_variable_defer => eip_add_variable_defer
+    PROCEDURE :: add_variable_i4 => eip_add_variable_i4
+    PROCEDURE :: add_variable_i8 => eip_add_variable_i8
+    PROCEDURE :: add_variable_r4 => eip_add_variable_r4
+    PROCEDURE :: add_variable_r8 => eip_add_variable_r8
+    PROCEDURE :: add_variable_c => eip_add_variable_c
     PROCEDURE :: add_constant_now => eip_add_constant_now
     PROCEDURE :: add_constant_defer => eip_add_constant_defer
     PROCEDURE :: add_constant_i4 => eip_add_constant_i4
@@ -115,6 +121,8 @@ MODULE eis_parser_mod
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
+    GENERIC, PUBLIC :: add_pointer_variable => add_variable_i4, &
+        add_variable_i8, add_variable_r4, add_variable_r8, add_variable_c
     GENERIC, PUBLIC :: add_constant => add_constant_now, add_constant_defer
     GENERIC, PUBLIC :: add_integer_constant => add_constant_i4, add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
@@ -516,6 +524,22 @@ CONTAINS
           err_handler = this%err_handler)
       CALL global_registry%add_function('math.log_base', eis_log_base, 2, err, &
           err_handler = this%err_handler)
+#ifdef F2008
+      CALL global_registry%add_function('math.bessel_j', eis_bessel_j, 2, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.bessel_y', eis_bessel_y, 2, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.erf', eis_erf, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.erfc', eis_erfc, 1, err, &
+          err_handler = this%err_handler)
+      CALL global_registry%add_function('math.erfc_scaled', eis_erfc_scaled, &
+          1, err, err_handler = this%err_handler)
+      CALL global_registry%add_function('math.gamma', eis_gamma_fn, &
+          1, err, err_handler = this%err_handler)
+      CALL global_registry%add_function('math.log_gamma', eis_log_gamma_fn, &
+          1, err, err_handler = this%err_handler)
+#endif
 
       CALL global_registry%add_function('utility.gauss', eis_gauss, 3, err, &
           err_handler = this%err_handler)
@@ -761,6 +785,7 @@ CONTAINS
     END IF
 
     can_be_unary = .NOT. (this%last_block_type == eis_pt_variable &
+          .OR. this%last_block_type == eis_pt_pointer_variable &
           .OR. this%last_block_type == eis_pt_constant &
           .OR. this%last_block_type == eis_pt_stored_variable &
           .OR. (this%last_block_type == eis_pt_parenthesis &
@@ -976,7 +1001,7 @@ CONTAINS
         current(1:1) = expression(i:i)
         current_type = ptype
         maybe_e = (iblock%ptype == eis_pt_variable) .OR. (iblock%ptype &
-            == eis_pt_constant)
+            == eis_pt_constant) .OR. (iblock%ptype == eis_pt_pointer_variable)
       END IF
     END DO
 
@@ -1084,9 +1109,11 @@ CONTAINS
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] char_offset
+  !> @param[out] cap_bits
   !> @return eip_evaluate_string
   FUNCTION eip_evaluate_string(this, str, result, errcode, host_params, &
-      is_no_op, simplify, minify, filename, line_number, char_offset)
+      is_no_op, simplify, minify, filename, line_number, char_offset, &
+      cap_bits)
     CLASS(eis_parser) :: this
     !> String to evaluate as maths
     CHARACTER(LEN=*), INTENT(IN) :: str
@@ -1115,6 +1142,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     !> Character position offset in parse
     INTEGER, INTENT(IN), OPTIONAL :: char_offset
+    !> Capability bits of the parsed stack
+    INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: cap_bits
     !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_string
     TYPE(eis_stack) :: stack
@@ -1135,6 +1164,7 @@ CONTAINS
     IF (errcode == eis_err_none) THEN
       eip_evaluate_string = this%evaluate(stack, result, errcode, &
           host_params = host_params, is_no_op = is_no_op)
+      IF (PRESENT(cap_bits)) cap_bits = stack%cap_bits
       CALL deallocate_stack(stack)
     END IF
 
@@ -1654,20 +1684,361 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
-    LOGICAL :: is_global
+    LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
     IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
 
     IF (is_global) THEN
-      CALL global_registry%add_variable(name, fn, errcode, can_simplify, &
+      CALL global_registry%add_variable(name, fn, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer)
     ELSE
-      CALL this%registry%add_variable(name, fn, errcode, can_simplify, &
+      CALL this%registry%add_variable(name, fn, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer)
     END IF
 
   END SUBROUTINE eip_add_variable_now
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser using a pointer
+  !> @param[inout] this
+  !> @param[in] ptr
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_variable_i4(this, name, ptr, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Variable to be associated with the variable
+#ifdef F2008
+    INTEGER(INT32), TARGET :: ptr
+#else
+    INTEGER(INT32), POINTER :: ptr
+#endif
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global, simplify
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
+
+    IF (is_global) THEN
+      CALL global_registry%add_variable(name, eis_dummy, errcode, &
+          simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, i32data = ptr)
+    ELSE
+      CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          i32data = ptr)
+    END IF
+
+  END SUBROUTINE eip_add_variable_i4
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser using a pointer
+  !> @param[inout] this
+  !> @param[in] ptr
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_variable_i8(this, name, ptr, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Variable to be associated with the variable
+#ifdef F2008
+    INTEGER(INT64), TARGET :: ptr
+#else
+    INTEGER(INT64), POINTER :: ptr
+#endif
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global, simplify
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
+
+    IF (is_global) THEN
+      CALL global_registry%add_variable(name, eis_dummy, errcode, &
+          simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, i64data = ptr)
+    ELSE
+      CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          i64data = ptr)
+    END IF
+
+  END SUBROUTINE eip_add_variable_i8
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser using a pointer
+  !> @param[inout] this
+  !> @param[in] ptr
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_variable_r4(this, name, ptr, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Variable to be associated with the variable
+#ifdef F2008
+    REAL(REAL32), TARGET :: ptr
+#else
+    REAL(REAL32), POINTER :: ptr
+#endif
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global, simplify
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
+
+    IF (is_global) THEN
+      CALL global_registry%add_variable(name, eis_dummy, errcode, &
+          simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, r32data = ptr)
+    ELSE
+      CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          r32data = ptr)
+    END IF
+
+  END SUBROUTINE eip_add_variable_r4
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser using a pointer
+  !> @param[inout] this
+  !> @param[in] ptr
+  !> @param[in] fn
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_variable_r8(this, name, ptr, errcode, cap_bits, &
+      can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name      
+    !> Variable to be associated with the variable
+#ifdef F2008
+    REAL(REAL64), TARGET :: ptr
+#else
+    REAL(REAL64), POINTER :: ptr
+#endif
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global, simplify
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
+
+    IF (is_global) THEN
+      CALL global_registry%add_variable(name, eis_dummy, errcode, &
+          simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, r64data = ptr)
+    ELSE
+      CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          r64data = ptr)
+    END IF
+
+  END SUBROUTINE eip_add_variable_r8
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a variable to the parser using a C pointer
+  !> @param[inout] this
+  !> @param[in] ptr
+  !> @param[in] isinteger
+  !> @param[in] is64bit
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  SUBROUTINE eip_add_variable_c(this, name, ptr, isinteger, is64bit, errcode, &
+      cap_bits, can_simplify, defer, global)
+
+    CLASS(eis_parser) :: this
+    !> Name to register variable with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Variable to be associated with the variable
+    TYPE(C_PTR) :: ptr
+    !> Is this an integer
+    LOGICAL, INTENT(IN) :: isinteger
+    !> Is this variable 64 bit
+    LOGICAL, INTENT(IN) :: is64bit
+    !> Error code from storing the variable
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this variable
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_function_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL ::  global
+    LOGICAL :: is_global, simplify
+    INTEGER(INT32), POINTER :: i32p
+    INTEGER(INT64), POINTER :: i64p
+    REAL(REAL32), POINTER :: r32p
+    REAL(REAL64), POINTER :: r64p
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+    simplify = .FALSE.
+    IF (PRESENT(can_simplify)) simplify = can_simplify
+
+    IF (is_global) THEN
+      IF (isinteger) THEN
+        IF (is64bit) THEN
+          CALL C_F_POINTER(ptr, i64p)
+          CALL global_registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, i64data = i64p)
+        ELSE
+          CALL C_F_POINTER(ptr, i32p)
+          CALL global_registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, i32data = i32p)
+        END IF
+      ELSE
+        IF (is64bit) THEN
+          CALL C_F_POINTER(ptr, r64p)
+          CALL global_registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, r64data = r64p)
+        ELSE
+          CALL C_F_POINTER(ptr, r32p)
+          CALL global_registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, r32data = r32p)
+        END IF
+      END IF
+    ELSE
+      IF (isinteger) THEN
+        IF (is64bit) THEN
+          CALL C_F_POINTER(ptr, i64p)
+          CALL this%registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, i64data = i64p)
+        ELSE
+          CALL C_F_POINTER(ptr, i32p)
+          CALL this%registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, i32data = i32p)
+        END IF
+      ELSE
+        IF (is64bit) THEN
+          CALL C_F_POINTER(ptr, r64p)
+          CALL this%registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, r64data = r64p)
+        ELSE
+          CALL C_F_POINTER(ptr, r32p)
+          CALL this%registry%add_variable(name, eis_dummy, errcode, &
+              simplify, cap_bits, err_handler = this%err_handler, &
+              defer = defer, r32data = r32p)
+        END IF
+      END IF
+    END IF
+
+  END SUBROUTINE eip_add_variable_c
 
 
 
@@ -2097,6 +2468,7 @@ CONTAINS
     IF (iblock%ptype == eis_pt_parenthesis &
         .AND. iblock%value == eis_paren_left_bracket) THEN
       IF (this%last_block_type == eis_pt_variable &
+          .OR. this%last_block_type == eis_pt_pointer_variable &
           .OR. this%last_block_type == eis_pt_constant) THEN
         err = IOR(err, eis_err_bracketed_constant)
         CALL this%err_handler%add_error(eis_err_parser, err, &
@@ -2150,6 +2522,7 @@ CONTAINS
     output%has_deferred = output%has_deferred .OR. icoblock%defer
 
     IF (iblock%ptype == eis_pt_variable &
+        .OR. iblock%ptype == eis_pt_pointer_variable &
         .OR. iblock%ptype == eis_pt_constant) THEN
       CALL push_to_stack(output, iblock, icoblock)
 

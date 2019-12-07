@@ -219,7 +219,7 @@ PROGRAM test
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
 
-  CALL parser%add_variable('myvar', get_var, errcode, can_simplify = .FALSE.)
+  CALL parser%add_variable('myvar', get_var, errcode)
   IF (errcode /= eis_err_none) CALL parser%print_errors()
 
   DO WHILE(.TRUE.)
@@ -239,9 +239,7 @@ END PROGRAM test
 
 ## Parser Simplifier
 
-To improve the performance of the parser it uses an abstract syntax tree based simplification system. This works by converting every operator, variable and function to a node on a tree with each node having subnodes representing the parameters (where relevant). It then recursively goes through those nodes replacing them with a constant value if possible and then rebuilding the simplified tree into a new stack. To calculate the constant value for the simplifier the code evaluates the nodes and passes a `C_PTR_NULL` pointer as the host parameters. This replacement only happens if the node is flagged as being `simplifiable`, otherwise the simplifier simplifies as many nodes as possible and leaves the remaining nodes to be evaluated every time the stack is evaluated. By default all constants, variables and functions are simplifiable. Constants have a constant value so are always simplifiable, but the `add_variable` and `add_function` functions have an optional logical parameter called `can_simplify`. If `can_simplify` is set to `.FALSE.` when adding a variable or function then the simplifier will not simplify a tree node containing this function or variable.
-
-This behaviour of the simplifier explains why we specified `can_simplify = .FALSE.` in the previous section. Since that getter function does not always return the same value it should not be simplified away. In the simple code above this wouldn't matter because the stack is only evaluated and parsed once but if the expression was parsed to a stack and the stack repeatedly evaluated you need to specify `can_simplify`.
+To improve the performance of the parser it uses an abstract syntax tree based simplification system. This works by converting every operator, variable and function to a node on a tree with each node having subnodes representing the parameters (where relevant). It then recursively goes through those nodes replacing them with a constant value if possible and then rebuilding the simplified tree into a new stack. To calculate the constant value for the simplifier the code evaluates the nodes and passes a `C_PTR_NULL` pointer as the host parameters. This replacement only happens if the node is flagged as being `simplifiable`, otherwise the simplifier simplifies as many nodes as possible and leaves the remaining nodes to be evaluated every time the stack is evaluated. By default all constants, variables and functions are simplifiable. Constants have a constant value so are always simplifiable, but the `add_variable` and `add_function` functions have an optional logical parameter called `can_simplify`. If `can_simplify` is set to `.FALSE.` when adding a variable or function then the simplifier will not simplify a tree node containing this function or variable. By default variables are flagged as not being simplifiable and functions are flagged as being simplifiable but either behaviour can be overriden.
 
 It is also possible to turn off simplification for a parser at various points
 
@@ -350,8 +348,8 @@ PROGRAM test
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
 
-  CALL parser%add_variable('x', get_x, errcode, can_simplify = .FALSE.)
-  CALL parser%add_variable('y', get_y, errcode, can_simplify = .FALSE.)
+  CALL parser%add_variable('x', get_x, errcode)
+  CALL parser%add_variable('y', get_y, errcode)
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
   READ(*,'(A)') input
@@ -477,8 +475,8 @@ PROGRAM test
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
 
-  CALL parser%add_variable('x', get_x, errcode, can_simplify = .FALSE.)
-  CALL parser%add_variable('y', get_y, errcode, can_simplify = .FALSE.)
+  CALL parser%add_variable('x', get_x, errcode)
+  CALL parser%add_variable('y', get_y, errcode)
   CALL parser%add_function('cauchy', cauchy_dist, errcode, expected_params = 3)
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
@@ -702,3 +700,58 @@ PROGRAM test
 
 END PROGRAM test
 ```
+
+## Pointer variables
+
+It is possible to specify a parser variable using a Fortran POINTER variable rather than a getter function. The parser will keep a reference to the pointer and always return the current version of the variable when a stack using the symbol is executed (unless the variable is flagged as simplifiable in which case it will return the value at the point where the stack is simplified). If the parser is compiled under the Fortran 2008 standard then you can specify TARGET variables as well as POINTER variables. You specify pointer variables using the `add_pointer_variable` method of the parser object. It takes all of the same parameters as `add_variable` except for the getter function which is replaced with a pointer to the variable to be associated with the name. The pointer variable can be a 32 bit integer, a 64 bit integer, a 32 bit real or a 64 bit real.
+
+```fortran
+PROGRAM test
+  
+  USE eis_parser_mod
+  USE eis_parser_header
+  USE eis_header
+  IMPLICIT NONE
+  TYPE(eis_parser) :: parser
+  CHARACTER(LEN=1000) :: input
+  INTEGER(eis_error) :: errcode
+  REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+  INTEGER :: ct
+  INTEGER, POINTER :: ptrvar
+  INTEGER(eis_bitmask) :: cbits
+
+  ALLOCATE(ptrvar)
+  ptrvar = 100
+  errcode = eis_err_none
+
+  CALL parser%init(errcode, physics = eis_physics_si)
+  IF (errcode /= eis_err_none) CALL parser%print_errors()
+  !Create a parser pointer variable and set it to have a
+  !capability bit value of 1
+  CALL parser%add_pointer_variable('ptrvar', ptrvar, errcode, &
+      cap_bits = 1_eis_bitmask)
+
+  DO WHILE(.TRUE.)
+    WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
+    READ(*,'(A)') input
+    IF (input == 'exit') EXIT
+    ct = parser%evaluate(input, result, errcode, cap_bits = cbits)
+    IF (errcode == eis_err_none) THEN
+      PRINT *,'Result is ', result(1:ct)
+      !If expression used ptrvar (and hence has capability bit of 1)
+      !increment ptrvar
+      IF (cbits == 1_eis_bitmask) ptrvar = ptrvar + 1
+    ELSE
+      CALL parser%print_errors()
+    END IF
+  END DO
+
+END PROGRAM test
+```
+This simple example code uses capability bits to identify when an expression using the pointer variable is used and increments the pointer by one every time. The result of repeatedly evaluting expressions involving `ptrvar` shows that it automatically reflects the changes.
+
+Pointer variables are very powerful but they have some substantial drawbacks. EIS can't check that the pointer that you handed it is still valid when you execute the stack. In fact since the pointer is carried around with the stack element that is generated by using the pointer variable in an expression, if the pointer is deallocated and reallocated then every stack created that used the pointer variable will now be invalid and cannot be fixed without being reparsed.
+
+The Fortran 2008 version using TARGET variables is less susceptible to this type error but has it's own problems. The Fortran 2008 standard guarantees that the way in which EIS takes a pointer to a TARGET variable is correct and will always refer to the true variable but it is valid to pass non-TARGET variables to the `add_pointer_variable` function as well. If you do so then the behaviour is unpredictable. The code might work as expected, it might crash or you might get strange hard to debug errors. The ability to have EIS simply return the value of a variable in response to a symbol is very powerful but it comes with significant downsides so the getter functions are considered the main method of defining variables in EIS.
+
+As a final note developers are reminded that TARGET and POINTER variables may reduce the compiler's scope for optimising code.

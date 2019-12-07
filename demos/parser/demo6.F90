@@ -62,8 +62,8 @@ PROGRAM test
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
 
-  CALL parser%add_variable('x', get_x, errcode, can_simplify = .FALSE.)
-  CALL parser%add_variable('y', get_y, errcode, can_simplify = .FALSE.)
+  CALL parser%add_variable('x', get_x, errcode)
+  CALL parser%add_variable('y', get_y, errcode)
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
   READ(*,'(A)') input
