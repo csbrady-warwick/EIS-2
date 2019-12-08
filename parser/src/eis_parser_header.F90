@@ -78,6 +78,11 @@ MODULE eis_parser_header
   !> This key in a stack is an emplaced value that should not be emplaced yet
   INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**2
 
+  !> Symbol display infor
+  INTEGER, PARAMETER :: eis_fsn_auto = 0
+  INTEGER, PARAMETER :: eis_fsn_always = 1
+  INTEGER, PARAMETER :: eis_fsn_never = 2
+
   !> Information about a stack element that is needed during parsing but is
   !> not essential for evaluation
   TYPE eis_stack_co_element

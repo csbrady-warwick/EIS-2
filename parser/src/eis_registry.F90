@@ -42,7 +42,10 @@ MODULE eis_registry_mod
     CONTAINS
     PROCEDURE, PUBLIC :: store => ern_add_item
     PROCEDURE, PUBLIC :: include_namespace => ern_include_namespace
+    PROCEDURE, PUBLIC :: is_included => ern_is_included
     PROCEDURE, PUBLIC :: get => ern_get_item
+    PROCEDURE, PUBLIC :: get_name_count => ern_get_name_count
+    PROCEDURE, PUBLIC :: get_name => ern_get_name
     PROCEDURE :: optimise => ern_optimise
     PROCEDURE :: optimize => ern_optimise
   END TYPE eis_namespace
@@ -52,6 +55,7 @@ MODULE eis_registry_mod
   !> function, constant or variable
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
+    CHARACTER(LEN=:), ALLOCATABLE :: description
     LOGICAL :: can_simplify = .TRUE.
     INTEGER :: index_type = eis_reg_index_none
     INTEGER(eis_i4) :: value = 0_eis_i4
@@ -81,7 +85,8 @@ MODULE eis_registry_mod
 
     PROCEDURE :: add_emplaced_func_holder => eir_add_emplaced_func_holder
 
-    PROCEDURE, PUBLIC :: include_namespace => eir_include_namespace    
+    PROCEDURE, PUBLIC :: include_namespace => eir_include_namespace
+    PROCEDURE, PUBLIC :: is_included => eir_is_included 
     PROCEDURE, PUBLIC :: add_constant => eir_add_constant
     PROCEDURE, PUBLIC :: add_variable => eir_add_variable
     PROCEDURE, PUBLIC :: add_function => eir_add_function
@@ -94,6 +99,8 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: get_stored_emplacement => eir_get_stored
     PROCEDURE, PUBLIC :: optimise => eir_optimise
     PROCEDURE, PUBLIC :: optimize => eir_optimise
+    PROCEDURE, PUBLIC :: get_name_count => eir_get_name_count
+    PROCEDURE, PUBLIC :: get_name => eir_get_name
     
   END TYPE eis_registry
 
@@ -207,6 +214,67 @@ CONTAINS
   END SUBROUTINE ern_include_namespace
 
 
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Check if a given namespace is included
+  !> @param[inout] this
+  !> @param[in] namespace
+  !> @result ern_is_included
+  RECURSIVE FUNCTION ern_is_included(this, namespace)
+    CLASS(eis_namespace), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: namespace !< Namespace to test
+    LOGICAL :: ern_is_included !< Is namespace included?
+    INTEGER :: dotloc, i
+    CLASS(eis_namespace), POINTER :: item
+    CLASS(*), POINTER :: gptr
+    CLASS(string_holder), POINTER :: i2
+
+    ern_is_included = .FALSE.
+
+    DO i = 1, this%included_namespaces%get_size()
+      gptr => this%included_namespaces%get(i)
+      SELECT TYPE (gptr)
+        CLASS IS (string_holder)
+          IF (gptr%text == namespace) THEN
+            ern_is_included = .TRUE.
+            RETURN
+          END IF
+      END SELECT
+    END DO
+
+    RETURN
+
+    dotloc = SCAN(namespace, '.')
+    item => NULL()
+
+    gptr => this%namespaces%get(namespace)
+    IF (ASSOCIATED(gptr)) THEN
+      ern_is_included = .TRUE.
+      RETURN
+    END IF
+
+    IF (dotloc == 0 .OR. dotloc == LEN(namespace)) THEN
+      gptr => this%namespaces%get(namespace)
+      ern_is_included = ASSOCIATED(gptr)
+    ELSE IF (dotloc == 1) THEN
+      ern_is_included = .FALSE.
+    ELSE
+      gptr => this%namespaces%get(namespace(1:dotloc-1))
+      IF (.NOT. ASSOCIATED(gptr)) THEN
+        ern_is_included = .FALSE.
+        RETURN
+      END IF
+      SELECT TYPE (gptr)
+        CLASS IS (eis_namespace)
+          ern_is_included = gptr%is_included(namespace(dotloc+1:))
+      END SELECT
+    END IF
+
+  END FUNCTION ern_is_included
+
+
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Get an item from a namespace
@@ -288,6 +356,93 @@ CONTAINS
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Get the number of names in this and all contained namespaces
+  !> Optionally return the number of names in only this namespace
+  !> @param[inout] this
+  !> @param[out] only_me_count
+  !> @result ern_get_name_count
+  RECURSIVE FUNCTION ern_get_name_count(this, only_me_count)
+    CLASS(eis_namespace), INTENT(INOUT) :: this
+    !> Optional. If provided specifies number of names in just this namespace
+    INTEGER, INTENT(OUT), OPTIONAL :: only_me_count
+    !> Number of names in this namespace and all sub-namespaces
+    INTEGER :: ern_get_name_count
+    CLASS(*), POINTER :: gptr
+    INTEGER :: i
+
+    ern_get_name_count = this%generic_store%get_name_count()
+    IF (PRESENT(only_me_count)) only_me_count = ern_get_name_count
+
+    DO i = 1, this%namespaces%get_name_count()
+      gptr => this%namespaces%get(i)
+      SELECT TYPE (gptr)
+        CLASS IS (eis_namespace)
+          ern_get_name_count = ern_get_name_count + gptr%get_name_count()
+      END SELECT
+    END DO
+
+  END FUNCTION ern_get_name_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a name based on an index from 1->get_name_count
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[inout] name
+  SUBROUTINE ern_get_name(this, index, name, name_prefix)
+    CLASS(eis_namespace), INTENT(INOUT) :: this
+    !> Index of name to get
+    INTEGER, INTENT(IN) :: index
+    !> Returned name
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    !> Name prefix
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: name_prefix
+    CHARACTER(LEN=:), ALLOCATABLE :: n_name, pname, rname
+    CLASS(*), POINTER :: gptr
+    INTEGER :: i, iindex
+
+    IF (index <= this%generic_store%get_name_count()) THEN
+      CALL this%generic_store%get_name(index, n_name)
+      IF (PRESENT(name_prefix)) THEN
+        ALLOCATE(name, SOURCE = name_prefix // '.' // n_name)
+      ELSE
+        ALLOCATE(name, SOURCE = n_name)
+      END IF
+      DEALLOCATE(n_name)
+    ELSE
+      iindex = index - this%generic_store%get_name_count()
+
+      DO i = 1, this%namespaces%get_name_count()
+        gptr => this%namespaces%get(i)
+        CALL this%namespaces%get_name(i, rname)
+        IF (PRESENT(name_prefix)) THEN
+          ALLOCATE(pname, SOURCE = name_prefix // '.' // rname)
+        ELSE
+          ALLOCATE(pname, SOURCE = rname)
+        END IF
+        SELECT TYPE (gptr)
+          CLASS IS (eis_namespace)
+            IF (iindex <= gptr%get_name_count()) THEN
+              CALL gptr%get_name(iindex, name, pname)
+              EXIT
+            ELSE
+              iindex = iindex - gptr%get_name_count()
+            END IF
+        END SELECT
+        DEALLOCATE(pname)
+      END DO
+      IF (ALLOCATED(pname)) DEALLOCATE(pname)
+      IF (ALLOCATED(rname)) DEALLOCATE(rname)
+    END IF
+
+  END SUBROUTINE ern_get_name
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Tell this registry object's namespace store to include a namespace
   !> @param[inout] this
   !> @param[in] namespace
@@ -298,6 +453,28 @@ CONTAINS
     CALL this%stored_items%include_namespace(namespace)
 
   END SUBROUTINE eir_include_namespace
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Check if the registry's namespace includes cover a given namespace
+  !> @param[inout] this
+  !> @param[in] namespace
+  !> @result eir_is_included
+  FUNCTION eir_is_included(this, namespace)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: namespace !< namespace to test
+    LOGICAL :: eir_is_included !< Is the namespace included
+
+    IF (INDEX(namespace, '.') == 0) THEN
+      eir_is_included = .TRUE.
+    ELSE
+      eir_is_included = this%stored_items%is_included(namespace)
+    END IF
+
+  END FUNCTION eir_is_included
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -311,8 +488,9 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] defer
   !> @param[inout] err_handler
+  !> @param[in] description
   SUBROUTINE eir_add_constant(this, name, value, errcode, can_simplify, &
-      cap_bits, defer, err_handler)
+      cap_bits, defer, err_handler, description)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with constant
@@ -329,6 +507,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: defer
     !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of this constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
 
     TYPE(eis_function_entry) :: temp
     
@@ -337,6 +517,7 @@ CONTAINS
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
     IF (PRESENT(defer)) temp%defer = defer
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
 
     CALL this%stored_items%store(name, temp)
 
@@ -359,8 +540,10 @@ CONTAINS
   !> @param[inout] i64data
   !> @param[inout] r32data
   !> @param[inout] r64data
+  !> @param[in] description
   SUBROUTINE eir_add_variable(this, name, fn, errcode, can_simplify, &
-      cap_bits, defer, err_handler, i32data, i64data, r32data, r64data)
+      cap_bits, defer, err_handler, i32data, i64data, r32data, r64data, &
+      description)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with constant
@@ -399,6 +582,8 @@ CONTAINS
     !> 64 bit real point data
     REAL(REAL64), POINTER, OPTIONAL :: r64data
 #endif
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(eis_function_entry) :: temp
 
     IF (ANY([PRESENT(i32data), PRESENT(i64data), PRESENT(r32data), &
@@ -415,6 +600,7 @@ CONTAINS
       temp%fn_ptr => fn
     END IF
 
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
     IF (PRESENT(defer)) temp%defer = defer
@@ -438,8 +624,9 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] defer
   !> @param[inout] err_handler
+  !> @param[in] description
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
-      can_simplify, cap_bits, defer, err_handler)
+      can_simplify, cap_bits, defer, err_handler, description)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -463,11 +650,14 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: defer
     !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
     temp%ptype = eis_pt_function
     temp%expected_parameters = expected_parameters
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
     IF (PRESENT(defer)) temp%defer = defer
@@ -492,8 +682,9 @@ CONTAINS
   !> @param[in] unary
   !> @param[in] cap_bits
   !> @param[inout] err_handler
+  !> @param[in] description
   SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
-      errcode, can_simplify, unary, cap_bits, err_handler)
+      errcode, can_simplify, unary, cap_bits, err_handler, description)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with operator
@@ -514,6 +705,8 @@ CONTAINS
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
     !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
 
@@ -523,6 +716,7 @@ CONTAINS
     temp%precedence = precedence
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
 
     l_unary = .FALSE.
     IF (PRESENT(unary)) l_unary = unary
@@ -548,7 +742,9 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] defer
   !> @param[inout] err_handler
-  SUBROUTINE eir_add_stack_var(this, name, stack, errcode, defer, err_handler)
+  !> @param[in] description
+  SUBROUTINE eir_add_stack_var(this, name, stack, errcode, defer, err_handler, &
+      description)
     CLASS(eis_registry) :: this
     !> Name to associate with stack variable
     CHARACTER(LEN=*), INTENT(IN) :: name
@@ -560,6 +756,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: defer
     !> Error handler for reporting errors. Optional, default no error handling
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(eis_function_entry), TARGET :: temp
     TYPE(eis_function_entry), POINTER :: temp_ptr
     CLASS(*), POINTER :: gptr
@@ -596,10 +794,13 @@ CONTAINS
     temp_ptr%cap_bits = stack%cap_bits
     temp_ptr%defer = .FALSE.
     IF (PRESENT(defer)) temp_ptr%defer = defer
+    IF (PRESENT(description)) ALLOCATE(temp_ptr%description, &
+        SOURCE = description)
 
     CALL this%stored_items%store(name, temp_ptr)
 
   END SUBROUTINE eir_add_stack_var
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -613,8 +814,9 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] expected_parameters
   !> @param[inout] err_handler
+  !> @param[in] description
   SUBROUTINE eir_add_emplaced_func_holder(this, name, holder, errcode, &
-      expected_parameters, err_handler)
+      expected_parameters, err_handler, description)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to store under
     TYPE(late_bind_fn_holder), INTENT(in) :: holder !< Holder type
@@ -623,6 +825,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     !> Optional error handler
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(eis_function_entry), TARGET :: temp
     TYPE(eis_function_entry), POINTER :: temp_ptr
     CLASS(*), POINTER :: gptr
@@ -658,6 +862,7 @@ CONTAINS
   END SUBROUTINE eir_add_emplaced_func_holder
 
 
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Routine to add a Fortran style emplaced function or variable
@@ -668,8 +873,9 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] expected_parameters
   !> @param[inout] err_handler
+  !> @para[in] description
   SUBROUTINE eir_add_emplaced_function(this, name, def_fn, errcode, &
-      expected_parameters, err_handler)
+      expected_parameters, err_handler, description)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name associated with emplacement
     PROCEDURE(parser_late_bind_fn) :: def_fn !< Definting function (Fortran)
@@ -679,12 +885,14 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     !> Error handler object. Optional, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(late_bind_fn_holder) :: holder
 
     holder%contents => def_fn
 
     CALL this%add_emplaced_func_holder(name, holder, errcode, &
-        expected_parameters, err_handler)
+        expected_parameters, err_handler, description)
 
   END SUBROUTINE eir_add_emplaced_function
 
@@ -700,7 +908,7 @@ CONTAINS
   !> @param[in] expected_parameters
   !> @param[inout] err_handler
   SUBROUTINE eir_add_emplaced_function_c(this, name, def_fn, errcode, &
-      expected_parameters, err_handler)
+      expected_parameters, err_handler, description)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name associated with emplacement
     PROCEDURE(parser_late_bind_interop_fn) :: def_fn !< Definting function (C)
@@ -710,12 +918,14 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: expected_parameters
     !> Error handler object. Optional, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of the variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(late_bind_fn_holder) :: holder
 
     holder%eis_contents => def_fn
 
     CALL this%add_emplaced_func_holder(name, holder, errcode, &
-        expected_parameters, err_handler)
+        expected_parameters, err_handler, description)
 
   END SUBROUTINE eir_add_emplaced_function_c
 
@@ -729,8 +939,9 @@ CONTAINS
   !> @param[inout] coblock_in
   !> @param[in] unary_ops
   !> @param[inout] err_handler
+  !> @param[out] description
   SUBROUTINE eir_fill_block(this, name, block_in, coblock_in, unary_ops, &
-      err_handler)
+      err_handler, description)
 
     CLASS(eis_registry) :: this
     !> Name extracted from the parsed string. This will be looked up
@@ -741,7 +952,10 @@ CONTAINS
     TYPE(eis_stack_co_element), INTENT(INOUT) :: coblock_in
     !> Is it possible that "name" could describe a unary operator
     LOGICAL, INTENT(IN) :: unary_ops
+    !> Error handler
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Description of a block if requested
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
     CLASS(*), POINTER :: gptr
     TYPE(eis_function_entry), POINTER :: temp
 
@@ -775,6 +989,9 @@ CONTAINS
       block_in%i64data => temp%i64data
       block_in%r32data => temp%r32data
       block_in%r64data => temp%r64data
+      IF (PRESENT(description) .AND. ALLOCATED(temp%description)) THEN
+        ALLOCATE(description, SOURCE = temp%description)
+      END IF
     ELSE
       block_in%ptype = eis_pt_bad
     END IF
@@ -872,5 +1089,51 @@ CONTAINS
     CALL this%stored_items%optimise()
 
   END SUBROUTINE eir_optimise
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of names in this registry
+  !> @param[inout] this
+  !> @result eir_get_name_count
+  FUNCTION eir_get_name_count(this)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    !> Number of names in this registry
+    INTEGER :: eir_get_name_count
+    CLASS(*), POINTER :: gptr
+    INTEGER :: i
+
+!    eir_get_name_count = this%uop_table%get_name_count()
+    eir_get_name_count = 0
+    eir_get_name_count = eir_get_name_count + this%stored_items%get_name_count()
+
+  END FUNCTION eir_get_name_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a name specifying an index from 1 -> get_name_count
+  !> @param[inout] this  
+  SUBROUTINE eir_get_name(this, index, name)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    !> Integer specifing which name to get
+    INTEGER, INTENT(IN) :: index
+    !> String containing retreived name
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    CLASS(*), POINTER :: gptr
+    INTEGER :: i
+
+!    IF (index <= this%uop_table%get_name_count()) THEN
+!      CALL this%uop_table%get_name(index, name)
+!    ELSE
+!      CALL this%stored_items%get_name(index - this%uop_table%get_name_count(), &
+!          name)
+!    END IF
+
+      CALL this%stored_items%get_name(index, name)
+
+  END SUBROUTINE eir_get_name
 
 END MODULE eis_registry_mod

@@ -54,6 +54,8 @@ ID - Each deck block instance and deck block definition gets a unique ID that is
 
 Event - Events occur when a block starts and ends, when a block cannot be found, when a key is either succesfully or unsuccesfully parsed or when a block or key is not triggered because of pass conditions. You can bind event functions to trigger when any event occurs
 
+Description - A text description of a block or key that may optionally be specified when the block or key is added to the definition
+
 ## EIS Deck format
 
 EIS Decks are text files that are intended to control a code. They all have a fairly simple structure which is of separate blocks which contain text key/value pairs. For example
@@ -1665,6 +1667,10 @@ All of the event functions are of the same type
 The data that is passed to the event functions is mostly always the same, but there are a few differences. The `event_text` parameter contains the name of the block that caused the event for block functions and the entire text (key and value) for key functions. The `parents` and `parent_kind` parameters contain the same information as the equivalent parameters for the action functions _except_ for when the `on_block_failure` event is triggered because of an unknown block in which case both arrays are of zero length. The `errcode` parameter will ususually be `eis_err_none` but in the case of `on_block_failure` and `on_key_failure` events it will be populated with the error code that caused the failure. Overriding this error code will replace the error originally reported. In particular setting it to 'eis_err_none' will prevent the error from triggering.
 
 Event functions are intended for a variety of purposes but the main purpose is to allow for simple reporting of keys and blocks in a deck. You might, for example, bind event functions to `on_block_start`, `on_block_end`, `on_key_success` and `on_key_failure` to simply print the blocks and keys encountered into a file to help with reporting status if a user presents a malformed deck.
+
+### Descriptions
+
+You can optionally specify a description of the meaning and function of a block or key when you add the block or key to the definition. This is done by specifying a `definition` optional argument to the `add_block` or `add_key` methods. The descriptions are mainly retreived through the `get_block_structure_as_markdown` method. This method takes an allocatable character variable and returns a common markdown document describing all of the blocks in the definition
 
 ## Loading and parsing a deck
 

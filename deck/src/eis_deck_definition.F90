@@ -53,6 +53,9 @@ MODULE eis_deck_definition_mod
   END TYPE eis_deck_definition_info
 
   TYPE :: deck_key_definition
+
+    CHARACTER(LEN=:), ALLOCATABLE :: description
+
     INTEGER(INT32), POINTER :: i32data => NULL()
     INTEGER(INT64), POINTER :: i64data => NULL()
     REAL(REAL32), POINTER :: r32data => NULL()
@@ -96,6 +99,8 @@ MODULE eis_deck_definition_mod
   TYPE :: eis_deck_block_definition
     TYPE(named_store) :: sub_blocks
     TYPE(named_store) :: keys
+
+    CHARACTER(LEN=:), ALLOCATABLE :: description
 
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
@@ -150,6 +155,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: get_id => dbd_get_id
     PROCEDURE :: optimise => dbd_optimise
     PROCEDURE :: visualise => dbd_visualise
+    PROCEDURE :: markdown => dbd_markdown
 
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
@@ -177,6 +183,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: optimize => dd_optimise
     PROCEDURE :: visualise => dd_visualise
     PROCEDURE :: get_block_structure => dd_visualise
+    PROCEDURE :: get_block_structure_as_markdown => dd_markdown
     FINAL :: dd_destructor
   END TYPE eis_deck_definition
 
@@ -325,7 +332,7 @@ MODULE eis_deck_definition_mod
         any_key_numeric_value, any_key_stack, block_remapper, c_init_deck, &
         c_start_deck, c_end_deck, c_final_deck, c_any_key_text, &
         c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-        c_block_remapper)
+        c_block_remapper, description = 'Root block holding all other blocks')
     CALL this%info%add_block(this%root_definition)
     root => this%root_definition
 
@@ -390,14 +397,17 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dd_get_block_name(this, id, name)
+  SUBROUTINE dd_get_block_name(this, id, name, description)
     CLASS(eis_deck_definition), INTENT(IN) :: this
     INTEGER, INTENT(IN) :: id
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
     CLASS(eis_deck_block_definition), POINTER :: block
 
     block => this%info%get_block(id)
     IF (ASSOCIATED(block)) ALLOCATE(name, SOURCE = block%name)
+    IF (ASSOCIATED(block) .AND. PRESENT(description)) ALLOCATE(description, &
+        SOURCE = block%description)
 
   END SUBROUTINE dd_get_block_name
 
@@ -474,6 +484,23 @@ MODULE eis_deck_definition_mod
 
 
 
+  SUBROUTINE dd_markdown(this, str, title)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: title
+    INTEGER :: level
+
+    IF (.NOT. ASSOCIATED(this%root_definition)) RETURN
+
+    IF (PRESENT(title)) CALL eis_append_string(str, '# ' // title)
+    CALL eis_append_string(str,'')
+
+    level = this%info%id_max + 1
+    CALL this%root_definition%markdown(this, str, level)
+
+  END SUBROUTINE dd_markdown
+
+
 
   SUBROUTINE dd_destructor(this)
     TYPE(eis_deck_definition), INTENT(INOUT) :: this
@@ -497,6 +524,7 @@ MODULE eis_deck_definition_mod
     par => this%get_parent()
     DO ipar = this%depth, 1, -1
       parents(ipar) = par%id
+      par => par%get_parent()
     END DO
     parents(this%depth+1) = this%id
 
@@ -509,7 +537,7 @@ MODULE eis_deck_definition_mod
       any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
       c_start_block, c_end_block, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge)
+      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, description)
 
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
@@ -535,6 +563,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     CLASS(eis_deck_block_definition), INTENT(IN), OPTIONAL :: parent_block
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
 
     INTEGER :: dbd_init
     CLASS(*), POINTER :: ptr
@@ -567,6 +596,7 @@ MODULE eis_deck_definition_mod
         => c_any_key_numeric_value
     IF (PRESENT(c_any_key_stack)) this%c_any_key_stack_fn => c_any_key_stack
     IF (PRESENT(c_block_remapper)) this%c_block_remap_fn => c_block_remapper
+    IF (PRESENT(description)) ALLOCATE(this%description, SOURCE = description)
 
     inherit = PRESENT(parent_block)
     IF (PRESENT(pass_eq)) THEN
@@ -606,7 +636,7 @@ MODULE eis_deck_definition_mod
       final_block, any_key_text, any_key_value, any_key_numeric_value, &
       any_key_stack, block_remapper, c_init_block, c_start_block, c_end_block, &
       c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge)
+      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, description)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -628,6 +658,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
 
     TYPE(eis_deck_block_definition), POINTER :: dbd_add_block
     CLASS(*), POINTER :: ptr
@@ -641,7 +672,8 @@ MODULE eis_deck_definition_mod
         c_init_block, c_start_block, c_end_block, c_final_block, &
         c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
         c_any_key_stack, c_block_remapper, parent_block = this, &
-        pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge)
+        pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
+        description = description)
 
     ptr => dbd_add_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
@@ -1171,13 +1203,97 @@ MODULE eis_deck_definition_mod
   END SUBROUTINE dbd_visualise
 
 
+
+  SUBROUTINE dbd_markdown(this, definition, str, key_id)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CLASS(eis_deck_definition), INTENT(INOUT) :: definition
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    INTEGER, INTENT(INOUT) :: key_id
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parents
+    CHARACTER(LEN=:), ALLOCATABLE :: pname, composite_name, composite_pname
+    INTEGER :: i
+    CLASS(*), POINTER :: gptr
+
+    CALL this%get_parents(parents)
+    IF (SIZE(parents) > 1) THEN
+      CALL eis_append_string(str,'---')
+      CALL eis_append_string(str,'')
+      IF (SIZE(parents) > 2) THEN
+        DO i = 2, SIZE(parents)
+          CALL definition%get_block_name(parents(i), pname)
+          CALL eis_append_string(composite_name,pname, newline = .FALSE.)
+          IF (i == SIZE(parents) - 1) ALLOCATE(composite_pname, &
+              SOURCE = composite_name)
+          IF (i/=SIZE(parents)) CALL eis_append_string(composite_name, '.', &
+              newline = .FALSE.)
+        END DO
+      ELSE
+        ALLOCATE(composite_name, SOURCE = this%name)
+      END IF
+      CALL eis_append_string(str, '## ' // composite_name)
+      CALL eis_append_string(str,'')
+      IF (SIZE(parents) > 2) THEN
+        CALL eis_append_string(str, 'Child of : ' // composite_pname)
+        CALL eis_append_string(str, '')
+      END IF
+      IF (ALLOCATED(this%description)) THEN
+        CALL eis_append_string(str, this%description)
+        CALL eis_append_string(str, '')
+      END IF
+      IF (this%keys%get_name_count() > 0) THEN
+        CALL eis_append_string(str, '### Keys')
+        CALL eis_append_string(str, '')
+        DO i = 1, this%keys%get_name_count()
+          gptr => this%keys%get(i)
+          SELECT TYPE(gptr)
+            CLASS IS (deck_key_definition)
+            IF (ALLOCATED(gptr%description)) THEN
+              CALL eis_append_string(str, '* `' // gptr%name // '` - ' &
+                  // gptr%description)
+            ELSE
+              CALL eis_append_string(str, '* `' // gptr%name //'`')
+            END IF
+            CALL eis_append_string(str, '')
+            key_id = key_id + 1
+          END SELECT
+        END DO
+      END IF
+      IF (this%sub_blocks%get_name_count() > 0) THEN
+        CALL eis_append_string(str, '### Sub blocks')
+        CALL eis_append_string(str, '')
+        DO i = 1, this%sub_blocks%get_name_count()
+          gptr => this%sub_blocks%get(i)
+          SELECT TYPE(gptr)
+            CLASS IS (eis_deck_block_definition)
+              CALL eis_append_string(str, '* `' // composite_name //'.' &
+                  // gptr%name // '`')
+          END SELECT
+        END DO
+        CALL eis_append_string(str, '')
+      END IF
+      DEALLOCATE(composite_name)
+      IF (ALLOCATED(composite_pname)) DEALLOCATE(composite_pname)
+    END IF
+
+    DO i = 1, this%sub_blocks%get_name_count()
+      gptr => this%sub_blocks%get(i)
+      SELECT TYPE(gptr)
+        CLASS IS (eis_deck_block_definition)
+          CALL gptr%markdown(definition, str, key_id)
+      END SELECT
+    END DO
+
+  END SUBROUTINE dbd_markdown
+
+
+
   SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
       key_numeric_value_fn, key_stack_fn, c_key_text_fn, c_key_value_fn, &
       c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, expected_params, pass_eq, &
-      pass_le, pass_ge)
+      pass_le, pass_ge, description)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1224,6 +1340,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
     INTEGER :: inx
@@ -1240,7 +1357,8 @@ MODULE eis_deck_definition_mod
         r32array = r32array, r64array = r64array, logicalarray = logicalarray, &
         c_i32value = c_i32value, c_i64value = c_i64value, &
         c_r32value = c_r32value, c_r64value = c_r64value, c_i32len = c_i32len, &
-        c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len)
+        c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len, &
+        description = description)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -1954,7 +2072,8 @@ MODULE eis_deck_definition_mod
       c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
-      c_i64len, c_r32len, c_r64len, expected_params, pass_eq, pass_le, pass_ge)
+      c_i64len, c_r32len, c_r64len, expected_params, pass_eq, pass_le, &
+      pass_ge, description)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -1999,6 +2118,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: c_r64len
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq, pass_le, pass_ge
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL :: inherit
 
     ALLOCATE(this%name, SOURCE = key_name)
@@ -2034,6 +2154,7 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(c_r64len)) this%c_r64len = c_r64len
 
     IF (PRESENT(expected_params)) this%expected_params = expected_params
+    IF (PRESENT(description)) ALLOCATE(this%description, SOURCE = description)
     inherit = .TRUE.
     IF (PRESENT(pass_eq)) THEN
       this%pass_eq = pass_eq

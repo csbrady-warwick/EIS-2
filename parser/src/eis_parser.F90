@@ -118,6 +118,8 @@ MODULE eis_parser_mod
     PROCEDURE :: add_constant_i8 => eip_add_constant_i8
     PROCEDURE :: evaluate_stack => eip_evaluate_stack
     PROCEDURE :: evaluate_string => eip_evaluate_string
+    PROCEDURE :: get_registry_symbol_count => eip_get_registry_symbol_count
+    PROCEDURE :: get_registry_symbol => eip_get_registry_symbol
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
@@ -143,9 +145,20 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: flush_errors => eip_flush_errors
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
-    PROCEDURE, PUBLIC :: get_token_info => eip_get_token_info
+    PROCEDURE, PUBLIC :: get_symbol_info => eip_get_symbol_info
     PROCEDURE, PUBLIC :: optimise => eip_optimise
     PROCEDURE, PUBLIC :: optimize => eip_optimise
+
+    PROCEDURE, PUBLIC :: get_global_symbol_count => eip_get_global_symbol_count
+    PROCEDURE, PUBLIC :: get_global_symbol => eip_get_global_symbol
+    PROCEDURE, PUBLIC :: get_local_symbol_count => eip_get_local_symbol_count
+    PROCEDURE, PUBLIC :: get_local_symbol => eip_get_local_symbol
+    PROCEDURE, PUBLIC :: get_symbol_count => eip_get_symbol_count
+    PROCEDURE, PUBLIC :: get_symbol => eip_get_symbol
+    PROCEDURE, PUBLIC :: namespace_is_included => eip_namespace_is_included
+    PROCEDURE, PUBLIC :: symbol_needs_namespace => eip_symbol_needs_namespace
+    PROCEDURE, PUBLIC :: get_structure_as_markdown &
+        => eip_get_structure_as_markdown
 
     FINAL :: eip_destructor
   END TYPE eis_parser
@@ -382,228 +395,300 @@ CONTAINS
       err = eis_err_none
       global_setup = .TRUE.
       CALL global_registry%add_operator('+', eis_uplus, eis_assoc_ra, 4, err, &
-        unary = .TRUE., err_handler = this%err_handler)
+        unary = .TRUE., err_handler = this%err_handler, &
+        description = 'Unary plus')
       CALL global_registry%add_operator('-', eis_uminus, eis_assoc_ra, 4, err, &
-          unary = .TRUE., err_handler = this%err_handler)
+          unary = .TRUE., err_handler = this%err_handler, &
+          description = 'Unary minus')
       CALL global_registry%add_operator('+', eis_bplus, eis_assoc_a, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Addition operator')
       CALL global_registry%add_operator('-', eis_bminus, eis_assoc_la, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Subtraction operator')
       CALL global_registry%add_operator('*', eis_times, eis_assoc_a, 3, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, &
+          description = 'Multiplication operator')
       CALL global_registry%add_operator('/', eis_divide, eis_assoc_la, 3, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Division operator')
       CALL global_registry%add_operator('^', eis_pow, eis_assoc_ra, 4, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Raise to power &
+          &operator')
       CALL global_registry%add_operator('e', eis_expo, eis_assoc_la, 4, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Exponentiation &
+          &operator')
       CALL global_registry%add_operator('lt', eis_lt, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'less than operator')
       CALL global_registry%add_operator('<', eis_lt, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'less than operator')
       CALL global_registry%add_operator('le', eis_le, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'less than or equal to &
+          &operator')
       CALL global_registry%add_operator('<=', eis_le, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'less than or equal to &
+          &operator')
       CALL global_registry%add_operator('gt', eis_gt, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'greater than operator')
       CALL global_registry%add_operator('>', eis_gt, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'greater than operator')
       CALL global_registry%add_operator('ge', eis_ge, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'greater than or equal &
+          &to operator')
       CALL global_registry%add_operator('>=', eis_ge, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'greater than or equal &
+          &to operator')
       CALL global_registry%add_operator('eq', eis_eq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'equal to operator')
       CALL global_registry%add_operator('==', eis_eq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'equal to operator')
       CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('/=', eis_neq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('!=', eis_neq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('and', eis_and, eis_assoc_la, 0, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'logical and')
       CALL global_registry%add_operator('or', eis_or, eis_assoc_la, 0, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'logical or')
 
       CALL global_registry%add_constant('math.pi', pi, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Pi, the ratio of a &
+          &circle''s circumference to it''s diameter')
 
       CALL global_registry%add_constant('scale.yotta', 1.0e24_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^24')
       CALL global_registry%add_constant('scale.zetta', 1.0e21_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^21')
       CALL global_registry%add_constant('scale.exa', 1.0e18_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^18')
       CALL global_registry%add_constant('scale.peta', 1.0e15_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^15')
       CALL global_registry%add_constant('scale.tera', 1.0e12_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^12')
       CALL global_registry%add_constant('scale.giga', 1.0e9_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^9')
       CALL global_registry%add_constant('scale.mega', 1.0e6_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^6')
       CALL global_registry%add_constant('scale.kilo', 1.0e3_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^3')
       CALL global_registry%add_constant('scale.hecto', 1.0e2_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^2')
       CALL global_registry%add_constant('scale.deca', 1.0e1_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^1')
       CALL global_registry%add_constant('scale.deci', 1.0e-1_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-1')
       CALL global_registry%add_constant('scale.centi', 1.0e-2_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-2')
       CALL global_registry%add_constant('scale.milli', 1.0e-3_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-3')
       CALL global_registry%add_constant('scale.micro', 1.0e-6_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-6')
       CALL global_registry%add_constant('scale.nano', 1.0e-9_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-9')
       CALL global_registry%add_constant('scale.pico', 1.0e-12_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-12')
       CALL global_registry%add_constant('scale.femto', 1.0e-15_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-15')
       CALL global_registry%add_constant('scale.atto', 1.0e-18_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-18')
       CALL global_registry%add_constant('scale.zepto', 1.0e-21_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-21')
       CALL global_registry%add_constant('scale.yocto', 1.0e-24_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '10^-24')
 
       CALL global_registry%add_function('math.abs', eis_abs, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`abs(a)` - Returns &
+          &absolute value of a')
       CALL global_registry%add_function('math.floor', eis_floor, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`floor(a)` - Returns &
+          &the nearest integer to a rounding towards zero')
       CALL global_registry%add_function('math.ceil', eis_ceil, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`ceil(a)` - Returns &
+          &the nearest integer to a rounding away from zero')
       CALL global_registry%add_function('math.ceiling', eis_ceil, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`ceiling(a)` - &
+          &Returns the nearest integer to a rounding away from zero')
       CALL global_registry%add_function('math.nint', eis_nint, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`nint(a)` - Returns &
+          &the nearest integer to a rounding to nearest integer')
       CALL global_registry%add_function('math.trunc', eis_aint, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`trunc(a)` - Returns &
+          &the nearest integer to a by ignoring the non-integer part')
       CALL global_registry%add_function('math.truncate', eis_aint, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`truncate(a)` - &
+          &Returns the nearest integer to a by ignoring the non-integer part')
       CALL global_registry%add_function('math.aint', eis_aint, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`aint(a)` - Returns &
+          &the nearest integer to a by ignoring the non-integer part')
       CALL global_registry%add_function('math.sqrt', eis_sqrt, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`sqrt(a)` - Returns &
+          &the square root of a')
       CALL global_registry%add_function('math.sin', eis_sin, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`sin(a)` - Returns &
+          &the sine of a, specifying a in radians')
       CALL global_registry%add_function('math.cos', eis_cos, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`cos(a)` - Returns &
+          &the cosine of a, specifying a in radians')
       CALL global_registry%add_function('math.tan', eis_tan, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`tan(a)` - Returns &
+          &the tangent of a, specifying a in radians')
       CALL global_registry%add_function('math.asin', eis_asin, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`asin(a)` - Returns &
+          &the inverse sin of a, specifying the resulting angle in radians')
       CALL global_registry%add_function('math.acos', eis_acos, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`acos(a)` - Returns &
+          &the inverse cosin of a, specifying the resulting angle in radians')
       CALL global_registry%add_function('math.atan', eis_atan, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`atan(a)` - Returns &
+          &the inverse tangent of a, specifying the resulting angle in radians')
       CALL global_registry%add_function('math.atan2', eis_atan2, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`atan2(y, x)` - 2 &
+          &argument arctangent. Returns the angle in radians between the &
+          &positive x axis and the line joining the origin to the point (x,y)')
       CALL global_registry%add_function('math.sinh', eis_sinh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`sinh(a)` - Returns &
+          &the hyperbolic sine of a')
       CALL global_registry%add_function('math.cosh',eis_cosh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`cosh(a)` - Returns &
+          &the hyperbolic cosine of a')
       CALL global_registry%add_function('math.tanh',eis_tanh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`tanh(a)` - Returns &
+          &the hyperbolic tangent of a')
       CALL global_registry%add_function('math.asinh', eis_asinh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`asinh(a)` - Returns &
+          &xthe inverse hyperbolic sine of a')
       CALL global_registry%add_function('math.acosh',eis_acosh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`acosh(a)` - Returns &
+          &the inverse hyperbolic cosine of a')
       CALL global_registry%add_function('math.atanh',eis_atanh, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`atanh(a)` - Returns &
+          &the inverse hyperbolic tangent of a')
       CALL global_registry%add_function('math.exp', eis_exp, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`exp(a)` - Returns &
+          &the base e exponential of a')
       CALL global_registry%add_function('math.loge', eis_loge, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description ='`loge(a)` - Returns &
+          &the base e logarithm of a')
       CALL global_registry%add_function('math.log10', eis_log10, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description ='`log10(a)` - Returns &
+          &the base 10 logarithm of a')
       CALL global_registry%add_function('math.log_base', eis_log_base, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description ='`log_base(value, &
+          &base)` Returns the base "base" logarithm of "value"')
 #ifdef F2008
       CALL global_registry%add_function('math.bessel_j', eis_bessel_j, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`bessel_j(n, x)` - &
+          &Returns the Bessel function of the first kind of order n of x')
       CALL global_registry%add_function('math.bessel_y', eis_bessel_y, 2, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description  = '`bessel_y(n, x)` - &
+          &Returns the Bessel function of the second kind of order n of x')
       CALL global_registry%add_function('math.erf', eis_erf, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`erf(x)` - Return &
+          &the error function of x')
       CALL global_registry%add_function('math.erfc', eis_erfc, 1, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`erfc(x)` - Return &
+          &the complementary error function of x')
       CALL global_registry%add_function('math.erfc_scaled', eis_erfc_scaled, &
-          1, err, err_handler = this%err_handler)
+          1, err, err_handler = this%err_handler, description = &
+          '`erfc_scaled(x)` - Returns the exponentially scaled complementary &
+          &error function of x')
       CALL global_registry%add_function('math.gamma', eis_gamma_fn, &
-          1, err, err_handler = this%err_handler)
+          1, err, err_handler = this%err_handler, description = '`gamma(x)` - &
+          &Returns the Bernoulli gamma function of x')
       CALL global_registry%add_function('math.log_gamma', eis_log_gamma_fn, &
-          1, err, err_handler = this%err_handler)
+          1, err, err_handler = this%err_handler, description = '`log_gamma&
+          &(x)` - Returns the logarithm of the gamma function of x' )
 #endif
 
       CALL global_registry%add_function('utility.gauss', eis_gauss, 3, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = '`gauss(x,x0,w)` - &
+          &Gaussian of the form exp(((x-x0)/w)^2). The FWHM is 2wsqrt(ln(2))')
       CALL global_registry%add_function('utility.semigauss', eis_semigauss, 4, &
-          err, err_handler = this%err_handler)
+          err, err_handler = this%err_handler, description = '`semigauss(x, A, &
+          &A0, w)`. Gives a semi-Gaussian profile in the variable x. The &
+          &other parameters are the maximum value of the profile (A), the value&
+          & of the function at x=0 (A0) and the characteristic rise of the &
+          &function')
       CALL global_registry%add_function('utility.supergauss', eis_supergauss, &
-          4, err, err_handler = this%err_handler)
+          4, err, err_handler = this%err_handler, description = '`supergauss(&
+          &x,x0,w,n)` - Returns a superGaussian function of the form &
+          &exp(((x-x0)/w)^n)')
 
       CALL global_registry%add_function('logic.if', eis_if, &
-          3, err, err_handler = this%err_handler)
+          3, err, err_handler = this%err_handler, description = '`if(a,b,c)` - &
+          & If a is not equal to zero returns b, otherwise returns c')
 
       !Unit indepdendent physical constants
       CALL global_registry%add_constant('physics.na', &
-          6.02214076e23_eis_num, err, err_handler = this%err_handler)
+          6.02214076e23_eis_num, err, err_handler = this%err_handler, &
+          description = 'Avogadro''s constant')
 
       !SI Physical constants
       CALL global_registry%add_constant('physics.si.c', 2.99792458e8_eis_num, &
-          err, err_handler = this%err_handler)
+          err, err_handler = this%err_handler, description = 'Speed of light &
+          &(m s^-1)')
       CALL global_registry%add_constant('physics.si.G', 6.67408e-11_eis_num, &
-          err, err_handler = this%err_handler)
+          err, err_handler = this%err_handler, description = 'Gravitational &
+          &constant (m^3 kg^-1 s^-2)')
       CALL global_registry%add_constant('physics.si.h', &
-          6.62607015e-34_eis_num, err, err_handler = this%err_handler)
+          6.62607015e-34_eis_num, err, err_handler = this%err_handler, &
+          description = 'Planck''s constant (m^2 kg s^-2)')
       CALL global_registry%add_constant('physics.si.q0', &
-          1.602176565e-19_eis_num, err, err_handler = this%err_handler)
+          1.602176565e-19_eis_num, err, err_handler = this%err_handler, &
+          description = 'Elementary charge (C)')
       CALL global_registry%add_constant('physics.si.epsilon0', &
           8.854187817620389850536563031710750e-12_eis_num, err, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = 'Vacuum &
+          &permittivity (F m^-1)')
       CALL global_registry%add_constant('physics.si.mu0', &
-          4.e-7_eis_num * pi, err, err_handler = this%err_handler)
+          4.e-7_eis_num * pi, err, err_handler = this%err_handler, &
+          description = 'Vacuum permeability (H m^-1)')
       CALL global_registry%add_constant('physics.si.kb', &
-          1.3806488e-23_eis_num, err, err_handler = this%err_handler)
+          1.3806488e-23_eis_num, err, err_handler = this%err_handler, &
+          description = 'Boltzmann''s constant (m^2 kg s^-2 K^-1)')
       CALL global_registry%add_constant('physics.si.me', &
-          9.10938291e-31_eis_num, err, err_handler = this%err_handler)
+          9.10938291e-31_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of electron (kg)')
       CALL global_registry%add_constant('physics.si.mp', &
-          1.6726219e-27_eis_num, err, err_handler = this%err_handler)
+          1.6726219e-27_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of proton (kg)')
       CALL global_registry%add_constant('physics.si.mn', &
-          1.674929e-27_eis_num, err, err_handler = this%err_handler)
+          1.674929e-27_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of neutron (kg)')
 
       !CGS physical constants
       c = 2.99792458e10_eis_num
       CALL global_registry%add_constant('physics.cgs.gauss.c', &
-          c, err, err_handler = this%err_handler)
+          c, err, err_handler = this%err_handler, &
+          description = 'Speed of light (cm s^-1)')
       CALL global_registry%add_constant('physics.cgs.gauss.G', &
-          6.67428e-8_eis_num, err, err_handler = this%err_handler)
+          6.67428e-8_eis_num, err, err_handler = this%err_handler, &
+          description = 'Gravitational constant (cm^3 g^-1 s^-2)')
       CALL global_registry%add_constant('physics.cgs.gauss.h', &
-          6.62606885e-27_eis_num, err, err_handler = this%err_handler)
+          6.62606885e-27_eis_num, err, err_handler = this%err_handler, &
+          description = 'Planck''s constant (erg s)')
       CALL global_registry%add_constant('physics.cgs.gauss.q0', &
-          4.80320427e-10_eis_num, err, err_handler = this%err_handler)
+          4.80320427e-10_eis_num, err, err_handler = this%err_handler, &
+          description = 'Elementary charge (Fr)')
       CALL global_registry%add_constant('physics.cgs.gauss.epsilon0', &
-          1.0_eis_num, err, err_handler = this%err_handler)
+          1.0_eis_num, err, err_handler = this%err_handler, &
+          description = 'Vacuum permittivity (unnecessary)')
       CALL global_registry%add_constant('physics.cgs.gauss.mu0', &
-          1.0_eis_num/c**2, err, err_handler = this%err_handler)
-      CALL global_registry%add_constant('physics.cgs.gauss.na', &
-          6.02214076e23_eis_num, err, err_handler = this%err_handler)
+          1.0_eis_num/c**2, err, err_handler = this%err_handler, &
+          description = 'Vacuum permiability (unnecessary)')
       CALL global_registry%add_constant('physics.cgs.gauss.kb', &
-          1.3806504e-16_eis_num, err, err_handler = this%err_handler)
+          1.3806504e-16_eis_num, err, err_handler = this%err_handler, &
+          description = 'Boltzmann''s constant (erg K^-1)')
       CALL global_registry%add_constant('physics.cgs.gauss.mu', &
           1.67377e-27_eis_num, err, err_handler = this%err_handler)
       CALL global_registry%add_constant('physics.cgs.gauss.me', &
-          9.10938215e-28_eis_num, err, err_handler = this%err_handler)
+          9.10938215e-28_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of electrion (g)')
       CALL global_registry%add_constant('physics.cgs.gauss.mp', &
-          1.6726219e-24_eis_num, err, err_handler = this%err_handler)
+          1.6726219e-24_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of proton (g)')
       CALL global_registry%add_constant('physics.cgs.gauss.mn', &
-          1.674929e-24_eis_num, err, err_handler = this%err_handler)
+          1.674929e-24_eis_num, err, err_handler = this%err_handler, &
+          description = 'Mass of neutron (g)')
 
       IF (.NOT. no_import_l) THEN
         CALL global_registry%include_namespace('math')
@@ -695,39 +780,184 @@ CONTAINS
   !> @brief
   !> Function to load a given block with information from the registry
   !> @param[in] this
-  !> @param[in] token
-  !> @param[out] token_type
+  !> @param[in] symbol
+  !> @param[in] unary
+  !> @param[out] symbol_type
   !> @param[out] cap_bits
   !> @param[out] deferred
+  !> @param[out] description
   !> @result exists
-  FUNCTION eip_get_token_info(this, token, token_type, cap_bits, deferred) &
-      RESULT(exists)
+  FUNCTION eip_get_symbol_info(this, symbol, unary, symbol_type, cap_bits, &
+      deferred, description) RESULT(exists)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
-    !> Name of the token to get information about
-    CHARACTER(LEN=*), INTENT(IN) :: token
-    !> Type of the found token
-    INTEGER, INTENT(OUT), OPTIONAL :: token_type
-    !> Cap bits of the found token
+    !> Name of the symbol to get information about
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    !> Is this a unary operator
+    LOGICAL, INTENT(IN), OPTIONAL :: unary
+    !> Type of the found symbol
+    INTEGER, INTENT(OUT), OPTIONAL :: symbol_type
+    !> Cap bits of the found symbol
     INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: cap_bits
     !> Is this symbol currently deferred
     LOGICAL, INTENT(OUT), OPTIONAL :: deferred
-    !> Does the token exist in the token list
+    !> Description associated with the symbol
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
+    !> Does the symbol exist in the symbol list
     LOGICAL :: exists
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element):: icoblock
     INTEGER(eis_bitmask) :: icaps
+    LOGICAL :: is_unary
+    CHARACTER(LEN=:), ALLOCATABLE :: str
 
-    CALL this%load_block(token, iblock, icoblock)
+    is_unary = .FALSE.
+    IF (PRESENT(unary)) is_unary = unary
+
+    IF (.NOT. is_unary) THEN
+      CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
+          description = str)
+      IF (iblock%ptype == eis_pt_bad) THEN
+        CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
+            description = str)
+      END IF
+      IF (iblock%ptype == eis_pt_bad) is_unary = .TRUE.
+    END IF
+
+    IF (is_unary) THEN
+      CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
+          description = str)
+      IF (iblock%ptype == eis_pt_bad) THEN
+        CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
+            description = str)
+      END IF
+    END IF
 
     exists = iblock%ptype /= eis_pt_bad
-    IF (PRESENT(token_type)) token_type = iblock%ptype
+    IF (ALLOCATED(str) .AND. PRESENT(description)) ALLOCATE(description, &
+        SOURCE = str)
+    IF (ALLOCATED(str)) DEALLOCATE(str)
+    IF (PRESENT(symbol_type)) symbol_type = iblock%ptype
     IF (PRESENT(cap_bits)) cap_bits = icoblock%cap_bits
     IF (PRESENT(deferred)) deferred = &
         (iblock%ptype == eis_pt_deferred_variable &
         .OR. iblock%ptype == eis_pt_deferred_function)
 
-  END FUNCTION eip_get_token_info
+  END FUNCTION eip_get_symbol_info
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to test if a given namespace has been included
+  !> @param[in] this
+  !> @param[in] namespace
+  !> @param[in] in_global
+  !> @result eip_namespace_is_included
+  FUNCTION eip_namespace_is_included(this, namespace, in_global)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Name of the namespace to get information about
+    CHARACTER(LEN=*), INTENT(IN) :: namespace
+    !> Should the test be in the global registry
+    LOGICAL, INTENT(IN), OPTIONAL :: in_global
+    LOGICAL :: eip_namespace_is_included !< Is this namespace included?
+    LOGICAL :: use_global
+
+    use_global = .FALSE.
+    IF (PRESENT(in_global)) use_global = in_global
+
+    IF (use_global) THEN
+      eip_namespace_is_included = global_registry%is_included(namespace)
+    ELSE
+      eip_namespace_is_included = this%registry%is_included(namespace)
+    END IF
+    
+  END FUNCTION eip_namespace_is_included
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to test if a given symbol specified with full namespace
+  !> qualification needs the namespace to resolve.
+  !> @param[in] this
+  !> @param[in] symbol
+  !> @param[in] in_global
+  !> @result eip_symbol_needs_namespace
+  FUNCTION eip_symbol_needs_namespace(this, symbol, in_global)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Name of the symbol
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    !> Should the test be in the global registry
+    LOGICAL, INTENT(IN), OPTIONAL :: in_global
+    LOGICAL :: eip_symbol_needs_namespace !< Does this symbol need the namespace
+    LOGICAL :: use_global
+    INTEGER :: ldotloc
+
+    ldotloc = INDEX(symbol,'.', back = .TRUE.)
+    IF (ldotloc == 0 .OR. ldotloc == LEN(symbol)) THEN
+      eip_symbol_needs_namespace = .FALSE.
+    ELSE
+      use_global = .FALSE.
+      IF (PRESENT(in_global)) use_global = in_global
+
+      IF (use_global) THEN
+        eip_symbol_needs_namespace = &
+            .NOT. global_registry%is_included(symbol(1:ldotloc-1))
+      ELSE
+        eip_symbol_needs_namespace = &
+            .NOT. this%registry%is_included(symbol(1:ldotloc-1))
+      END IF
+    END IF
+
+  END FUNCTION eip_symbol_needs_namespace
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of symbols in a specified registry
+  !> @param[in] this
+  !> @param[in] registry
+  !> @result symbol_count
+  FUNCTION eip_get_registry_symbol_count(this, registry) &
+      RESULT(symbol_count)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Registry to get the symbol for
+    CLASS(eis_registry), INTENT(INOUT) :: registry
+    !> Number of symbols
+    INTEGER :: symbol_count
+
+    symbol_count = registry%get_name_count()
+
+  END FUNCTION eip_get_registry_symbol_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a symbol from the registry
+  !> @param[in] this
+  !> @param[in] registry
+  !> @param[in] index
+  !> @param[out] symbol
+  !> @result symbol_count
+  SUBROUTINE eip_get_registry_symbol(this, registry, index, symbol)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Registry to get the symbol from
+    CLASS(eis_registry), INTENT(INOUT) :: registry
+    !> Index of the symbol to retrieve
+    INTEGER, INTENT(IN) :: index
+    !> Retreived symbol
+    CHARACTER(LEN=:), INTENT(OUT), ALLOCATABLE :: symbol
+
+    CALL registry%get_name(index, symbol)
+
+  END SUBROUTINE eip_get_registry_symbol
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -791,12 +1021,12 @@ CONTAINS
           .OR. (this%last_block_type == eis_pt_parenthesis &
           .AND. this%last_block_value == eis_paren_right_bracket))
 
+    CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
+    IF (iblock%ptype /= eis_pt_bad) RETURN
+
     CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary)
     IF (iblock%ptype /= eis_pt_bad) RETURN
 
-    CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
-
-    IF (iblock%ptype /= eis_pt_bad) RETURN
 
     value = parse_string_as_real(name, work)
     IF (IAND(work, eis_err_bad_value) == 0) THEN
@@ -2938,5 +3168,316 @@ CONTAINS
     CALL global_registry%optimise()
 
   END SUBROUTINE eip_optimise
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of symbols in the global registry
+  !> @param[in] this
+  !> @result symbol_count
+  FUNCTION eip_get_global_symbol_count(this) &
+      RESULT(symbol_count)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Number of symbols
+    INTEGER :: symbol_count
+
+    symbol_count = this%get_registry_symbol_count(global_registry)
+
+  END FUNCTION eip_get_global_symbol_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a symbol from the global registry
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[out] symbol
+  !> @result symbol_count
+  SUBROUTINE eip_get_global_symbol(this, index, symbol)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Index of the symbol to retrieve
+    INTEGER, INTENT(IN) :: index
+    !> Retreived symbol
+    CHARACTER(LEN=:), INTENT(OUT), ALLOCATABLE :: symbol
+
+    CALL this%get_registry_symbol(global_registry, index, symbol)
+
+  END SUBROUTINE eip_get_global_symbol
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of symbols in the parser local registry
+  !> @param[in] this
+  !> @result symbol_count
+  FUNCTION eip_get_local_symbol_count(this) &
+      RESULT(symbol_count)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Number of symbols
+    INTEGER :: symbol_count
+
+    symbol_count = this%get_registry_symbol_count(this%registry)
+
+  END FUNCTION eip_get_local_symbol_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a symbol from the parser local registry
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[out] symbol
+  SUBROUTINE eip_get_local_symbol(this, index, symbol)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Index of the symbol to retrieve
+    INTEGER, INTENT(IN) :: index
+    !> Retreived symbol
+    CHARACTER(LEN=:), INTENT(OUT), ALLOCATABLE :: symbol
+
+    CALL this%get_registry_symbol(this%registry, index, symbol)
+
+  END SUBROUTINE eip_get_local_symbol
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the number of symbols in both local and global registries
+  !> @param[in] this
+  !> @result symbol_count
+  FUNCTION eip_get_symbol_count(this) &
+      RESULT(symbol_count)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Number of symbols
+    INTEGER :: symbol_count
+
+    symbol_count = this%get_global_symbol_count() &
+        + this%get_local_symbol_count()
+
+  END FUNCTION eip_get_symbol_count
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a symbol from either the local or the global registry
+  !> @param[in] this
+  !> @param[in] index
+  !> @param[out] symbol
+  SUBROUTINE eip_get_symbol(this, index, symbol)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Index of the symbol to retrieve
+    INTEGER, INTENT(IN) :: index
+    !> Retreived symbol
+    CHARACTER(LEN=:), INTENT(OUT), ALLOCATABLE :: symbol
+    INTEGER :: gsc
+
+    gsc = this%get_global_symbol_count()
+
+    IF (index <= gsc) THEN
+      CALL this%get_global_symbol(index, symbol)
+    ELSE
+      CALL this%get_local_symbol(index - gsc, symbol)
+    END IF
+
+  END SUBROUTINE eip_get_symbol
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get a representation of the keys in the parser as markdown
+  !> @param[in] this
+  !> @param[out] markdown
+  !> @param[in] title
+  !> @param[in] function_show_name
+  SUBROUTINE eip_get_structure_as_markdown(this, markdown, title, &
+      function_show_name)
+
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Markdown variable
+    CHARACTER(LEN=:), INTENT(OUT), ALLOCATABLE :: markdown
+    !> Title of the document. Optional, default no title
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: title
+    !> Built in functions are given descriptions that include the
+    !> name so printing the name is confusing. Specify eis_fsn_none to never 
+    !> show the function name, eis_fsn_always to always show the name and
+    !> eis_fsn_auto to automatically determine if the first characters of the
+    !> description are the name
+    INTEGER, INTENT(IN), OPTIONAL :: function_show_name
+    CHARACTER(LEN=:), ALLOCATABLE :: sname, desc, name2
+    INTEGER :: ct, stype, fsn, dotloc
+    LOGICAL :: exists, pname, any_printed
+
+    IF (PRESENT(title)) THEN
+      CALL eis_append_string(markdown,'# '//title)
+    END IF
+
+    fsn = eis_fsn_auto
+    IF (PRESENT(function_show_name)) fsn = function_show_name
+
+    CALL eis_append_string(markdown,'')
+    CALL eis_append_string(markdown,'## Functions')
+    CALL eis_append_string(markdown,'')
+    any_printed = .FALSE.
+    DO ct = 1, this%get_symbol_count()
+      CALL this%get_symbol(ct, sname)
+      exists = this%get_symbol_info(sname, description = desc, &
+          symbol_type = stype)
+      IF (stype == eis_pt_function .OR. stype == eis_pt_emplaced_function) THEN
+        any_printed = .TRUE.
+        IF (this%symbol_needs_namespace(sname)) THEN
+          ALLOCATE(name2, SOURCE = sname)
+        ELSE
+          dotloc = INDEX(sname, '.', BACK = .TRUE.)
+          IF (dotloc > 0 .AND. dotloc < LEN(sname)) THEN
+            ALLOCATE(name2, SOURCE = sname(dotloc+1:))
+          ELSE
+            ALLOCATE(name2, SOURCE = sname)
+          END IF
+        END IF
+        IF (fsn == eis_fsn_never) THEN
+          pname = .FALSE.
+        ELSE IF (fsn == eis_fsn_always) THEN
+          pname = .TRUE.
+        ELSE
+          IF (ALLOCATED(desc)) THEN
+            pname = .TRUE.
+            IF (LEN(desc) >= LEN(name2)) THEN
+              IF (desc(1:LEN(name2)) == name2) pname = .FALSE.
+            END IF
+            IF (LEN(desc) > LEN(name2)) THEN
+              IF (desc(1:1) == '`' .AND. desc(2:LEN(name2)+1) == name2) &
+                  pname = .FALSE.
+            END IF
+          ELSE
+            pname = .TRUE.
+          END IF
+        END IF
+        IF (pname) THEN
+          IF (ALLOCATED(desc)) THEN
+            CALL eis_append_string(markdown, '* `' // name2 // '` - ' // desc)
+          ELSE
+            CALL eis_append_string(markdown, '* `' // name2 // '` - &
+            &No description')
+          END IF
+        ELSE
+          CALL eis_append_string(markdown, '* ' // desc)
+        END IF
+        CALL eis_append_string(markdown, '')
+        DEALLOCATE(name2)
+      END IF
+    END DO
+    IF (.NOT. any_printed) CALL eis_append_string(markdown, 'None found')
+
+    CALL eis_append_string(markdown,'')
+    CALL eis_append_string(markdown,'## Operators')
+    CALL eis_append_string(markdown,'')
+    any_printed = .FALSE.
+    DO ct = 1, this%get_symbol_count()
+      CALL this%get_symbol(ct, sname)
+      exists = this%get_symbol_info(sname, description = desc, &
+          symbol_type = stype)
+      IF (stype == eis_pt_operator) THEN
+        any_printed = .TRUE.
+        IF (this%symbol_needs_namespace(sname)) THEN
+          ALLOCATE(name2, SOURCE = sname)
+        ELSE
+          dotloc = INDEX(sname, '.', BACK = .TRUE.)
+          IF (dotloc > 0 .AND. dotloc < LEN(sname)) THEN
+            ALLOCATE(name2, SOURCE = sname(dotloc+1:))
+          ELSE
+            ALLOCATE(name2, SOURCE = sname)
+          END IF
+        END IF
+        IF (ALLOCATED(desc)) THEN
+          CALL eis_append_string(markdown, '* `' // name2 // '` - ' // desc)
+        ELSE
+          CALL eis_append_string(markdown, '* `' // name2 &
+              // '` - No description')
+        END IF
+        CALL eis_append_string(markdown, '')
+        DEALLOCATE(name2)
+      END IF
+    END DO
+    IF (.NOT. any_printed) CALL eis_append_string(markdown, 'None found')
+
+    CALL eis_append_string(markdown,'')
+    CALL eis_append_string(markdown,'## Constants')
+    CALL eis_append_string(markdown,'')
+    any_printed = .FALSE.
+    DO ct = 1, this%get_symbol_count()
+      CALL this%get_symbol(ct, sname)
+      exists = this%get_symbol_info(sname, description = desc, &
+          symbol_type = stype)
+      IF (stype == eis_pt_constant) THEN
+        any_printed = .TRUE.
+        IF (this%symbol_needs_namespace(sname)) THEN
+          ALLOCATE(name2, SOURCE = sname)
+        ELSE
+          dotloc = INDEX(sname, '.', BACK = .TRUE.)
+          IF (dotloc > 0 .AND. dotloc < LEN(sname)) THEN
+            ALLOCATE(name2, SOURCE = sname(dotloc+1:))
+          ELSE
+            ALLOCATE(name2, SOURCE = sname)
+          END IF
+        END IF
+        IF (ALLOCATED(desc)) THEN
+          CALL eis_append_string(markdown, '* `' // name2 // '` - ' // desc)
+        ELSE
+          CALL eis_append_string(markdown, '* `' // name2 &
+              // '` - No description')
+        END IF
+        CALL eis_append_string(markdown, '')
+        DEALLOCATE(name2)
+      END IF
+    END DO
+    IF (.NOT. any_printed) CALL eis_append_string(markdown, 'None found')
+
+    CALL eis_append_string(markdown,'')
+    CALL eis_append_string(markdown,'## Variables')
+    CALL eis_append_string(markdown,'')
+    any_printed = .FALSE.
+    DO ct = 1, this%get_symbol_count()
+      CALL this%get_symbol(ct, sname)
+      exists = this%get_symbol_info(sname, description = desc, &
+          symbol_type = stype)
+      IF (stype == eis_pt_variable .OR. stype == eis_pt_stored_variable &
+          .OR. stype == eis_pt_emplaced_variable &
+          .OR. stype == eis_pt_pointer_variable) THEN
+        any_printed = .TRUE.
+        IF (this%symbol_needs_namespace(sname)) THEN
+          ALLOCATE(name2, SOURCE = sname)
+        ELSE
+          dotloc = INDEX(sname, '.', BACK = .TRUE.)
+          IF (dotloc > 0 .AND. dotloc < LEN(sname)) THEN
+            ALLOCATE(name2, SOURCE = sname(dotloc+1:))
+          ELSE
+            ALLOCATE(name2, SOURCE = sname)
+          END IF
+        END IF
+        IF (ALLOCATED(desc)) THEN
+          CALL eis_append_string(markdown, '* `' // name2 // '` - ' // desc)
+        ELSE
+          CALL eis_append_string(markdown, '* `' // name2 &
+              // '` - No description')
+        END IF
+        CALL eis_append_string(markdown, '')
+        DEALLOCATE(name2)
+      END IF
+    END DO
+    IF (.NOT. any_printed) CALL eis_append_string(markdown, 'None found')
+
+  END SUBROUTINE eip_get_structure_as_markdown
 
 END MODULE eis_parser_mod
