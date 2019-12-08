@@ -55,6 +55,7 @@ MODULE eis_deck_definition_mod
   TYPE :: deck_key_definition
 
     CHARACTER(LEN=:), ALLOCATABLE :: description
+    LOGICAL :: is_hidden = .FALSE.
 
     INTEGER(INT32), POINTER :: i32data => NULL()
     INTEGER(INT64), POINTER :: i64data => NULL()
@@ -101,6 +102,7 @@ MODULE eis_deck_definition_mod
     TYPE(named_store) :: keys
 
     CHARACTER(LEN=:), ALLOCATABLE :: description
+    LOGICAL :: is_hidden = .FALSE.
 
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
@@ -397,17 +399,19 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dd_get_block_name(this, id, name, description)
+  SUBROUTINE dd_get_block_name(this, id, name, description, is_hidden)
     CLASS(eis_deck_definition), INTENT(IN) :: this
     INTEGER, INTENT(IN) :: id
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
+    LOGICAL, INTENT(OUT), OPTIONAL :: is_hidden
     CLASS(eis_deck_block_definition), POINTER :: block
 
     block => this%info%get_block(id)
     IF (ASSOCIATED(block)) ALLOCATE(name, SOURCE = block%name)
     IF (ASSOCIATED(block) .AND. PRESENT(description)) ALLOCATE(description, &
         SOURCE = block%description)
+    IF (ASSOCIATED(block) .AND. PRESENT(is_hidden)) is_hidden = block%is_hidden
 
   END SUBROUTINE dd_get_block_name
 
@@ -537,7 +541,8 @@ MODULE eis_deck_definition_mod
       any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
       c_start_block, c_end_block, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, description)
+      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, description, &
+      hidden)
 
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
@@ -564,6 +569,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     CLASS(eis_deck_block_definition), INTENT(IN), OPTIONAL :: parent_block
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     INTEGER :: dbd_init
     CLASS(*), POINTER :: ptr
@@ -597,6 +603,7 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(c_any_key_stack)) this%c_any_key_stack_fn => c_any_key_stack
     IF (PRESENT(c_block_remapper)) this%c_block_remap_fn => c_block_remapper
     IF (PRESENT(description)) ALLOCATE(this%description, SOURCE = description)
+    IF (PRESENT(hidden)) this%is_hidden = hidden
 
     inherit = PRESENT(parent_block)
     IF (PRESENT(pass_eq)) THEN
@@ -636,7 +643,8 @@ MODULE eis_deck_definition_mod
       final_block, any_key_text, any_key_value, any_key_numeric_value, &
       any_key_stack, block_remapper, c_init_block, c_start_block, c_end_block, &
       c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, description)
+      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, &
+      description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -659,6 +667,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     TYPE(eis_deck_block_definition), POINTER :: dbd_add_block
     CLASS(*), POINTER :: ptr
@@ -673,7 +682,7 @@ MODULE eis_deck_definition_mod
         c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
         c_any_key_stack, c_block_remapper, parent_block = this, &
         pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
-        description = description)
+        description = description, hidden = hidden)
 
     ptr => dbd_add_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
@@ -1215,7 +1224,7 @@ MODULE eis_deck_definition_mod
     CLASS(*), POINTER :: gptr
 
     CALL this%get_parents(parents)
-    IF (SIZE(parents) > 1) THEN
+    IF (SIZE(parents) > 1 .AND. .NOT. this%is_hidden) THEN
       CALL eis_append_string(str,'---')
       CALL eis_append_string(str,'')
       IF (SIZE(parents) > 2) THEN
@@ -1247,6 +1256,7 @@ MODULE eis_deck_definition_mod
           gptr => this%keys%get(i)
           SELECT TYPE(gptr)
             CLASS IS (deck_key_definition)
+            IF (gptr%is_hidden) CYCLE
             IF (ALLOCATED(gptr%description)) THEN
               CALL eis_append_string(str, '* `' // gptr%name // '` - ' &
                   // gptr%description)
@@ -1293,7 +1303,7 @@ MODULE eis_deck_definition_mod
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, expected_params, pass_eq, &
-      pass_le, pass_ge, description)
+      pass_le, pass_ge, description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1341,6 +1351,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
     INTEGER :: inx
@@ -1358,7 +1369,7 @@ MODULE eis_deck_definition_mod
         c_i32value = c_i32value, c_i64value = c_i64value, &
         c_r32value = c_r32value, c_r64value = c_r64value, c_i32len = c_i32len, &
         c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len, &
-        description = description)
+        description = description, hidden = hidden)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -2073,7 +2084,7 @@ MODULE eis_deck_definition_mod
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
       c_i64len, c_r32len, c_r64len, expected_params, pass_eq, pass_le, &
-      pass_ge, description)
+      pass_ge, description, hidden)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -2119,6 +2130,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq, pass_le, pass_ge
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: inherit
 
     ALLOCATE(this%name, SOURCE = key_name)
@@ -2155,6 +2167,7 @@ MODULE eis_deck_definition_mod
 
     IF (PRESENT(expected_params)) this%expected_params = expected_params
     IF (PRESENT(description)) ALLOCATE(this%description, SOURCE = description)
+    IF (PRESENT(hidden)) this%is_hidden = hidden
     inherit = .TRUE.
     IF (PRESENT(pass_eq)) THEN
       this%pass_eq = pass_eq

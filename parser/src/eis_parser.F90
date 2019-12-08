@@ -786,9 +786,10 @@ CONTAINS
   !> @param[out] cap_bits
   !> @param[out] deferred
   !> @param[out] description
+  !> @param[out] is_hidden
   !> @result exists
   FUNCTION eip_get_symbol_info(this, symbol, unary, symbol_type, cap_bits, &
-      deferred, description) RESULT(exists)
+      deferred, description, is_hidden) RESULT(exists)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     !> Name of the symbol to get information about
@@ -803,6 +804,8 @@ CONTAINS
     LOGICAL, INTENT(OUT), OPTIONAL :: deferred
     !> Description associated with the symbol
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
+    !> Is this symbol meant to be hidden
+    LOGICAL, INTENT(OUT), OPTIONAL :: is_hidden
     !> Does the symbol exist in the symbol list
     LOGICAL :: exists
     TYPE(eis_stack_element) :: iblock
@@ -815,21 +818,21 @@ CONTAINS
     IF (PRESENT(unary)) is_unary = unary
 
     IF (.NOT. is_unary) THEN
-      CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
-          description = str)
+      CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
+          description = str, hidden = is_hidden)
       IF (iblock%ptype == eis_pt_bad) THEN
-        CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
-            description = str)
+        CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
+            description = str, hidden = is_hidden)
       END IF
       IF (iblock%ptype == eis_pt_bad) is_unary = .TRUE.
     END IF
 
     IF (is_unary) THEN
-      CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
-          description = str)
+      CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
+          description = str, hidden = is_hidden)
       IF (iblock%ptype == eis_pt_bad) THEN
-        CALL this%registry%fill_block(symbol, iblock, icoblock, is_unary, &
-            description = str)
+        CALL global_registry%fill_block(symbol, iblock, icoblock, is_unary, &
+            description = str, hidden = is_hidden)
       END IF
     END IF
 
@@ -874,6 +877,7 @@ CONTAINS
     END IF
     
   END FUNCTION eip_namespace_is_included
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -1759,8 +1763,10 @@ CONTAINS
   !> @param[in] expected_params
   !> @param[in] can_simplify
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_function_defer(this, name, errcode,  cap_bits, &
-      expected_params, can_simplify, global)
+      expected_params, can_simplify, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -1778,9 +1784,13 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     CALL this%add_function(name, eis_dummy, errcode, cap_bits, &
-        expected_params, can_simplify, .TRUE., global)
+        expected_params, can_simplify, .TRUE., global, description, hidden)
 
   END SUBROUTINE eip_add_function_defer
 
@@ -1797,8 +1807,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_function_now(this, name, fn, errcode,  cap_bits, &
-      expected_params, can_simplify, defer, global)
+      expected_params, can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -1822,6 +1834,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL :: global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -1836,10 +1852,12 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_function(name, fn, params, errcode, &
-          can_simplify, cap_bits, err_handler = this%err_handler, defer = defer)
+          can_simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, description = description, hidden = hidden)
     ELSE
       CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler, defer = defer)
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_function_now
@@ -1856,8 +1874,10 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] can_simplify
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_defer(this, name, errcode, cap_bits, &
-      can_simplify, global)
+      can_simplify, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -1873,9 +1893,13 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     CALL this%add_variable(name, eis_dummy, errcode, cap_bits, can_simplify, &
-        .TRUE., global)
+        .TRUE., global, description, hidden)
 
   END SUBROUTINE eip_add_variable_defer
 
@@ -1892,8 +1916,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_now(this, name, fn, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -1914,6 +1940,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
@@ -1923,10 +1953,12 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_variable(name, fn, errcode, simplify, &
-          cap_bits, err_handler = this%err_handler, defer = defer)
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     ELSE
       CALL this%registry%add_variable(name, fn, errcode, simplify, &
-          cap_bits, err_handler = this%err_handler, defer = defer)
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_variable_now
@@ -1944,8 +1976,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_i4(this, name, ptr, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -1970,6 +2004,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
@@ -1980,11 +2018,11 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_variable(name, eis_dummy, errcode, &
           simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, i32data = ptr)
+          defer = defer, i32data = ptr, description = description)
     ELSE
       CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
-          i32data = ptr)
+          i32data = ptr, description = description)
     END IF
 
   END SUBROUTINE eip_add_variable_i4
@@ -2002,8 +2040,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_i8(this, name, ptr, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2028,6 +2068,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
@@ -2038,11 +2082,12 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_variable(name, eis_dummy, errcode, &
           simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, i64data = ptr)
+          defer = defer, i64data = ptr, description = description, &
+          hidden = hidden)
     ELSE
       CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
-          i64data = ptr)
+          i64data = ptr, description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_variable_i8
@@ -2060,8 +2105,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_r4(this, name, ptr, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2086,6 +2133,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
@@ -2096,11 +2147,12 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_variable(name, eis_dummy, errcode, &
           simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, r32data = ptr)
+          defer = defer, r32data = ptr, description = description, &
+          hidden = hidden)
     ELSE
       CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
-          r32data = ptr)
+          r32data = ptr, description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_variable_r4
@@ -2118,8 +2170,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_r8(this, name, ptr, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2144,6 +2198,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
 
     is_global = .FALSE.
@@ -2154,11 +2212,12 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_variable(name, eis_dummy, errcode, &
           simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, r64data = ptr)
+          defer = defer, r64data = ptr, description = description, &
+          hidden = hidden)
     ELSE
       CALL this%registry%add_variable(name, eis_dummy, errcode, simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
-          r64data = ptr)
+          r64data = ptr, description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_variable_r8
@@ -2177,8 +2236,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_variable_c(this, name, ptr, isinteger, is64bit, errcode, &
-      cap_bits, can_simplify, defer, global)
+      cap_bits, can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2203,6 +2264,10 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
     INTEGER(INT32), POINTER :: i32p
     INTEGER(INT64), POINTER :: i64p
@@ -2220,24 +2285,28 @@ CONTAINS
           CALL C_F_POINTER(ptr, i64p)
           CALL global_registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, i64data = i64p)
+              defer = defer, i64data = i64p, description = description, &
+              hidden = hidden)
         ELSE
           CALL C_F_POINTER(ptr, i32p)
           CALL global_registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, i32data = i32p)
+              defer = defer, i32data = i32p, description = description, &
+              hidden = hidden)
         END IF
       ELSE
         IF (is64bit) THEN
           CALL C_F_POINTER(ptr, r64p)
           CALL global_registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, r64data = r64p)
+              defer = defer, r64data = r64p, description = description, &
+              hidden = hidden)
         ELSE
           CALL C_F_POINTER(ptr, r32p)
           CALL global_registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, r32data = r32p)
+              defer = defer, r32data = r32p, description = description, &
+              hidden = hidden)
         END IF
       END IF
     ELSE
@@ -2246,24 +2315,28 @@ CONTAINS
           CALL C_F_POINTER(ptr, i64p)
           CALL this%registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, i64data = i64p)
+              defer = defer, i64data = i64p, description = description, &
+              hidden = hidden)
         ELSE
           CALL C_F_POINTER(ptr, i32p)
           CALL this%registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, i32data = i32p)
+              defer = defer, i32data = i32p, description = description, &
+              hidden = hidden)
         END IF
       ELSE
         IF (is64bit) THEN
           CALL C_F_POINTER(ptr, r64p)
           CALL this%registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, r64data = r64p)
+              defer = defer, r64data = r64p, description = description, &
+              hidden = hidden)
         ELSE
           CALL C_F_POINTER(ptr, r32p)
           CALL this%registry%add_variable(name, eis_dummy, errcode, &
               simplify, cap_bits, err_handler = this%err_handler, &
-              defer = defer, r32data = r32p)
+              defer = defer, r32data = r32p, description = description, &
+              hidden = hidden)
         END IF
       END IF
     END IF
@@ -2282,8 +2355,10 @@ CONTAINS
   !> @param[in] cap_bits
   !> @param[in] can_simplify
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_constant_defer(this, name, errcode, &
-      can_simplify, global, cap_bits)
+      can_simplify, global, cap_bits, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2299,9 +2374,13 @@ CONTAINS
     !> Whether to add this function to the global list of functions for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     CALL this%add_constant(name, 0.0_eis_num, errcode, cap_bits, can_simplify, &
-        .TRUE., global)
+        .TRUE., global, description, hidden)
 
   END SUBROUTINE eip_add_constant_defer
 
@@ -2318,8 +2397,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_constant_now(this, name, value, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2340,6 +2421,10 @@ CONTAINS
     !> Whether to add this constant to the global list of constant for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global
 
     is_global = .FALSE.
@@ -2347,10 +2432,12 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler, defer = defer)
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     ELSE
       CALL this%registry%add_constant(name, value, errcode, can_simplify, &
-          cap_bits, err_handler = this%err_handler, defer = defer)
+          cap_bits, err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_constant_now
@@ -2368,8 +2455,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_constant_i4(this, name, value, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2390,10 +2479,14 @@ CONTAINS
     !> Whether to add this constant to the global list of constant for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global
 
     CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
-        can_simplify, defer, global)
+        can_simplify, defer, global, description, hidden)
 
   END SUBROUTINE eip_add_constant_i4
 
@@ -2410,8 +2503,10 @@ CONTAINS
   !> @param[in] can_simplify
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_constant_i8(this, name, value, errcode, cap_bits, &
-      can_simplify, defer, global)
+      can_simplify, defer, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2432,10 +2527,14 @@ CONTAINS
     !> Whether to add this constant to the global list of constant for all 
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global
 
     CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
-        can_simplify, defer, global)
+        can_simplify, defer, global, description, hidden)
 
   END SUBROUTINE eip_add_constant_i8
 
@@ -2450,7 +2549,10 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] can_simplify
   !> @param[in] global
-  SUBROUTINE eip_add_stack_variable_defer(this, name, errcode, global)
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_stack_variable_defer(this, name, errcode, global, &
+      description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2462,8 +2564,13 @@ CONTAINS
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL :: global
     TYPE(eis_stack) :: stack
+    !> Description to go with variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
-    CALL this%add_stack_variable(name, stack, errcode, .TRUE., global)
+    CALL this%add_stack_variable(name, stack, errcode, .TRUE., global, &
+        description = description, hidden = hidden)
 
   END SUBROUTINE eip_add_stack_variable_defer
 
@@ -2477,8 +2584,10 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] defer
   !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_stack_variable_stack(this, name, stack, errcode, defer, &
-      global)
+      global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -2494,6 +2603,10 @@ CONTAINS
     !> Whether to add this stack_variable to the global list for all
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL ::  global
+    !> Description to go with variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global
         
     is_global = .FALSE.
@@ -2501,10 +2614,12 @@ CONTAINS
 
     IF (is_global) THEN
       CALL global_registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler, defer = defer)
+          err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     ELSE
       CALL this%registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler, defer = defer)
+          err_handler = this%err_handler, defer = defer, &
+          description = description, hidden = hidden)
     END IF
 
   END SUBROUTINE eip_add_stack_variable_stack
@@ -2517,7 +2632,10 @@ CONTAINS
   !> @param[in] string
   !> @param[inout] errcode
   !> @param[in] global
-  SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode, global)
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_stack_variable_string(this, name, string, errcode, &
+      global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to associated with the stack variable
@@ -2529,6 +2647,10 @@ CONTAINS
     !> Whether to add this stack_variable to the global list for all
     !> parsers or just for this parser. Optional, default this parser only
     LOGICAL, INTENT(IN), OPTIONAL :: global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global
     TYPE(eis_stack) :: stack
 
@@ -2539,10 +2661,12 @@ CONTAINS
     CALL this%tokenize(string, stack, errcode, simplify = .FALSE.)
     IF (is_global) THEN
       CALL global_registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = description, &
+          hidden = hidden)
     ELSE
       CALL this%registry%add_stack_variable(name, stack, errcode, &
-          err_handler = this%err_handler)
+          err_handler = this%err_handler, description = description, &
+          hidden = hidden)
     END IF
     CALL deallocate_stack(stack)
 
@@ -2557,8 +2681,10 @@ CONTAINS
   !> @param[in] def_fn
   !> @param[inout] errcode
   !> @param[in] expected_params
+  !> @param[in] description
+  !> @param[in] hidden
   SUBROUTINE eip_add_emplaced_function(this, name, def_fn, errcode, &
-      expected_params)
+      expected_params, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to associated with the emplaced function
@@ -2570,10 +2696,15 @@ CONTAINS
     !> Number of parameters expected for the emplaced function. Optional, 
     !> default = -1 (variadic function)
     INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
         err_handler = this%err_handler, &
-        expected_parameters = expected_params)
+        expected_parameters = expected_params, description = description, &
+        hidden = hidden)
 
   END SUBROUTINE eip_add_emplaced_function
 
@@ -2587,7 +2718,10 @@ CONTAINS
   !> @param[in] def_fn
   !> @param[inout] errcode
   !> @param[in] expected_params
-  SUBROUTINE eip_add_emplaced_variable(this, name, def_fn, errcode)
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_emplaced_variable(this, name, def_fn, errcode, &
+      description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to associated with the emplaced variable
@@ -2596,9 +2730,14 @@ CONTAINS
     PROCEDURE(parser_late_bind_fn) :: def_fn
     !> Error code associated with the storing of the emplaced variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Description to go with variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
-        err_handler = this%err_handler, expected_parameters = 0)
+        err_handler = this%err_handler, expected_parameters = 0, &
+        description = description, hidden = hidden)
 
   END SUBROUTINE eip_add_emplaced_variable
 
@@ -3317,7 +3456,7 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: function_show_name
     CHARACTER(LEN=:), ALLOCATABLE :: sname, desc, name2
     INTEGER :: ct, stype, fsn, dotloc
-    LOGICAL :: exists, pname, any_printed
+    LOGICAL :: exists, pname, any_printed, is_hidden
 
     IF (PRESENT(title)) THEN
       CALL eis_append_string(markdown,'# '//title)
@@ -3333,7 +3472,8 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype)
+          symbol_type = stype, is_hidden = is_hidden)
+      IF (is_hidden) CYCLE
       IF (stype == eis_pt_function .OR. stype == eis_pt_emplaced_function) THEN
         any_printed = .TRUE.
         IF (this%symbol_needs_namespace(sname)) THEN
@@ -3387,7 +3527,8 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype)
+          symbol_type = stype, is_hidden = is_hidden)
+      IF (is_hidden) CYCLE
       IF (stype == eis_pt_operator) THEN
         any_printed = .TRUE.
         IF (this%symbol_needs_namespace(sname)) THEN
@@ -3419,7 +3560,8 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype)
+          symbol_type = stype, is_hidden = is_hidden)
+      IF (is_hidden) CYCLE
       IF (stype == eis_pt_constant) THEN
         any_printed = .TRUE.
         IF (this%symbol_needs_namespace(sname)) THEN
@@ -3451,7 +3593,8 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype)
+          symbol_type = stype, is_hidden = is_hidden)
+      IF (is_hidden) CYCLE
       IF (stype == eis_pt_variable .OR. stype == eis_pt_stored_variable &
           .OR. stype == eis_pt_emplaced_variable &
           .OR. stype == eis_pt_pointer_variable) THEN
