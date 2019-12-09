@@ -69,6 +69,10 @@ MODULE eis_deck_definition_mod
     REAL(REAL64), DIMENSION(:), POINTER :: r64arraydata => NULL()
     LOGICAL, DIMENSION(:), POINTER :: logicalarraydata => NULL()
 
+    LOGICAL, POINTER :: set_variable => NULL()
+    INTEGER(INT32), POINTER :: i32count_variable => NULL()
+    INTEGER(INT64), POINTER :: i64count_variable => NULL()
+
     TYPE(C_PTR) :: c_i32data = C_NULL_PTR
     INTEGER :: c_i32len = 1
     TYPE(C_PTR) :: c_i64data = C_NULL_PTR
@@ -103,6 +107,10 @@ MODULE eis_deck_definition_mod
 
     CHARACTER(LEN=:), ALLOCATABLE :: description
     LOGICAL :: is_hidden = .FALSE.
+
+    LOGICAL, POINTER :: set_variable => NULL()
+    INTEGER(INT32), POINTER :: i32count_variable => NULL()
+    INTEGER(INT64), POINTER :: i64count_variable => NULL()
 
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
@@ -541,8 +549,8 @@ MODULE eis_deck_definition_mod
       any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
       c_start_block, c_end_block, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, description, &
-      hidden)
+      c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, &
+      init_flag, i32count, i64count, description, hidden)
 
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
@@ -567,6 +575,15 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
+#ifdef F2008
+    LOGICAL, TARGET, OPTIONAL :: init_flag
+    INTEGER(INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+#else
+    LOGICAL, POINTER, OPTIONAL :: init_flag
+    INTEGER(INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+#endif
     CLASS(eis_deck_block_definition), INTENT(IN), OPTIONAL :: parent_block
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
@@ -604,6 +621,10 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(c_block_remapper)) this%c_block_remap_fn => c_block_remapper
     IF (PRESENT(description)) ALLOCATE(this%description, SOURCE = description)
     IF (PRESENT(hidden)) this%is_hidden = hidden
+
+    IF (PRESENT(init_flag)) this%set_variable => init_flag
+    IF (PRESENT(i32count)) this%i32count_variable => i32count
+    IF (PRESENT(i64count)) this%i64count_variable => i64count
 
     inherit = PRESENT(parent_block)
     IF (PRESENT(pass_eq)) THEN
@@ -643,8 +664,8 @@ MODULE eis_deck_definition_mod
       final_block, any_key_text, any_key_value, any_key_numeric_value, &
       any_key_stack, block_remapper, c_init_block, c_start_block, c_end_block, &
       c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, &
-      description, hidden)
+      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, &
+      i32count, i64count, description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -666,6 +687,15 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq
     INTEGER, INTENT(IN), OPTIONAL :: pass_le
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
+#ifdef F2008
+    LOGICAL, TARGET, OPTIONAL :: init_flag
+    INTEGER(INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+#else
+    LOGICAL, POINTER, OPTIONAL :: init_flag
+    INTEGER(INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+#endif
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
@@ -682,7 +712,8 @@ MODULE eis_deck_definition_mod
         c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
         c_any_key_stack, c_block_remapper, parent_block = this, &
         pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
-        description = description, hidden = hidden)
+        description = description, hidden = hidden, init_flag = init_flag, &
+        i32count = i32count, i64count = i64count)
 
     ptr => dbd_add_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
@@ -921,6 +952,12 @@ MODULE eis_deck_definition_mod
     ELSE
       ALLOCATE(this_name, SOURCE = this%name)
     END IF
+
+    IF (ASSOCIATED(this%set_variable)) this%set_variable = .TRUE.
+    IF (ASSOCIATED(this%i32count_variable)) this%i32count_variable &
+        = this%i32count_variable + 1_INT32
+    IF (ASSOCIATED(this%i64count_variable)) this%i64count_variable &
+        = this%i64count_variable + 1_INT64
 
     IF (ASSOCIATED(this%start_block_fn)) THEN
       this_err = eis_err_none
@@ -1302,8 +1339,8 @@ MODULE eis_deck_definition_mod
       c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
-      c_i32len, c_i64len, c_r32len, c_r64len, expected_params, pass_eq, &
-      pass_le, pass_ge, description, hidden)
+      c_i32len, c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
+      expected_params, pass_eq, pass_le, pass_ge, description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1325,6 +1362,10 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
     REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
+
+    LOGICAL, POINTER, OPTIONAL :: init_flag
+    INTEGER(INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(INT64), POINTER, OPTIONAL :: i64count
 #else
     INTEGER(INT32), POINTER, OPTIONAL :: i32value
     INTEGER(INT64), POINTER, OPTIONAL :: i64value
@@ -1336,6 +1377,10 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
     REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
+
+    LOGICAL, POINTER, OPTIONAL :: init_flag
+    INTEGER(INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(INT64), POINTER, OPTIONAL :: i64count
 #endif
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value
@@ -1369,6 +1414,7 @@ MODULE eis_deck_definition_mod
         c_i32value = c_i32value, c_i64value = c_i64value, &
         c_r32value = c_r32value, c_r64value = c_r64value, c_i32len = c_i32len, &
         c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len, &
+        init_flag = init_flag, i32count = i32count, i64count = i64count, &
         description = description, hidden = hidden)
 
     ptr => new
@@ -1573,6 +1619,13 @@ MODULE eis_deck_definition_mod
         END IF
         RETURN
       END IF
+
+      IF (ASSOCIATED(dkd%set_variable)) dkd%set_variable = .TRUE.
+      IF (ASSOCIATED(dkd%i32count_variable)) dkd%i32count_variable &
+          = dkd%i32count_variable + 1_INT32
+      IF (ASSOCIATED(dkd%i64count_variable)) dkd%i64count_variable &
+          = dkd%i64count_variable + 1_INT64
+
       IF (ASSOCIATED(dkd%key_text_fn)) THEN
         this_err = eis_err_none
         this_stat = base_stat
@@ -2083,8 +2136,8 @@ MODULE eis_deck_definition_mod
       c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
-      c_i64len, c_r32len, c_r64len, expected_params, pass_eq, pass_le, &
-      pass_ge, description, hidden)
+      c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
+      expected_params, pass_eq, pass_le, pass_ge, description, hidden)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -2107,6 +2160,10 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
     REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
+
+    LOGICAL, TARGET, OPTIONAL :: init_flag
+    INTEGER(INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(INT64), TARGET, OPTIONAL :: i64count
 #else
     INTEGER(INT32), POINTER, OPTIONAL :: i32value
     INTEGER(INT64), POINTER, OPTIONAL :: i64value
@@ -2118,6 +2175,10 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
     REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
+
+    LOGICAL, POINTER, OPTIONAL :: init_flag
+    INTEGER(INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(INT64), POINTER, OPTIONAL :: i64count
 #endif
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value
@@ -2154,6 +2215,10 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(i64array)) this%i64arraydata => i64array
     IF (PRESENT(r32array)) this%r32arraydata => r32array
     IF (PRESENT(r64array)) this%r64arraydata => r64array
+
+    IF (PRESENT(init_flag)) this%set_variable => init_flag
+    IF (PRESENT(i32count)) this%i32count_variable => i32count
+    IF (PRESENT(i64count)) this%i64count_variable => i64count
 
     IF (PRESENT(c_i32value)) this%c_i32data = c_i32value
     IF (PRESENT(c_i64value)) this%c_i64data = c_i64value
