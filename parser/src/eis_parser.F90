@@ -190,6 +190,8 @@ CONTAINS
     END IF
   END SUBROUTINE eip_destructor
 
+
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Get a pointer to an interoperable parser
@@ -787,9 +789,10 @@ CONTAINS
   !> @param[out] deferred
   !> @param[out] description
   !> @param[out] is_hidden
+  !> @param[out] expected_params
   !> @result exists
   FUNCTION eip_get_symbol_info(this, symbol, unary, symbol_type, cap_bits, &
-      deferred, description, is_hidden) RESULT(exists)
+      deferred, description, is_hidden, expected_params) RESULT(exists)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     !> Name of the symbol to get information about
@@ -806,6 +809,8 @@ CONTAINS
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: description
     !> Is this symbol meant to be hidden
     LOGICAL, INTENT(OUT), OPTIONAL :: is_hidden
+    !> Number of expected parameters
+    INTEGER, INTENT(OUT), OPTIONAL :: expected_params
     !> Does the symbol exist in the symbol list
     LOGICAL :: exists
     TYPE(eis_stack_element) :: iblock
@@ -845,6 +850,7 @@ CONTAINS
     IF (PRESENT(deferred)) deferred = &
         (iblock%ptype == eis_pt_deferred_variable &
         .OR. iblock%ptype == eis_pt_deferred_function)
+    IF (PRESENT(expected_params)) expected_params = icoblock%expected_params
 
   END FUNCTION eip_get_symbol_info
 
@@ -3455,7 +3461,7 @@ CONTAINS
     !> description are the name
     INTEGER, INTENT(IN), OPTIONAL :: function_show_name
     CHARACTER(LEN=:), ALLOCATABLE :: sname, desc, name2
-    INTEGER :: ct, stype, fsn, dotloc
+    INTEGER :: ct, stype, fsn, dotloc, expected_params
     LOGICAL :: exists, pname, any_printed, is_hidden
 
     IF (PRESENT(title)) THEN
@@ -3472,9 +3478,11 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype, is_hidden = is_hidden)
+          symbol_type = stype, is_hidden = is_hidden, &
+          expected_params = expected_params)
       IF (is_hidden) CYCLE
-      IF (stype == eis_pt_function .OR. stype == eis_pt_emplaced_function) THEN
+      IF ((stype == eis_pt_function .OR. stype == eis_pt_emplaced_function) &
+          .AND. expected_params /= 0) THEN
         any_printed = .TRUE.
         IF (this%symbol_needs_namespace(sname)) THEN
           ALLOCATE(name2, SOURCE = sname)
@@ -3597,7 +3605,10 @@ CONTAINS
       IF (is_hidden) CYCLE
       IF (stype == eis_pt_variable .OR. stype == eis_pt_stored_variable &
           .OR. stype == eis_pt_emplaced_variable &
-          .OR. stype == eis_pt_pointer_variable) THEN
+          .OR. stype == eis_pt_pointer_variable &
+          .OR. (stype == eis_pt_function &
+          .OR. stype == eis_pt_emplaced_function) .AND. expected_params == 0) &
+          THEN
         any_printed = .TRUE.
         IF (this%symbol_needs_namespace(sname)) THEN
           ALLOCATE(name2, SOURCE = sname)
