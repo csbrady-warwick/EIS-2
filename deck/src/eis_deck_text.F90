@@ -512,6 +512,9 @@ MODULE eis_deck_from_text_mod
       parse_over = (max_passes == pass_number)
     END IF
 
+    CALL eis_default_status(errcode = err, bitmask = host_state)
+    CALL definition%end_pass(host_state, err)
+
     IF (parse_over) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
       CALL this%finalise_deck(definition, err, state = host_state)

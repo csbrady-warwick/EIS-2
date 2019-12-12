@@ -117,15 +117,23 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=:), ALLOCATABLE :: name
     CLASS(eis_deck_definition_info), POINTER :: info => NULL()
     INTEGER :: id = -1, parent = -1, depth = -1
-    LOGICAL :: uninit = .TRUE.
+    INTEGER :: lastinit = 0
     PROCEDURE(block_generic_callback), POINTER, NOPASS :: init_block_fn &
         => NULL()
     PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: c_init_block_fn &
         => NULL()
+    PROCEDURE(block_generic_callback), POINTER, NOPASS :: start_pass_block_fn &
+        => NULL()
+    PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: &
+        c_start_pass_block_fn => NULL()
     PROCEDURE(block_callback), POINTER, NOPASS :: start_block_fn => NULL()
     PROCEDURE(block_callback_c), POINTER, NOPASS :: c_start_block_fn => NULL()
     PROCEDURE(block_callback), POINTER, NOPASS :: end_block_fn => NULL()
     PROCEDURE(block_callback_c), POINTER, NOPASS :: c_end_block_fn => NULL()
+    PROCEDURE(block_generic_callback), POINTER, NOPASS :: end_pass_block_fn &
+        => NULL()
+    PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: &
+        c_end_pass_block_fn => NULL()
     PROCEDURE(block_generic_callback), POINTER, NOPASS :: final_block_fn &
         => NULL()
     PROCEDURE(block_generic_callback_c), POINTER, NOPASS :: c_final_block_fn &
@@ -163,6 +171,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: end_block => dbd_end_block
     PROCEDURE :: finalise_block => dbd_finalise_block
     PROCEDURE :: finalize_block => dbd_finalise_block
+    PROCEDURE :: end_pass_block => dbd_end_pass_block
     PROCEDURE :: get_id => dbd_get_id
     PROCEDURE :: optimise => dbd_optimise
     PROCEDURE :: visualise => dbd_visualise
@@ -191,6 +200,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: initialise_blocks => dd_init_blocks
     PROCEDURE :: finalize_blocks => dd_finalise_blocks
     PROCEDURE :: finalise_blocks => dd_finalise_blocks
+    PROCEDURE :: end_pass => dd_end_pass
     PROCEDURE :: optimise => dd_optimise
     PROCEDURE :: optimize => dd_optimise
     PROCEDURE :: visualise => dd_visualise
@@ -259,10 +269,11 @@ MODULE eis_deck_definition_mod
 
 
 
-  FUNCTION dd_init(this, init_deck, start_deck, end_deck, final_deck, &
-      any_key_text, any_key_value, any_key_numeric_value, &
-      any_key_stack, block_remapper, c_init_deck, c_start_deck, c_end_deck, &
-      c_final_deck, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
+  FUNCTION dd_init(this, init_deck, start_pass, start_deck, end_deck, &
+      end_pass, final_deck, any_key_text, any_key_value, &
+      any_key_numeric_value, any_key_stack, block_remapper, c_init_deck, &
+      c_start_pass, c_start_deck, c_end_deck, c_end_pass, c_final_deck, &
+      c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
       c_any_key_stack, c_block_remapper, on_key_success, on_key_failure, &
       on_key_no_trigger, on_block_start, on_block_end, on_block_no_trigger, &
       on_block_failure, c_on_key_success, c_on_key_failure, &
@@ -271,6 +282,7 @@ MODULE eis_deck_definition_mod
       interop_parser) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
+    PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
     PROCEDURE(block_callback), OPTIONAL :: start_deck, end_deck
     PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
     PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
@@ -279,6 +291,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
 
     PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_deck, c_final_deck
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_start_pass, c_end_pass
     PROCEDURE(block_callback_c), OPTIONAL :: c_start_deck, c_end_deck
     PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
     PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
@@ -340,11 +353,12 @@ MODULE eis_deck_definition_mod
 
     ALLOCATE(this%root_definition)
     dummy = this%root_definition%init(this%info, '{ROOT}', 0, -1, init_deck, &
-        start_deck, end_deck, final_deck, any_key_text, any_key_value, &
-        any_key_numeric_value, any_key_stack, block_remapper, c_init_deck, &
-        c_start_deck, c_end_deck, c_final_deck, c_any_key_text, &
-        c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-        c_block_remapper, description = 'Root block holding all other blocks')
+        start_pass, start_deck, end_deck, end_pass, final_deck, any_key_text, &
+        any_key_value, any_key_numeric_value, any_key_stack, block_remapper, &
+        c_init_deck, c_start_pass, c_start_deck, c_end_deck, c_end_pass, &
+        c_final_deck, c_any_key_text, c_any_key_value, &
+        c_any_key_numeric_value, c_any_key_stack, c_block_remapper, &
+        description = 'Root block holding all other blocks')
     CALL this%info%add_block(this%root_definition)
     root => this%root_definition
 
@@ -381,7 +395,7 @@ MODULE eis_deck_definition_mod
 
     DO i = 1, this%info%get_block_count()
       block => this%info%get_block(i)
-      block%uninit = .TRUE.
+      block%lastinit = 0
     END DO
 
   END SUBROUTINE dd_reset
@@ -464,13 +478,35 @@ MODULE eis_deck_definition_mod
     nblocks = this%info%get_block_count()
     DO iblock = 0, nblocks
       p => this%info%get_block(iblock)
-      IF (.NOT. p%uninit .OR. this%finalise_absent) THEN
+      IF (p%lastinit /= 0 .OR. this%finalise_absent) THEN
         CALL p%finalise_block(npass, errcode, host_state)
       END IF
     END DO
 
   END SUBROUTINE dd_finalise_blocks
 
+
+  SUBROUTINE dd_end_pass(this, host_state, errcode, pass_number)
+    CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    INTEGER :: nblocks, iblock
+    CLASS(eis_deck_block_definition), POINTER :: p
+    INTEGER :: npass
+
+    npass = npass_global
+    IF (PRESENT(pass_number)) npass = pass_number
+
+    nblocks = this%info%get_block_count()
+    DO iblock = 0, nblocks
+      p => this%info%get_block(iblock)
+      IF (p%lastinit /= 0) THEN
+        CALL p%end_pass_block(npass, errcode, host_state)
+      END IF
+    END DO
+
+  END SUBROUTINE dd_end_pass
 
 
   SUBROUTINE dd_optimise(this)
@@ -547,9 +583,10 @@ MODULE eis_deck_definition_mod
 
 
   FUNCTION dbd_init(this, info, block_name, depth, parent, init_block, &
-      start_block, end_block, final_block, any_key_text, any_key_value, &
-      any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
-      c_start_block, c_end_block, c_final_block, c_any_key_text, &
+      start_pass, start_block, end_block, end_pass, final_block, &
+      any_key_text, any_key_value, any_key_numeric_value, any_key_stack, &
+      block_remapper, c_init_block, c_start_pass, c_start_block, &
+      c_end_block, c_end_pass, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
       c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, &
       init_flag, i32count, i64count, description, hidden)
@@ -560,6 +597,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN) :: depth
     INTEGER, INTENT(IN) :: parent
     PROCEDURE(block_generic_callback), OPTIONAL :: init_block, final_block
+    PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
     PROCEDURE(block_callback), OPTIONAL :: start_block, end_block
     PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
     PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
@@ -568,6 +606,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
 
     PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_block, c_final_block
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_start_pass, c_end_pass
     PROCEDURE(block_callback_c), OPTIONAL :: c_start_block, c_end_block
     PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
     PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
@@ -601,8 +640,10 @@ MODULE eis_deck_definition_mod
     this%depth = depth
     this%parent = parent
     IF (PRESENT(init_block)) this%init_block_fn => init_block
+    IF (PRESENT(start_pass)) this%start_pass_block_fn => start_pass
     IF (PRESENT(start_block)) this%start_block_fn => start_block
     IF (PRESENT(end_block)) this%end_block_fn => end_block
+    IF (PRESENT(end_pass)) this%end_pass_block_fn => end_pass
     IF (PRESENT(final_block)) this%final_block_fn => final_block
     IF (PRESENT(any_key_text)) this%any_key_text_fn => any_key_text
     IF (PRESENT(any_key_value)) this%any_key_value_fn => any_key_value
@@ -612,8 +653,10 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(block_remapper)) this%block_remap_fn => block_remapper
 
     IF (PRESENT(c_init_block)) this%c_init_block_fn => c_init_block
+    IF (PRESENT(c_start_pass)) this%c_start_pass_block_fn => c_start_pass
     IF (PRESENT(c_start_block)) this%c_start_block_fn => c_start_block
     IF (PRESENT(c_end_block)) this%c_end_block_fn => c_end_block
+    IF (PRESENT(c_end_pass)) this%c_end_pass_block_fn => c_end_pass
     IF (PRESENT(c_final_block)) this%c_final_block_fn => c_final_block
     IF (PRESENT(c_any_key_text)) this%c_any_key_text_fn => c_any_key_text
     IF (PRESENT(c_any_key_value)) this%c_any_key_value_fn => c_any_key_value
@@ -662,17 +705,18 @@ MODULE eis_deck_definition_mod
 
 
 
-  FUNCTION dbd_add_new_block(this, block_name, init_block, start_block, &
-      end_block, final_block, any_key_text, any_key_value, &
-      any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
-      c_start_block, c_end_block, c_final_block, c_any_key_text, &
-      c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
-      c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, i32count, &
-      i64count, description, hidden)
+  FUNCTION dbd_add_new_block(this, block_name, init_block, start_pass, &
+      start_block, end_block, end_pass, final_block, any_key_text, &
+      any_key_value, any_key_numeric_value, any_key_stack, block_remapper, &
+      c_init_block, c_start_pass, c_start_block, c_end_block, c_end_pass, &
+      c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
+      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, &
+      i32count, i64count, description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
     PROCEDURE(block_generic_callback), OPTIONAL :: init_block, final_block
+    PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
     PROCEDURE(block_callback), OPTIONAL :: start_block, end_block
     PROCEDURE(key_text_callback), OPTIONAL :: any_key_text
     PROCEDURE(key_value_callback), OPTIONAL :: any_key_value
@@ -681,6 +725,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE(block_remap_callback), OPTIONAL :: block_remapper
 
     PROCEDURE(block_generic_callback_c), OPTIONAL :: c_init_block, c_final_block
+    PROCEDURE(block_generic_callback_c), OPTIONAL :: c_start_pass, c_end_pass
     PROCEDURE(block_callback_c), OPTIONAL :: c_start_block, c_end_block
     PROCEDURE(key_text_callback_c), OPTIONAL :: c_any_key_text
     PROCEDURE(key_value_callback_c), OPTIONAL :: c_any_key_value
@@ -709,14 +754,15 @@ MODULE eis_deck_definition_mod
     ALLOCATE(dbd_add_new_block)
     id = &
         dbd_add_new_block%init(this%info, block_name, this%depth + 1, this%id, &
-        init_block, start_block, end_block, final_block, any_key_text, &
-        any_key_value, any_key_numeric_value, any_key_stack, block_remapper, &
-        c_init_block, c_start_block, c_end_block, c_final_block, &
-        c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-        c_any_key_stack, c_block_remapper, parent_block = this, &
-        pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
-        description = description, hidden = hidden, init_flag = init_flag, &
-        i32count = i32count, i64count = i64count)
+        init_block, start_pass, start_block, end_block, end_pass, final_block, &
+        any_key_text, any_key_value, any_key_numeric_value, any_key_stack, &
+        block_remapper, c_init_block, c_start_pass, c_start_block, &
+        c_end_block, c_end_pass, c_final_block, c_any_key_text, &
+        c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
+        c_block_remapper, parent_block = this, pass_eq = pass_eq, &
+        pass_le = pass_le, pass_ge = pass_ge, description = description, &
+        hidden = hidden, init_flag = init_flag, i32count = i32count, &
+        i64count = i64count)
 
     ptr => dbd_add_new_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
@@ -874,26 +920,47 @@ MODULE eis_deck_definition_mod
     ELSE
       this_bitmask = 0_eis_bitmask
     END IF
-    IF (this%uninit .AND. ASSOCIATED(this%init_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%init_block_fn(this%name, pass_number, parent_kind, &
-         this_status, this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
+    IF (this%lastinit /= pass_number) THEN
+      IF (this%lastinit == 0 .AND. ASSOCIATED(this%init_block_fn)) THEN
+        this_status = eis_status_none
+        this_err = eis_err_none
+        CALL this%init_block_fn(this%name, pass_number, parent_kind, &
+           this_status, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+      END IF
+      IF (ASSOCIATED(this%start_pass_block_fn)) THEN
+        this_status = eis_status_none
+        this_err = eis_err_none
+        CALL this%start_pass_block_fn(this%name, pass_number, parent_kind, &
+           this_status, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+      END IF
     END IF
 
-    IF (this%uninit .AND. ASSOCIATED(this%c_init_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
+    IF (this%lastinit /= pass_number .AND. (ASSOCIATED(this%c_init_block_fn) &
+        .OR. ASSOCIATED(this%c_start_pass_block_fn))) THEN
       ALLOCATE(c_this_name(LEN(this%name)))
       CALL f_c_string(this%name, LEN(this%name), c_this_name)
-      CALL this%c_init_block_fn(C_LOC(c_this_name), INT(pass_number, C_INT), &
-          SIZE(parent_kind, KIND=C_INT), INT(parent_kind, C_INT), this_status, &
-          this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
-      DEALLOCATE(c_this_name)
+      IF (this%lastinit == 0 .AND. ASSOCIATED(this%c_init_block_fn)) THEN
+        this_status = eis_status_none
+        this_err = eis_err_none
+        CALL this%c_init_block_fn(C_LOC(c_this_name), INT(pass_number, C_INT), &
+            SIZE(parent_kind, KIND=C_INT), INT(parent_kind, C_INT), &
+            this_status, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+        DEALLOCATE(c_this_name)
+      END IF
+      IF (ASSOCIATED(this%c_start_pass_block_fn)) THEN
+        this_status = eis_status_none
+        this_err = eis_err_none
+        CALL this%c_start_pass_block_fn(C_LOC(c_this_name), &
+            INT(pass_number, C_INT), SIZE(parent_kind, KIND=C_INT), &
+            INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
+        errcode = IOR(errcode, this_err)
+        DEALLOCATE(c_this_name)
+      END IF
     END IF
-    this%uninit = .FALSE.
+    this%lastinit = pass_number
 
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
 
@@ -1148,6 +1215,52 @@ MODULE eis_deck_definition_mod
 
 
 
+  SUBROUTINE dbd_end_pass_block(this, pass_number, errcode, host_state)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
+    CLASS(eis_deck_block_definition), POINTER :: par
+    INTEGER :: ipar
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+
+    CALL this%get_parents(parent_kind)
+
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
+
+    IF (ASSOCIATED(this%end_pass_block_fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%end_pass_block_fn(this%name, pass_number, parent_kind, &
+          this_status, this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+    END IF
+
+    IF (ASSOCIATED(this%c_end_pass_block_fn)) THEN
+      ALLOCATE(c_this_name(LEN(this%name)))
+      CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%c_end_pass_block_fn(C_LOC(c_this_name), &
+          INT(pass_number, C_INT), SIZE(parent_kind, KIND = C_INT), &
+          INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+      DEALLOCATE(c_this_name)
+    END IF
+
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+
+  END SUBROUTINE dbd_end_pass_block
+
+
   SUBROUTINE dbd_finalise_block(this, pass_number, errcode, host_state)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: pass_number
@@ -1177,18 +1290,19 @@ MODULE eis_deck_definition_mod
       errcode = IOR(errcode, this_err)
     END IF
 
+
     IF (ASSOCIATED(this%c_final_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
       ALLOCATE(c_this_name(LEN(this%name)))
       CALL f_c_string(this%name, LEN(this%name), c_this_name)
-      CALL this%c_final_block_fn(C_LOC(c_this_name), INT(pass_number, C_INT), &
-          SIZE(parent_kind, KIND = C_INT), INT(parent_kind, C_INT), &
-          this_status, this_bitmask, this_err)
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL this%c_final_block_fn(C_LOC(c_this_name), &
+          INT(pass_number, C_INT), SIZE(parent_kind, KIND = C_INT), &
+          INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
       errcode = IOR(errcode, this_err)
     END IF
 
-    this%uninit = .TRUE.
+    this%lastinit = 0
 
     IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
 
