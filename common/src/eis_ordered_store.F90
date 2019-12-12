@@ -18,7 +18,6 @@ MODULE eis_ordered_store_mod
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: items
     LOGICAL, PUBLIC :: is_init = .FALSE.
     INTEGER :: disorder_level = 0
-!    LOGICAL, PUBLIC :: can_disorder = .FALSE.
     CONTAINS
     PRIVATE
     PROCEDURE, PUBLIC :: get_size => os_get_size

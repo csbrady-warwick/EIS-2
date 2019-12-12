@@ -27,6 +27,7 @@ MODULE eis_named_store_mod
     PROCEDURE :: get => nsil_get
     PROCEDURE :: store => nsil_store
     PROCEDURE :: delete => nsil_delete
+    PROCEDURE :: copy => nsil_copy
     FINAL :: nsil_destructor
   END TYPE named_store_inner_list
 
@@ -57,6 +58,8 @@ MODULE eis_named_store_mod
     PROCEDURE :: rebucket => ns_rebucket
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
+    PROCEDURE, PUBLIC :: cleanup => ns_cleanup
+    PROCEDURE, PUBLIC :: copy => ns_copy
     GENERIC, PUBLIC :: init => init_i8, init_i4
     GENERIC, PUBLIC :: get => get_by_name, get_by_number
     FINAL :: ns_destructor
@@ -256,6 +259,38 @@ CONTAINS
     END IF
 
   END FUNCTION nsil_delete
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Copy a list to another list
+  !> @param[in] this
+  !> @param[in] dest
+  !> @param[in] shallow
+  !> @return nsil_delete
+  SUBROUTINE nsil_copy(this, dest, shallow)
+    CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
+    CLASS(named_store_inner_list), INTENT(INOUT) :: dest !< Destination
+    LOGICAL, INTENT(IN), OPTIONAL :: shallow
+    LOGICAL :: do_shallow
+    INTEGER(INT64) :: i
+
+    do_shallow = .FALSE.
+    IF (PRESENT(shallow)) do_shallow = shallow
+    ALLOCATE(dest%list(SIZE(this%list, KIND=INT64)))
+    DO i = 1, SIZE(this%list, KIND=INT64)
+      ALLOCATE(dest%list(i)%name, SOURCE = this%list(i)%name)
+      IF (this%list(i)%owns .AND. .NOT. do_shallow) THEN
+        ALLOCATE(dest%list(i)%item, SOURCE = this%list(i)%item)
+        dest%list(i)%owns = .TRUE.
+      ELSE
+        dest%list(i)%item => this%list(i)%item
+        dest%list(i)%owns = .FALSE.
+      END IF
+    END DO
+
+  END SUBROUTINE nsil_copy
 
 
 
@@ -672,14 +707,50 @@ CONTAINS
 
 
 
-  !> Delete all inner lists on destruction
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Copy a named store 
+  !> @param[in] this
+  !> @param[in] dest
+  SUBROUTINE ns_copy(this, dest, shallow)
 
+    CLASS(named_store), INTENT(INOUT) :: this
+    CLASS(named_store), INTENT(INOUT) :: dest
+    LOGICAL, INTENT(IN), OPTIONAL :: shallow
+    INTEGER(INT64) :: i
+
+    IF (.NOT. this%is_init) RETURN
+    IF (dest%is_init) CALL dest%cleanup()
+    CALL dest%init(SIZE(this%buckets, KIND=INT64))
+    DO i = 1, SIZE(this%buckets, KIND=INT64)
+      CALL this%buckets(i)%copy(dest%buckets(i), shallow)
+    END DO
+    dest%count = this%count
+    dest%needs_optimise = this%needs_optimise
+
+  END SUBROUTINE ns_copy
+
+
+
+  !> Cleans up an item
+  PURE ELEMENTAL SUBROUTINE ns_cleanup(this)
+
+    CLASS(named_store), INTENT(INOUT) :: this
+
+    IF (.NOT. ALLOCATED(this%buckets)) RETURN
+    DEALLOCATE(this%buckets)
+    this%is_init = .FALSE.
+
+  END SUBROUTINE ns_cleanup
+
+
+
+  !> Delete all inner lists on destruction
   PURE ELEMENTAL SUBROUTINE ns_destructor(this)
 
     TYPE(named_store), INTENT(INOUT) :: this
 
-    IF (.NOT. ALLOCATED(this%buckets)) RETURN
-    DEALLOCATE(this%buckets)
+    CALL this%cleanup()
 
   END SUBROUTINE ns_destructor
 
