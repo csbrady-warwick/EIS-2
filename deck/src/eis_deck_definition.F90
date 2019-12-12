@@ -153,7 +153,8 @@ MODULE eis_deck_definition_mod
     PROCEDURE, PRIVATE :: get_parents => dbd_get_parents
 
     PROCEDURE :: init => dbd_init
-    PROCEDURE :: add_block => dbd_add_block
+    PROCEDURE, PRIVATE :: add_new_block => dbd_add_new_block
+    PROCEDURE, PRIVATE :: add_old_block => dbd_add_old_block
     PROCEDURE :: get_child => dbd_get_block
     PROCEDURE :: get_parent => dbd_get_parent
     PROCEDURE :: initialise_block => dbd_initialise_block
@@ -170,6 +171,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
     GENERIC, PUBLIC :: call_key => call_key_text
+    GENERIC :: add_block => add_new_block, add_old_block
   END TYPE eis_deck_block_definition
 
 
@@ -660,12 +662,13 @@ MODULE eis_deck_definition_mod
 
 
 
-  FUNCTION dbd_add_block(this, block_name, init_block, start_block, end_block, &
-      final_block, any_key_text, any_key_value, any_key_numeric_value, &
-      any_key_stack, block_remapper, c_init_block, c_start_block, c_end_block, &
-      c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
-      c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, &
-      i32count, i64count, description, hidden)
+  FUNCTION dbd_add_new_block(this, block_name, init_block, start_block, &
+      end_block, final_block, any_key_text, any_key_value, &
+      any_key_numeric_value, any_key_stack, block_remapper, c_init_block, &
+      c_start_block, c_end_block, c_final_block, c_any_key_text, &
+      c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
+      c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, i32count, &
+      i64count, description, hidden)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -699,13 +702,13 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
-    TYPE(eis_deck_block_definition), POINTER :: dbd_add_block
+    CLASS(eis_deck_block_definition), POINTER :: dbd_add_new_block
     CLASS(*), POINTER :: ptr
     INTEGER :: id, inx
 
-    ALLOCATE(dbd_add_block)
+    ALLOCATE(dbd_add_new_block)
     id = &
-        dbd_add_block%init(this%info, block_name, this%depth + 1, this%id, &
+        dbd_add_new_block%init(this%info, block_name, this%depth + 1, this%id, &
         init_block, start_block, end_block, final_block, any_key_text, &
         any_key_value, any_key_numeric_value, any_key_stack, block_remapper, &
         c_init_block, c_start_block, c_end_block, c_final_block, &
@@ -715,11 +718,25 @@ MODULE eis_deck_definition_mod
         description = description, hidden = hidden, init_flag = init_flag, &
         i32count = i32count, i64count = i64count)
 
-    ptr => dbd_add_block
+    ptr => dbd_add_new_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
-    CALL this%info%add_block(dbd_add_block)
+    CALL this%info%add_block(dbd_add_new_block)
     
-  END FUNCTION dbd_add_block
+  END FUNCTION dbd_add_new_block
+
+
+
+  FUNCTION dbd_add_old_block(this, old_block)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CLASS(eis_deck_block_definition), POINTER, INTENT(INOUT) :: old_block
+    CLASS(eis_deck_block_definition), POINTER :: dbd_add_old_block
+    CLASS(*), POINTER :: ptr
+
+    dbd_add_old_block => old_block
+    ptr => old_block
+    CALL this%sub_blocks%hold(old_block%name, ptr, owns = .FALSE.)
+    
+  END FUNCTION dbd_add_old_block
 
 
 
