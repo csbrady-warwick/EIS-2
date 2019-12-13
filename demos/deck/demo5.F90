@@ -40,11 +40,12 @@ MODULE mymod
   END SUBROUTINE key_str_sub
 
 
-  SUBROUTINE key_val_sub(key_text, values, pass_number, parser, &
+  SUBROUTINE key_val_sub(key_text, values, pass_number, cap_bits, parser, &
       parents, parent_kind, status_code, host_state, errcode)
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     REAL(eis_num), DIMENSION(:), INTENT(IN) :: values
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_bitmask), INTENT(IN) :: cap_bits
     TYPE(eis_parser), INTENT(INOUT) :: parser
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind

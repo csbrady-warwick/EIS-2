@@ -1591,6 +1591,7 @@ MODULE eis_deck_definition_mod
     INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
     REAL(REAL32), DIMENSION(:), POINTER :: c_r32
     REAL(REAL64), DIMENSION(:), POINTER :: c_r64
+    INTEGER(eis_bitmask) :: cbits
 
     IF (PRESENT(parser)) THEN
       IF (ASSOCIATED(this%info%parser)) THEN
@@ -1814,16 +1815,18 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = ps%evaluate(value, value_array, this_err, &
               filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl)
+              char_offset = sindex - 1 + wsl, cap_bits = cbits)
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
+          cbits = 0_eis_bitmask
           ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
           IF (ct == dkd%expected_params .OR. dkd%expected_params < 1) THEN
-            CALL dkd%key_numeric_value_fn(key, value_array, pass_number, ps, &
-                parents, parent_kind, this_stat, this_bitmask, this_err)
+            CALL dkd%key_numeric_value_fn(key, value_array, pass_number, &
+                cbits, ps, parents, parent_kind, this_stat, this_bitmask, &
+                this_err)
           ELSE
             this_err = eis_err_bad_value
           END IF
@@ -1843,16 +1846,18 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = ps%evaluate(value, value_array, this_err, &
               filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl)
+              char_offset = sindex - 1 + wsl, cap_bits = cbits)
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
+          cbits = 0_eis_bitmask
           ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
               SIZE(value_array, KIND=C_INT), value_array, &
               INT(pass_number, C_INT), &
+              INT(cbits, eis_bitmask_c),&
               interop_parser, SIZE(parents, KIND=C_INT), &
               INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
               this_bitmask, this_err)
@@ -2117,15 +2122,17 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = ps%evaluate(value, value_array, this_err, &
               filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl)
+              char_offset = sindex - 1 + wsl, cap_bits = cbits)
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
+          cbits = 0_eis_bitmask
           ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL this%any_key_numeric_value_fn(key, value_array, pass_number, &
-              ps, parents, parent_kind, this_stat, this_bitmask, this_err)
+              cbits, ps, parents, parent_kind, this_stat, this_bitmask, &
+              this_err)
         END IF
         IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         !If the block is flagged handled then you care about the error code
@@ -2142,18 +2149,20 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           ct = ps%evaluate(value, value_array, this_err, &
               filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl)
+              char_offset = sindex - 1 + wsl, cap_bits = cbits)
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
+          cbits = 0_eis_bitmask
           ct = ps%evaluate(stack, value_array, this_err)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL this%c_any_key_numeric_value_fn(C_LOC(c_key), &
               SIZE(value_array, KIND = C_INT), value_array, &
-              INT(pass_number, C_INT), interop_parser, &
-              SIZE(parents, KIND = C_INT), INT(parents, C_INT), &
-              INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+              INT(pass_number, C_INT), INT(cbits, eis_bitmask_c), &
+              interop_parser, SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
         END IF
         IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         !If the block is flagged handled then you care about the error code

@@ -68,11 +68,13 @@ MODULE eis_deck_function_mod
     END SUBROUTINE key_value_callback
 
     SUBROUTINE key_numeric_value_callback(key_text, values, pass_number, &
-        parser, parents, parent_kind, status_code, host_state, errcode)
+        cap_bits, parser, parents, parent_kind, status_code, host_state, &
+        errcode)
       IMPORT eis_error, eis_status, eis_num, eis_parser, eis_bitmask
       CHARACTER(LEN=*), INTENT(IN) :: key_text
       REAL(eis_num), DIMENSION(:), INTENT(IN) :: values
       INTEGER, INTENT(IN) :: pass_number
+      INTEGER(eis_bitmask), INTENT(IN) :: cap_bits
       TYPE(eis_parser), INTENT(INOUT) :: parser
       INTEGER, DIMENSION(:), INTENT(IN) :: parents
       INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
@@ -175,11 +177,12 @@ MODULE eis_deck_function_mod
     END SUBROUTINE key_value_callback_c
 
     SUBROUTINE key_numeric_value_callback_c(key_text, nvalues, values, &
-        pass_number, parser, nparents, parents, parent_kind, status_code, &
-        host_state, errcode) BIND(C)
+        pass_number, cap_bits, parser, nparents, parents, parent_kind, &
+        status_code, host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_num_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: key_text
       INTEGER(C_INT), INTENT(IN) :: pass_number
+      INTEGER(eis_bitmask_c), VALUE, INTENT(IN) :: cap_bits
       INTEGER(C_INT), VALUE, INTENT(IN) :: nvalues
       REAL(eis_num_c), DIMENSION(nvalues), INTENT(IN) :: values
       INTEGER(C_INT), VALUE, INTENT(IN) :: parser
