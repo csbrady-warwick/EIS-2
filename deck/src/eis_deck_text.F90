@@ -710,14 +710,16 @@ MODULE eis_deck_from_text_mod
   !> @param[in] filename
   !> @param[out] serial_deck
   !> @param[inout] errcode
-  !> @param[out] raw_text
+  !> @param[in] filename_processor
+  !> @param[in] file_text_processor
   SUBROUTINE tdp_get_deck_serialised(this, filename, serial_deck, errcode, &
-      raw_text)
+      filename_processor, file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: serial_deck
     INTEGER(eis_error), INTENT(OUT) :: errcode
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
+    PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
+    PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
     TYPE(eis_string_deck) :: sdeck
     TYPE(eis_string_deck_block), POINTER :: block
     INTEGER(eis_error) :: err, host_state, status
@@ -729,7 +731,9 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
-    CALL sdeck%init(err, this%err_handler)
+    CALL this%sdeck%init(err, this%err_handler, &
+        filename_processor = filename_processor, &
+        file_text_processor = file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
