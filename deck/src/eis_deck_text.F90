@@ -720,7 +720,6 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_error), INTENT(OUT) :: errcode
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
-    TYPE(eis_string_deck) :: sdeck
     TYPE(eis_string_deck_block), POINTER :: block
     INTEGER(eis_error) :: err, host_state, status
     TYPE(eis_deck_block_definition), POINTER :: bdef
@@ -738,7 +737,7 @@ MODULE eis_deck_from_text_mod
     IF (err /= eis_err_none) RETURN
 
     CALL eis_default_status(errcode = err)
-    CALL sdeck%load_deck_file(filename, err, parsed_text = serial_deck)
+    CALL this%sdeck%load_deck_file(filename, err, parsed_text = serial_deck)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
