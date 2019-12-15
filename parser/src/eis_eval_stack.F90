@@ -55,7 +55,9 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
-    IF (element%ptype == eis_pt_pointer_variable) THEN
+    IF (element%ptype == eis_pt_constant) THEN
+      CALL ees_push(this, element%numerical_data, errcode)
+    ELSE IF (element%ptype == eis_pt_pointer_variable) THEN
       IF (ASSOCIATED(element%i32data)) &
           CALL ees_push(this, REAL(element%i32data, eis_num), errcode)
       IF (ASSOCIATED(element%i64data)) &
@@ -241,14 +243,10 @@ MODULE eis_eval_stack_mod
 
     DO istack = 1, stack%stack_point
       err = eis_err_none
-      IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
-        CALL ees_push(this, stack%entries(istack)%numerical_data, errcode)
-      ELSE
-        stat_in = status
-        CALL ees_eval_element(this, stack%entries(istack), host_params, &
-            stat_in, err)
-        status = IOR(status, stat_in)
-      END IF
+      stat_in = status
+      CALL ees_eval_element(this, stack%entries(istack), host_params, &
+          stat_in, err)
+      status = IOR(status, stat_in)
       IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
         IF (ALLOCATED(stack%co_entries)) THEN
           IF (ALLOCATED(stack%full_line)) THEN
@@ -346,16 +344,11 @@ MODULE eis_eval_stack_mod
     DO istack = 1, stack%stack_point
       IF (this%stack_point == SIZE(this%entries)) &
           CALL ees_resize(this, this%stack_point * 2, err)
-      IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
-        err = eis_err_none
-        CALL ees_push(this, stack%entries(istack)%numerical_data, err)
-      ELSE
-        err = eis_err_none
-        stat_in = status
-        CALL ees_eval_element(this, stack%entries(istack), host_params, &
-            stat_in, err)
-        status = IOR(status, stat_in)
-      END IF
+      err = eis_err_none
+      stat_in = status
+      CALL ees_eval_element(this, stack%entries(istack), host_params, &
+          stat_in, err)
+      status = IOR(status, stat_in)
       errcode = IOR(errcode, err)
       IF (errcode /= eis_err_none) THEN
         result_count = 0
@@ -427,15 +420,11 @@ MODULE eis_eval_stack_mod
       DO istack = 1, stack%stack_point
         IF (this%stack_point == SIZE(this%entries)) &
             CALL ees_resize(this, this%stack_point * 2, errcode)
-        IF (stack%entries(istack)%ptype == eis_pt_constant) THEN
-          CALL ees_push(this, stack%entries(istack)%numerical_data, errcode)
-        ELSE
-          err = eis_err_none
-          stat_in = status
-          CALL ees_eval_element(this, stack%entries(istack), host_params, &
-              stat_in, err)
-          status = IOR(status, stat_in)
-        END IF
+        err = eis_err_none
+        stat_in = status
+        CALL ees_eval_element(this, stack%entries(istack), host_params, &
+            stat_in, err)
+        status = IOR(status, stat_in)
         errcode = IOR(errcode, err)
       END DO
 
