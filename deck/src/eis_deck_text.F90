@@ -513,7 +513,7 @@ MODULE eis_deck_from_text_mod
     END IF
 
     CALL eis_default_status(errcode = err, bitmask = host_state)
-    CALL definition%end_pass(host_state, err)
+    CALL definition%end_pass(host_state, err, pass_number = pass_number)
 
     IF (parse_over) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
