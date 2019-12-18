@@ -136,6 +136,8 @@ MODULE eis_error_mod
           &subscript a constant')
       CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
       CALL this%strings%store('err_bad_stack', 'Invalid or unavailable stack')
+      CALL this%strings%store('err_extra_results', 'Unexpected additional &
+          &results from a stack')
 
       CALL this%strings%store('err_no_luns', 'No logical unit numbers were &
           &available for file access')
@@ -147,8 +149,8 @@ MODULE eis_error_mod
       CALL this%strings%store('err_deck_too_deep', 'Deck block encountered &
           &with too high a depth (i.e is a child of a block that should not &
           &have children). This is a malformed deck.')
-      CALL this%strings%store('err_empty_block', 'Deck block encountered &
-          &with no keys in it. This is a malformed deck')
+      CALL this%strings%store('err_deck_empty_block','Deck block has no keys &
+         &when this is not permitted. This is a malformed deck')
       CALL this%strings%store('err_root_keys', 'Deck key encountered &
           &outside a block. This is a malformed deck')
       CALL this%strings%store('err_defn_invalid', 'Deck definition object is in&

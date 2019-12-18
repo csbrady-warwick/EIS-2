@@ -383,6 +383,7 @@ MODULE eis_deck_from_text_mod
     IF (.NOT. this%is_init) CALL this%init()
 
     CALL eis_default_status(errcode = err, bitmask = host_state)
+    CALL eis_default_status(errcode = errcode)
     CALL definition%initialise_blocks(host_state, err)
     errcode = IOR(errcode, err)
     IF (PRESENT(state)) state = IOR(state, host_state)
@@ -407,6 +408,7 @@ MODULE eis_deck_from_text_mod
 
     IF (.NOT. this%is_init) CALL this%init()
 
+    CALL eis_default_status(errcode = errcode)
     CALL eis_default_status(errcode = err, bitmask = host_state)
     CALL definition%finalise_blocks(host_state, err)
     errcode = IOR(errcode, err)
@@ -475,6 +477,7 @@ MODULE eis_deck_from_text_mod
     ukf = this%unknown_key_is_fatal
     bkf = this%bad_key_is_fatal
     gpass = 1
+    CALL eis_default_status(errcode = errcode)
     IF (PRESENT(initialise_all_blocks)) should_init = initialise_all_blocks
     IF (PRESENT(pass_number)) THEN
       first_pass = (pass_number == 1)
@@ -550,6 +553,7 @@ MODULE eis_deck_from_text_mod
     IF (.NOT. this%is_init) RETURN
 
     CALL eis_default_status(errcode = err)
+    CALL eis_default_status(errcode = errcode)
     CALL sdeck%generate_blocklist(err, max_level, allow_root_keys, &
         allow_empty_blocks)
     errcode = IOR(errcode, err)
@@ -594,6 +598,7 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
+    CALL eis_default_status(errcode = errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
         file_text_processor = file_text_processor)
@@ -644,6 +649,7 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
+    CALL eis_default_status(errcode = errcode)
     CALL this%sdeck%init(err, this%err_handler)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
@@ -688,6 +694,8 @@ MODULE eis_deck_from_text_mod
     IF (.NOT. this%is_init) RETURN
     IF (.NOT. ALLOCATED(this%sdeck)) RETURN
     IF (.NOT. this%sdeck%is_init) RETURN
+    errcode = eis_err_none
+    err = eis_err_none
 
     CALL eis_default_status(errcode = err)
     CALL this%generate_and_parse(this%sdeck, definition, err, &
@@ -730,6 +738,7 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
+    CALL eis_default_status(errcode =  errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
         file_text_processor = file_text_processor)
@@ -739,7 +748,7 @@ MODULE eis_deck_from_text_mod
     CALL eis_default_status(errcode = err)
     CALL this%sdeck%load_deck_file(filename, err, parsed_text = serial_deck)
     errcode = IOR(errcode, err)
-    IF (err /= eis_err_none) RETURN
+    DEALLOCATE(this%sdeck)
 
   END SUBROUTINE tdp_get_deck_serialised
 
@@ -772,6 +781,7 @@ MODULE eis_deck_from_text_mod
     ALLOCATE(this%sdeck)
 
     CALL eis_default_status(errcode = err)
+    CALL eis_default_status(errcode = errcode)
     CALL this%sdeck%init(err, this%err_handler)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN

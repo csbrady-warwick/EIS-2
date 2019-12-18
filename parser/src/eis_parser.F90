@@ -1183,9 +1183,13 @@ CONTAINS
     IF (should_dealloc) CALL deallocate_stack(output)
     IF (.NOT. output%init) CALL initialise_stack(output)
 
-    IF (expression_in(1:6) == 'where(') THEN
-      output%where_stack = .TRUE.
-      ALLOCATE(expression, SOURCE = expression_in(7:LEN(expression_in)-1))
+    IF (LEN(expression_in) > 6) THEN
+      IF (expression_in(1:6) == 'where(') THEN
+        output%where_stack = .TRUE.
+        ALLOCATE(expression, SOURCE = expression_in(7:LEN(expression_in)-1))
+      ELSE
+        ALLOCATE(expression, SOURCE = expression_in)
+      END IF
     ELSE
       ALLOCATE(expression, SOURCE = expression_in)
     END IF

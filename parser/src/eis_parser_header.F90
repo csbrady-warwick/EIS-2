@@ -91,7 +91,7 @@ MODULE eis_parser_header
     INTEGER :: charindex = -1
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
-    INTEGER(eis_bitmask) :: cap_bits
+    INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     CHARACTER(LEN=:), ALLOCATABLE :: text
   END TYPE eis_stack_co_element
 

@@ -397,6 +397,7 @@ MODULE eis_string_deck_mod
 
     errcode = eis_err_none
 
+    IF (this%is_init) RETURN
     this%is_init = .TRUE.
     !Clean up possibly already allocated from previous init
     IF (.NOT. ASSOCIATED(this%data)) ALLOCATE(this%data)
@@ -518,6 +519,7 @@ MODULE eis_string_deck_mod
     INTEGER(eis_error) :: ierr
 
     errcode = eis_err_none
+    ierr = eis_err_none
     CALL this%init(ierr)
     errcode = IOR(errcode, ierr)
     ranges = this%data%strings%load_from_ascii_file(filename, errcode, &
@@ -768,7 +770,8 @@ MODULE eis_string_deck_mod
           errcode = eis_err_deck_empty_block
           IF (ALLOCATED(src_filename)) THEN
             CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
-                filename = src_filename, line_number = ln)
+                filename = src_filename, &
+                line_number = this%data%blocks(iblock)%line_number)
           ELSE
             CALL this%data%handler%add_error(eis_err_deck_file, errcode)
           END IF
@@ -779,6 +782,8 @@ MODULE eis_string_deck_mod
 
     IF (.NOT. root_keys .AND. this%data%blocks(0)%get_line_count() > 0) THEN
       errcode = eis_err_root_keys
+      CALL this%data%blocks(0)%get_line(1, str, filename = src_filename, &
+          line_number = ln)
       IF (ALLOCATED(src_filename)) THEN
         CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
             filename = src_filename, line_number = ln)

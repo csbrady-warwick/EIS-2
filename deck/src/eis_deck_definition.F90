@@ -1622,6 +1622,9 @@ MODULE eis_deck_definition_mod
     ptr => NULL()
     dkd => NULL()
 
+    this_err = eis_err_none
+    this_stat = 0_eis_status
+
     IF (PRESENT(host_state)) THEN
       this_bitmask = host_state
     ELSE
