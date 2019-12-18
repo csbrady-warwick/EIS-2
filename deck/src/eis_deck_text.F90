@@ -487,8 +487,6 @@ MODULE eis_deck_from_text_mod
     IF (PRESENT(unknown_key_is_fatal)) ukf = unknown_key_is_fatal
     IF (PRESENT(bad_key_is_fatal)) bkf = bad_key_is_fatal
 
-    should_init = should_init .AND. first_pass
-
     IF (.NOT. this%is_init) CALL this%init()
     IF (first_pass) CALL definition%reset()
     IF (should_init) THEN
