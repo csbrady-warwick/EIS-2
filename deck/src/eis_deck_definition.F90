@@ -96,6 +96,10 @@ MODULE eis_deck_definition_mod
         c_key_numeric_value_fn => NULL()
     PROCEDURE(key_stack_callback), POINTER, NOPASS :: key_stack_fn => NULL()
     PROCEDURE(key_stack_callback_c), POINTER, NOPASS :: c_key_stack_fn => NULL()
+    PROCEDURE(should_key_trigger_callback), POINTER, NOPASS :: &
+        should_key_trigger_fn => NULL()
+    PROCEDURE(should_key_trigger_callback_c), POINTER, NOPASS :: &
+        c_should_key_trigger_fn => NULL()
 
     CONTAINS
     PROCEDURE :: init => dkd_init
@@ -1466,8 +1470,9 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dbd_add_key(this, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn, c_key_text_fn, c_key_value_fn, &
-      c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
+      should_key_trigger_fn,key_numeric_value_fn, key_stack_fn, c_key_text_fn, &
+      c_key_value_fn, c_key_numeric_value_fn, c_key_stack_fn, &
+      c_should_key_trigger_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
@@ -1478,10 +1483,13 @@ MODULE eis_deck_definition_mod
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    PROCEDURE(should_key_trigger_callback), OPTIONAL :: should_key_trigger_fn
     PROCEDURE(key_text_callback_c), OPTIONAL :: c_key_text_fn
     PROCEDURE(key_value_callback_c), OPTIONAL :: c_key_value_fn
     PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_key_numeric_value_fn
     PROCEDURE(key_stack_callback_c), OPTIONAL :: c_key_stack_fn
+    PROCEDURE(should_key_trigger_callback_c), OPTIONAL :: &
+        c_should_key_trigger_fn
 #ifdef F2008
     INTEGER(INT32), TARGET, OPTIONAL :: i32value
     INTEGER(INT64), TARGET, OPTIONAL :: i64value
@@ -1534,11 +1542,15 @@ MODULE eis_deck_definition_mod
 
     ALLOCATE(new)
     CALL new%init(this, key_name, key_text_fn, key_value_fn, &
-        key_numeric_value_fn, key_stack_fn, expected_params = expected_params, &
-        pass_eq = pass_eq, pass_le = pass_le, pass_ge = pass_ge, &
-        c_key_text_fn = c_key_text_fn, c_key_value_fn = c_key_value_fn, &
+        key_numeric_value_fn, key_stack_fn, &
+        should_key_trigger_fn = should_key_trigger_fn, &
+        expected_params = expected_params, pass_eq = pass_eq, &
+        pass_le = pass_le, pass_ge = pass_ge, c_key_text_fn = c_key_text_fn, &
+        c_key_value_fn = c_key_value_fn, &
         c_key_numeric_value_fn = c_key_numeric_value_fn, &
-        c_key_stack_fn = c_key_stack_fn, i32value = i32value, &
+        c_key_stack_fn = c_key_stack_fn, &
+        c_should_key_trigger_fn = c_should_key_trigger_fn, &
+        i32value = i32value, &
         i64value = i64value, r32value = r32value, r64value = r64value, &
         logicalvalue = logicalvalue, i32array = i32array, i64array = i64array, &
         r32array = r32array, r64array = r64array, logicalarray = logicalarray, &
@@ -1724,6 +1736,34 @@ MODULE eis_deck_definition_mod
       IF (dkd%use_eq) run = run .OR. (pass_number == dkd%pass_eq)
       IF (dkd%use_le) run = run .OR. (pass_number <= dkd%pass_le)
       IF (dkd%use_ge) run = run .OR. (pass_number >= dkd%pass_ge)
+      IF (ASSOCIATED(dkd%should_key_trigger_fn)) THEN
+        IF (is_key_value) THEN
+          run = run .AND. dkd%should_key_trigger_fn(key, pass_number, &
+                parents, parent_kind, this_stat, this_bitmask, this_err)
+        ELSE
+          run = run .AND. dkd%should_key_trigger_fn(key_text, &
+                pass_number, parents, parent_kind, this_stat, this_bitmask, &
+                this_err)
+        END IF
+        errcode = IOR(errcode, this_err)
+        IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+      END IF
+      IF (ASSOCIATED(dkd%c_should_key_trigger_fn)) THEN
+        IF (is_key_value) THEN
+          run = run .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key), &
+              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err) /= 0_C_INT)
+        ELSE
+          run = run &
+              .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key_text), &
+              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err) /= 0_C_INT)
+        END IF
+        errcode = IOR(errcode, this_err)
+        IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+      END IF
       IF (.NOT. run) THEN
         IF (ASSOCIATED(this%info%on_key_no_trigger_fn)) THEN
           IF (is_key_value) THEN
@@ -2065,6 +2105,36 @@ MODULE eis_deck_definition_mod
     IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
 
+    IF (ASSOCIATED(dkd%should_key_trigger_fn)) THEN
+      IF (is_key_value) THEN
+        run = run .AND. dkd%should_key_trigger_fn(key, pass_number, &
+              parents, parent_kind, this_stat, this_bitmask, this_err)
+      ELSE
+        run = run .AND. dkd%should_key_trigger_fn(key_text, &
+              pass_number, parents, parent_kind, this_stat, this_bitmask, &
+              this_err)
+      END IF
+      errcode = IOR(errcode, this_err)
+      IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    END IF
+    IF (ASSOCIATED(dkd%c_should_key_trigger_fn)) THEN
+      IF (is_key_value) THEN
+        run = run .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err) /= 0_C_INT)
+      ELSE
+        run = run &
+            .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key_text), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err) /= 0_C_INT)
+      END IF
+      errcode = IOR(errcode, this_err)
+      IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    END IF
+
+
     IF (run .AND. (.NOT. ASSOCIATED(dkd) .OR. (ASSOCIATED(dkd) &
         .AND. any_candidates))) THEN
       IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
@@ -2275,8 +2345,9 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dkd_init(this, parent_block, key_name, key_text_fn, key_value_fn, &
-      key_numeric_value_fn, key_stack_fn, c_key_text_fn, c_key_value_fn, &
-      c_key_numeric_value_fn, c_key_stack_fn, i32value, i64value, r32value, &
+      key_numeric_value_fn, key_stack_fn, should_key_trigger_fn, &
+      c_key_text_fn, c_key_value_fn, c_key_numeric_value_fn, c_key_stack_fn, &
+      c_should_key_trigger_fn, i32value, i64value, r32value, &
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
       c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
@@ -2288,10 +2359,13 @@ MODULE eis_deck_definition_mod
     PROCEDURE(key_value_callback), OPTIONAL :: key_value_fn
     PROCEDURE(key_numeric_value_callback), OPTIONAL :: key_numeric_value_fn
     PROCEDURE(key_stack_callback), OPTIONAL :: key_stack_fn
+    PROCEDURE(should_key_trigger_callback), OPTIONAL :: should_key_trigger_fn
     PROCEDURE(key_text_callback_c), OPTIONAL :: c_key_text_fn
     PROCEDURE(key_value_callback_c), OPTIONAL :: c_key_value_fn
     PROCEDURE(key_numeric_value_callback_c), OPTIONAL :: c_key_numeric_value_fn
     PROCEDURE(key_stack_callback_c), OPTIONAL :: c_key_stack_fn
+    PROCEDURE(should_key_trigger_callback_c), OPTIONAL :: &
+        c_should_key_trigger_fn
 #ifdef F2008
     INTEGER(INT32), TARGET, OPTIONAL :: i32value
     INTEGER(INT64), TARGET, OPTIONAL :: i64value
@@ -2343,11 +2417,15 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(key_numeric_value_fn)) this%key_numeric_value_fn &
         => key_numeric_value_fn
     IF (PRESENT(key_stack_fn)) this%key_stack_fn => key_stack_fn
+    IF (PRESENT(should_key_trigger_fn)) this%should_key_trigger_fn &
+        => should_key_trigger_fn
     IF (PRESENT(c_key_text_fn)) this%c_key_text_fn => c_key_text_fn
     IF (PRESENT(c_key_value_fn)) this%c_key_value_fn => c_key_value_fn
     IF (PRESENT(c_key_numeric_value_fn)) this%c_key_numeric_value_fn &
         => c_key_numeric_value_fn
     IF (PRESENT(c_key_stack_fn)) this%c_key_stack_fn => c_key_stack_fn
+    IF (PRESENT(c_should_key_trigger_fn)) this%c_should_key_trigger_fn &
+        => c_should_key_trigger_fn
 
     IF (PRESENT(i32value)) this%i32data => i32value
     IF (PRESENT(i64value)) this%i64data => i64value
