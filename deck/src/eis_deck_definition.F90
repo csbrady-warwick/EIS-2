@@ -2105,36 +2105,6 @@ MODULE eis_deck_definition_mod
     IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
 
-    IF (ASSOCIATED(dkd%should_key_trigger_fn)) THEN
-      IF (is_key_value) THEN
-        run = run .AND. dkd%should_key_trigger_fn(key, pass_number, &
-              parents, parent_kind, this_stat, this_bitmask, this_err)
-      ELSE
-        run = run .AND. dkd%should_key_trigger_fn(key_text, &
-              pass_number, parents, parent_kind, this_stat, this_bitmask, &
-              this_err)
-      END IF
-      errcode = IOR(errcode, this_err)
-      IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
-    END IF
-    IF (ASSOCIATED(dkd%c_should_key_trigger_fn)) THEN
-      IF (is_key_value) THEN
-        run = run .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-            this_bitmask, this_err) /= 0_C_INT)
-      ELSE
-        run = run &
-            .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key_text), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-            this_bitmask, this_err) /= 0_C_INT)
-      END IF
-      errcode = IOR(errcode, this_err)
-      IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
-    END IF
-
-
     IF (run .AND. (.NOT. ASSOCIATED(dkd) .OR. (ASSOCIATED(dkd) &
         .AND. any_candidates))) THEN
       IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
