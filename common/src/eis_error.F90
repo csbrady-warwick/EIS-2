@@ -161,6 +161,7 @@ MODULE eis_error_mod
           &in the deck')
       CALL this%strings%store('err_bad_key', 'A key in the deck could not be &
           &parsed')
+      CALL this%strings%store('err_host', 'A non-parser error was reported')
 
       CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
           &{errline} : ')
@@ -437,6 +438,9 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_bad_key) /= 0) THEN
       ok = this%strings%append('err_bad_key', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_host) /= 0) THEN
+      ok = this%strings%append('err_host', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
