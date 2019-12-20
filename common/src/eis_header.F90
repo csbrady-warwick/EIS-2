@@ -62,6 +62,6 @@ MODULE eis_header
   !> Deck handler found a key that it was unable to handle
   INTEGER(eis_error), PARAMETER :: eis_err_bad_key = 2**30
   !> Fatal error was reported by the host code
-  INTEGER(eis_error), PARAMETER :: eis_err_host = 2**31
+  INTEGER(eis_error), PARAMETER :: eis_err_host = 2_eis_error**31_eis_error
 
 END MODULE eis_header
