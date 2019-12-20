@@ -998,6 +998,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: run
 
     CALL this%get_parents(parent_kind)
+    this_status = eis_status_none
 
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
     IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
@@ -1093,7 +1094,7 @@ MODULE eis_deck_definition_mod
     IF (errcode == eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_block_start_fn)) THEN
         CALL this%info%on_block_start_fn(this_name, pass_number, parents, &
-            parent_kind, this_status, host_state, errcode)
+            parent_kind, status, host_state, errcode)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_start_fn)) THEN
@@ -1108,7 +1109,7 @@ MODULE eis_deck_definition_mod
     ELSE
       IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
         CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
-            parent_kind, this_status, host_state, errcode)
+            parent_kind, status, host_state, errcode)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
@@ -1116,7 +1117,7 @@ MODULE eis_deck_definition_mod
         CALL f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            INT(parents, C_INT), INT(parents, C_INT), status, &
             host_state, errcode)
         DEALLOCATE(c_this_name)
       END IF
@@ -1154,6 +1155,8 @@ MODULE eis_deck_definition_mod
     IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
     !You only trigger block_no_trigger on block starts, not block ends
     IF (.NOT. run) RETURN
+
+    this_status = eis_status_none
 
     CALL this%get_parents(parent_kind)
 
@@ -1205,8 +1208,7 @@ MODULE eis_deck_definition_mod
     IF (errcode == eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_block_end_fn)) THEN
         CALL this%info%on_block_end_fn(this_name, pass_number, parents, &
-            parent_kind, this_status, host_state, errcode)
-        status = IOR(status, this_status)
+            parent_kind, status, host_state, errcode)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_end_fn)) THEN
@@ -1214,16 +1216,14 @@ MODULE eis_deck_definition_mod
         CALL f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_end_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            INT(parents, C_INT), INT(parents, C_INT), status, &
             host_state, errcode)
-        status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
       END IF
     ELSE
       IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
         CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
-            parent_kind, this_status, host_state, errcode)
-        status = IOR(status, this_status)
+            parent_kind, status, host_state, errcode)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
@@ -1231,7 +1231,7 @@ MODULE eis_deck_definition_mod
         CALL f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), this_status, &
+            INT(parents, C_INT), INT(parents, C_INT), status, &
             host_state, errcode)
         status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
