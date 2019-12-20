@@ -906,9 +906,11 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_initialise_block(this, pass_number, errcode, host_state)
+  SUBROUTINE dbd_initialise_block(this, pass_number, status, errcode, &
+      host_state)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
@@ -931,6 +933,7 @@ MODULE eis_deck_definition_mod
         CALL this%init_block_fn(this%name, pass_number, parent_kind, &
            this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
       END IF
       IF (ASSOCIATED(this%start_pass_block_fn)) THEN
         this_status = eis_status_none
@@ -938,6 +941,7 @@ MODULE eis_deck_definition_mod
         CALL this%start_pass_block_fn(this%name, pass_number, parent_kind, &
            this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
       END IF
     END IF
 
@@ -952,6 +956,7 @@ MODULE eis_deck_definition_mod
             SIZE(parent_kind, KIND=C_INT), INT(parent_kind, C_INT), &
             this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
       END IF
       IF (ASSOCIATED(this%c_start_pass_block_fn)) THEN
@@ -961,6 +966,7 @@ MODULE eis_deck_definition_mod
             INT(pass_number, C_INT), SIZE(parent_kind, KIND=C_INT), &
             INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
       END IF
     END IF
@@ -974,11 +980,12 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_start_block(this, parents, pass_number, errcode, host_state, &
-      display_name)
+  SUBROUTINE dbd_start_block(this, parents, pass_number, status, errcode, &
+      host_state, display_name)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
@@ -1006,6 +1013,7 @@ MODULE eis_deck_definition_mod
         CALL this%info%on_block_no_trigger_fn(this_name, pass_number, parents, &
             parent_kind, this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
         host_state = IOR(host_state, this_bitmask)
       END IF
 
@@ -1017,6 +1025,7 @@ MODULE eis_deck_definition_mod
             INT(parents, C_INT), INT(parent_kind, C_INT), this_status, &
             this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_status)
         host_state = IOR(host_state, this_bitmask)
         DEALLOCATE(c_this_name)
       END IF
@@ -1031,8 +1040,10 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
     this_err = eis_err_none
-    CALL this%initialise_block(pass_number, this_err, this_bitmask)
+    CALL this%initialise_block(pass_number, this_status, this_err, &
+        this_bitmask)
     host_state = IOR(host_state, this_bitmask)
+    status = IOR(status, this_status)
     errcode = IOR(errcode, this_err)
 
     IF (PRESENT(display_name)) THEN
@@ -1052,8 +1063,10 @@ MODULE eis_deck_definition_mod
       this_status = eis_status_none
       CALL this%start_block_fn(this_name, pass_number, parents, parent_kind, &
           this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) &
-          this_err = IOR(this_err, eis_err_unknown_block)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
+        this_err = IOR(this_err, eis_err_unknown_block)
+        status = IOR(status, this_status)
+      END IF
       errcode = IOR(errcode, this_err)
     END IF
 
@@ -1067,8 +1080,10 @@ MODULE eis_deck_definition_mod
           SIZE(parents, KIND = C_INT), &
           INT(parents, C_INT), INT(parent_kind, C_INT), &
           this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) &
-          this_err = IOR(this_err, eis_err_unknown_block)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
+        this_err = IOR(this_err, eis_err_unknown_block)
+        status = IOR(status, this_status)
+      END IF
       errcode = IOR(errcode, this_err)
       DEALLOCATE(c_this_name)
     END IF
@@ -1114,11 +1129,12 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_end_block(this, parents, pass_number, errcode, host_state, &
-      display_name)
+  SUBROUTINE dbd_end_block(this, parents, pass_number, status, errcode, &
+      host_state, display_name)
     CLASS(eis_deck_block_definition), INTENT(IN) :: this
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
@@ -1158,8 +1174,11 @@ MODULE eis_deck_definition_mod
       this_err = eis_err_none
       CALL this%end_block_fn(this_name, pass_number, parents, parent_kind, &
           this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) &
-          this_err = IOR(this_err, eis_err_unknown_block)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
+        this_err = IOR(this_err, eis_err_unknown_block)
+      ELSE
+        status = IOR(status, this_status)
+      END IF
       errcode = IOR(errcode, this_err)
     END IF
 
@@ -1172,8 +1191,11 @@ MODULE eis_deck_definition_mod
           INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
           INT(parents, C_INT), INT(parent_kind, C_INT), &
           this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) &
-          this_err = IOR(this_err, eis_err_unknown_block)
+      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
+        this_err = IOR(this_err, eis_err_unknown_block)
+      ELSE
+        status = IOR(status, this_status)
+      END IF
       errcode = IOR(errcode, this_err)
       DEALLOCATE(c_this_name)
     END IF
@@ -1184,6 +1206,7 @@ MODULE eis_deck_definition_mod
       IF (ASSOCIATED(this%info%on_block_end_fn)) THEN
         CALL this%info%on_block_end_fn(this_name, pass_number, parents, &
             parent_kind, this_status, host_state, errcode)
+        status = IOR(status, this_status)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_end_fn)) THEN
@@ -1193,12 +1216,14 @@ MODULE eis_deck_definition_mod
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), this_status, &
             host_state, errcode)
+        status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
       END IF
     ELSE
       IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
         CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
             parent_kind, this_status, host_state, errcode)
+        status = IOR(status, this_status)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
@@ -1208,6 +1233,7 @@ MODULE eis_deck_definition_mod
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), this_status, &
             host_state, errcode)
+        status = IOR(status, this_status)
         DEALLOCATE(c_this_name)
       END IF
     END IF
@@ -1265,9 +1291,10 @@ MODULE eis_deck_definition_mod
   END SUBROUTINE dbd_end_pass_block
 
 
-  SUBROUTINE dbd_finalise_block(this, pass_number, errcode, host_state)
+  SUBROUTINE dbd_finalise_block(this, pass_number, status, errcode, host_state)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
@@ -1292,6 +1319,7 @@ MODULE eis_deck_definition_mod
       CALL this%final_block_fn(this%name, pass_number, parent_kind, &
           this_status, this_bitmask, this_err)
       errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
     END IF
 
 
@@ -1304,6 +1332,7 @@ MODULE eis_deck_definition_mod
           INT(pass_number, C_INT), SIZE(parent_kind, KIND = C_INT), &
           INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
       errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
     END IF
 
     this%lastinit = 0
@@ -1566,13 +1595,14 @@ MODULE eis_deck_definition_mod
   END SUBROUTINE dbd_add_key
 
 
-  SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, errcode, &
-      host_state, filename, line_number, white_space_length, value_function, &
-      parser, interop_parser_id)
+  SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, status, &
+      errcode, host_state, filename, line_number, white_space_length, &
+      value_function, parser, interop_parser_id)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, INTENT(IN) :: pass_number
+    INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
@@ -1746,6 +1776,7 @@ MODULE eis_deck_definition_mod
                 this_err)
         END IF
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_stat)
         IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
       END IF
       IF (ASSOCIATED(dkd%c_should_key_trigger_fn)) THEN
@@ -1762,6 +1793,7 @@ MODULE eis_deck_definition_mod
               this_bitmask, this_err) /= 0_C_INT)
         END IF
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_stat)
         IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
       END IF
       IF (.NOT. run) THEN
@@ -1774,6 +1806,7 @@ MODULE eis_deck_definition_mod
                 parents, parent_kind, this_stat, this_bitmask, this_err)
           END IF
           errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
           IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
         END IF
 
@@ -1790,6 +1823,7 @@ MODULE eis_deck_definition_mod
                 this_bitmask, this_err)
           END IF
           errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
           IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
         END IF
         RETURN
@@ -1808,8 +1842,10 @@ MODULE eis_deck_definition_mod
             this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
@@ -1820,8 +1856,10 @@ MODULE eis_deck_definition_mod
             INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%key_value_fn) .AND. is_key_value .AND. .NOT. handled) &
@@ -1832,8 +1870,10 @@ MODULE eis_deck_definition_mod
             this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%c_key_value_fn) .AND. is_key_value .AND. &
@@ -1846,8 +1886,10 @@ MODULE eis_deck_definition_mod
             this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%key_numeric_value_fn) .AND. &
@@ -1877,8 +1919,10 @@ MODULE eis_deck_definition_mod
         END IF
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%c_key_numeric_value_fn) .AND. &
@@ -1908,8 +1952,10 @@ MODULE eis_deck_definition_mod
         END IF
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF ((ASSOCIATED(dkd%key_stack_fn) .OR. ASSOCIATED(dkd%c_key_stack_fn)) &
@@ -1930,6 +1976,7 @@ MODULE eis_deck_definition_mod
           IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
             errcode = IOR(errcode, this_err)
             errcode = IOR(errcode, stack_err)
+            status = IOR(status, this_stat)
           END IF
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
@@ -1951,6 +1998,7 @@ MODULE eis_deck_definition_mod
           IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
             errcode = IOR(errcode, this_err)
             errcode = IOR(errcode, stack_err)
+            status = IOR(status, this_stat)
           END IF
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
@@ -2096,6 +2144,7 @@ MODULE eis_deck_definition_mod
         END IF
         IF (handled) THEN
           errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
         END IF
       END IF
     END IF
@@ -2114,8 +2163,10 @@ MODULE eis_deck_definition_mod
             this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%c_any_key_text_fn) .AND. .NOT. handled) THEN
@@ -2127,8 +2178,10 @@ MODULE eis_deck_definition_mod
             this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%any_key_value_fn) .AND. is_key_value .AND. &
@@ -2139,8 +2192,10 @@ MODULE eis_deck_definition_mod
             parent_kind, this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%c_any_key_value_fn) .AND. is_key_value .AND. &
@@ -2153,8 +2208,10 @@ MODULE eis_deck_definition_mod
             this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%any_key_numeric_value_fn) .AND. &
@@ -2180,8 +2237,10 @@ MODULE eis_deck_definition_mod
         IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%c_any_key_numeric_value_fn) .AND. &
@@ -2210,8 +2269,10 @@ MODULE eis_deck_definition_mod
         IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF ((ASSOCIATED(this%any_key_stack_fn) &
@@ -2232,12 +2293,15 @@ MODULE eis_deck_definition_mod
           IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
             errcode = IOR(errcode, this_err)
             errcode = IOR(errcode, stack_err)
+            status = IOR(status, this_stat)
           END IF
         END IF
         !If the block is flagged handled then you care about the error code
         !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) &
-            errcode = IOR(errcode, this_err)
+        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+          errcode = IOR(errcode, this_err)
+          status = IOR(status, this_stat)
+        END IF
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         IF (ASSOCIATED(dkd%c_key_stack_fn) .AND. stack_err == eis_err_none &
             .AND. .NOT. handled) THEN
@@ -2257,6 +2321,7 @@ MODULE eis_deck_definition_mod
           IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
             errcode = IOR(errcode, this_err)
             errcode = IOR(errcode, stack_err)
+            status = IOR(status, this_stat)
           END IF
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
@@ -2270,8 +2335,10 @@ MODULE eis_deck_definition_mod
     IF (.NOT. handled) THEN
       IF (ASSOCIATED(dkd)) THEN
         errcode = IOR(errcode, eis_err_bad_value)
+        status = IOR(status, this_stat)
       ELSE
         errcode = IOR(errcode, eis_err_unknown_key)
+        status = IOR(status, this_stat)
       END IF
     END IF
 
@@ -2280,6 +2347,7 @@ MODULE eis_deck_definition_mod
         CALL this%info%on_key_success_fn(key_text, pass_number, parents, &
               parent_kind, this_stat, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_stat)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_key_success_fn)) THEN
@@ -2288,6 +2356,7 @@ MODULE eis_deck_definition_mod
             INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
             this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_stat)
       END IF
     ELSE
       IF (ASSOCIATED(this%info%on_key_failure_fn)) THEN
@@ -2301,6 +2370,7 @@ MODULE eis_deck_definition_mod
             INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
             this_bitmask, errcode)
         errcode = IOR(errcode, this_err)
+        status = IOR(status, this_stat)
       END IF
     END IF
 

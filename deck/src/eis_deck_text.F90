@@ -101,8 +101,8 @@ MODULE eis_deck_from_text_mod
 
     CALL eis_default_status(this_errcode, this_status, this_host)
     CALL block%get_parents(block_parents)
-    CALL definition%start_block(block_parents, pass_number, this_errcode, &
-        host_state = this_host, display_name=block%block_name)
+    CALL definition%start_block(block_parents, pass_number, this_status, &
+        this_errcode, host_state = this_host, display_name=block%block_name)
     IF (this_errcode /= eis_err_none) THEN
       CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode, &
           filename = block%filename, line_number = block%line_number)
@@ -118,10 +118,11 @@ MODULE eis_deck_from_text_mod
       CALL block%get_line(i, line, filename = fn, line_number = line_number, &
           trimmed_white_space_length = wsl)
       CALL eis_default_status(this_errcode, this_status, this_host)
-      CALL definition%call_key(line, block_parents, pass_number, this_errcode, &
-          host_state = this_host, filename = fn, &
+      CALL definition%call_key(line, block_parents, pass_number, this_status, &
+          this_errcode, host_state = this_host, filename = fn, &
           line_number = line_number, white_space_length = wsl, &
           parser = this%parser, interop_parser_id = this%interop_parser)
+      status = IOR(status, this_status)
       IF (this_errcode /= eis_err_none) THEN
         IF (ALLOCATED(fn)) THEN
           CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode, &
@@ -175,8 +176,8 @@ MODULE eis_deck_from_text_mod
       END IF
     END DO
 
-    CALL definition%end_block(block_parents, pass_number, this_errcode, &
-        host_state = this_host, display_name=block%block_name)
+    CALL definition%end_block(block_parents, pass_number, this_status, &
+        this_errcode, host_state = this_host, display_name=block%block_name)
 
   END SUBROUTINE tdp_call_blocks
 
