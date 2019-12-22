@@ -234,7 +234,7 @@ MODULE eis_deck_definition_mod
     !Needed in F2003 standard
     ptr => block_in
 
-    CALL this%all_blocks%hold(block_in%id, ptr, owns = .FALSE.)
+    CALL this%all_blocks%hold(block_in%id, ptr, owns = .TRUE.)
 
   END SUBROUTINE ddi_add_block
 
@@ -769,7 +769,7 @@ MODULE eis_deck_definition_mod
         i64count = i64count)
 
     ptr => dbd_add_new_block
-    CALL this%sub_blocks%hold(block_name, ptr, owns = .TRUE.)
+    CALL this%sub_blocks%hold(block_name, ptr, owns = .FALSE.)
     CALL this%info%add_block(dbd_add_new_block)
     
   END FUNCTION dbd_add_new_block
