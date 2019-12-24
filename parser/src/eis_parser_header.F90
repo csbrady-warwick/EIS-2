@@ -2,6 +2,12 @@ MODULE eis_parser_header
 
   USE eis_constants
   USE ISO_C_BINDING
+  IMPLICIT NONE
+
+  TYPE, ABSTRACT ::  eis_functor
+    CONTAINS
+    PROCEDURE(functor_eval_fn), DEFERRED :: operate
+  END TYPE eis_functor
 
   ABSTRACT INTERFACE
     !> Function definition for the parser evaluator function
@@ -14,6 +20,18 @@ MODULE eis_parser_header
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
       REAL(eis_num) :: parser_eval_fn
+    END FUNCTION
+
+    FUNCTION functor_eval_fn(this, nparams, params, host_params, status_code, &
+        errcode)
+      IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status, eis_functor
+      CLASS(eis_functor), INTENT(INOUT) :: this
+      INTEGER(eis_i4), INTENT(IN) :: nparams
+      REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+      TYPE(C_PTR), INTENT(IN) :: host_params
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+      REAL(eis_num) :: functor_eval_fn
     END FUNCTION
 
     SUBROUTINE parser_result_function(nresults, results, host_params, &
@@ -38,6 +56,11 @@ MODULE eis_parser_header
       REAL(eis_num), DIMENSION(nresults) :: results
       INTEGER(eis_error), VALUE, INTENT(IN) :: errcode
     END SUBROUTINE
+  END INTERFACE
+
+  PRIVATE :: eis_element_assign, eis_element_array_assign
+  INTERFACE ASSIGNMENT(=)
+    MODULE PROCEDURE eis_element_assign, eis_element_array_assign
   END INTERFACE
 
   INTEGER, PARAMETER :: eis_physics_none = 0 !< No physical units specified
@@ -108,6 +131,8 @@ MODULE eis_parser_header
     REAL(REAL64), POINTER :: r64data => NULL()
     LOGICAL :: can_simplify = .TRUE.
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
+    LOGICAL :: per_stack_functor = .FALSE.
+    CLASS(eis_functor), POINTER :: functor => NULL()
   END TYPE eis_stack_element
 
   !> Entire tokenized stack
@@ -157,5 +182,55 @@ MODULE eis_parser_header
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_late_bind_interop_fn
   END INTERFACE
+
+  CONTAINS
+
+  SUBROUTINE eis_element_assign(dest, src)
+    TYPE(eis_stack_element), INTENT(OUT) :: dest
+    TYPE(eis_stack_element), INTENT(IN) :: src
+
+    dest%ptype = src%ptype
+    dest%value = src%value
+    dest%actual_params = src%actual_params
+    dest%numerical_data = src%numerical_data
+    dest%i32data => src%i32data
+    dest%i64data => src%i64data
+    dest%r32data => src%r32data
+    dest%r64data => src%r64data
+    dest%can_simplify = src%can_simplify
+    dest%eval_fn => src%eval_fn
+    dest%functor => src%functor
+
+  END SUBROUTINE eis_element_assign
+
+
+
+  SUBROUTINE eis_element_array_assign(dest, src)
+    TYPE(eis_stack_element), DIMENSION(:), INTENT(OUT) :: dest
+    TYPE(eis_stack_element), DIMENSION(:), INTENT(IN) :: src
+    INTEGER :: i
+
+    DO i = 1, SIZE(dest)
+      dest(i)%ptype = src(i)%ptype
+      dest(i)%value = src(i)%value
+      dest(i)%actual_params = src(i)%actual_params
+      dest(i)%numerical_data = src(i)%numerical_data
+      dest(i)%i32data => src(i)%i32data
+      dest(i)%i64data => src(i)%i64data
+      dest(i)%r32data => src(i)%r32data
+      dest(i)%r64data => src(i)%r64data
+      dest(i)%can_simplify = src(i)%can_simplify
+      dest(i)%eval_fn => src(i)%eval_fn
+      IF (src(i)%per_stack_functor) THEN
+        IF (ASSOCIATED(dest(i)%functor) .AND. dest(i)%per_stack_functor) &
+            DEALLOCATE(dest(i)%functor)
+        ALLOCATE(dest(i)%functor, SOURCE = src(i)%functor)
+      ELSE
+        dest(i)%functor => src(i)%functor
+      END IF
+      dest(i)%per_stack_functor = src(i)%per_stack_functor
+    END DO
+
+  END SUBROUTINE eis_element_array_assign
 
 END MODULE eis_parser_header

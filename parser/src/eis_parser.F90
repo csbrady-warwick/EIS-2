@@ -131,6 +131,7 @@ MODULE eis_parser_mod
         add_stack_variable_string, add_stack_variable_defer
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
+    PROCEDURE, PUBLIC :: add_functor => eip_add_functor
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
@@ -1871,6 +1872,76 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_add_function_now
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a functor to the parser
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] functor
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] expected_params
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_functor(this, name, functor, errcode,  cap_bits, &
+      expected_params, can_simplify, defer, global, &
+      description, hidden)
+
+    CLASS(eis_parser) :: this
+    !> Name to register function with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Functor to use when the block is accessed
+    CLASS(eis_functor) :: functor
+    !> Error code from storing the function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this function
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Number of expected parameters for this function. Optional, default -1
+    !> (variadic function)
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_functor_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    INTEGER :: params
+    LOGICAL :: is_global
+
+    IF (PRESENT(expected_params)) THEN
+      params = expected_params
+    ELSE
+      params = -1
+    END IF
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    IF (is_global) THEN
+      CALL global_registry%add_functor(name, functor, params, errcode, &
+          can_simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, description = description, hidden = hidden)
+    ELSE
+      CALL this%registry%add_functor(name, functor, params, errcode, &
+          can_simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, description = description, hidden = hidden)
+    END IF
+
+  END SUBROUTINE eip_add_functor
 
 
 

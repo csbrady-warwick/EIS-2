@@ -78,6 +78,17 @@ MODULE eis_eval_stack_mod
             errcode)
         CALL ees_push(this, element%eval_fn(element%actual_params, &
             this%fn_call_vals, host_params, status_code, errcode), errcode)
+      ELSE IF (ASSOCIATED(element%functor)) THEN
+        IF (.NOT. ALLOCATED(this%fn_call_vals)) THEN
+          ALLOCATE(this%fn_call_vals(element%actual_params))
+        ELSE IF (element%actual_params > SIZE(this%fn_call_vals)) THEN
+          DEALLOCATE(this%fn_call_vals)
+          ALLOCATE(this%fn_call_vals(element%actual_params))
+        END IF
+        CALL ees_pop_vector(this, element%actual_params, this%fn_call_vals, &
+            errcode)
+        CALL ees_push(this, element%functor%operate(element%actual_params, &
+            this%fn_call_vals, host_params, status_code, errcode), errcode)
       END IF
     END IF
 
