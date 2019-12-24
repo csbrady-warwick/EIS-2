@@ -133,7 +133,6 @@ CONTAINS
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> Whether or not the deletion succeded
     LOGICAL :: success
-    LOGICAL :: disorder
 
     success = this%strings%clear()
 
@@ -669,7 +668,6 @@ CONTAINS
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: newline_pos, newline_offset, last_pos
     INTEGER :: min_index, max_index, indx, line
-    CHARACTER(LEN=:), ALLOCATABLE :: str_compose
 
     errcode = eis_err_none
 
@@ -858,8 +856,6 @@ CONTAINS
         file_text_processor
     INTEGER, DIMENSION(2) :: index_range
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
-    INTEGER :: newline_pos, newline_offset, last_pos
-    INTEGER :: min_index, max_index, indx
 
     errcode = eis_err_none
 
@@ -924,7 +920,7 @@ CONTAINS
   SUBROUTINE ess_combine_split_lines(this, eol_sequence)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: eol_sequence
-    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str2, fname
+    CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
     LOGICAL :: ok, loop
     INTEGER :: eol_length, str_length, c_index, sindex, con_start
 
@@ -1080,9 +1076,9 @@ CONTAINS
   !> @param[in] this
   SUBROUTINE ess_remove_whitespace(this)
     CLASS(eis_string_store), INTENT(INOUT) :: this
-    INTEGER :: istr, sindex, line_number, line_number_max
+    INTEGER :: istr, sindex
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
-    LOGICAL :: ok, disorder
+    LOGICAL :: ok
 
     CALL this%strings%enable_disorder()
     DO istr = 1, this%get_size()
@@ -1154,9 +1150,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: store_index
     !> Range of indices to which the strings have been stored
     INTEGER, DIMENSION(2) :: index_range
-    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: txt, filename
     INTEGER :: ln, lnm, lastpos, tpos, fpos, lpos, lmpos
-    INTEGER :: is, sindex, imn, imx, ind
+    INTEGER :: sindex, imn, imx, ind
 
     errcode = eis_err_none
     IF (str(1:LEN(serial_header)) /= serial_header) THEN

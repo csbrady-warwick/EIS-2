@@ -153,7 +153,7 @@ MODULE eis_stack_mod
   SUBROUTINE prepend_stack(stack, prepend)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack, prepend
-    INTEGER :: i, n, old_stack_point
+    INTEGER :: old_stack_point
 
     old_stack_point = stack%stack_point
 

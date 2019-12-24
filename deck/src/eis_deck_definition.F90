@@ -192,7 +192,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: is_init = .FALSE.
     LOGICAL :: finalise_absent = .FALSE.
     CLASS(eis_deck_definition_info), POINTER :: info => NULL()
-    TYPE(eis_deck_block_definition), POINTER :: root_definition => NULL()
+    CLASS(eis_deck_block_definition), POINTER :: root_definition => NULL()
 
     CONTAINS
     PROCEDURE :: init => dd_init
@@ -228,7 +228,7 @@ MODULE eis_deck_definition_mod
 
   SUBROUTINE ddi_add_block(this, block_in)
     CLASS(eis_deck_definition_info), INTENT(INOUT) :: this
-    TYPE(eis_deck_block_definition), POINTER, INTENT(IN) :: block_in
+    CLASS(eis_deck_block_definition), POINTER, INTENT(IN) :: block_in
     CLASS(*), POINTER :: ptr
 
     !Needed in F2003 standard
@@ -634,7 +634,6 @@ MODULE eis_deck_definition_mod
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
     INTEGER :: dbd_init
-    CLASS(*), POINTER :: ptr
     LOGICAL :: inherit
 
     ALLOCATE(this%name, SOURCE = block_name)
@@ -753,7 +752,7 @@ MODULE eis_deck_definition_mod
 
     CLASS(eis_deck_block_definition), POINTER :: dbd_add_new_block
     CLASS(*), POINTER :: ptr
-    INTEGER :: id, inx
+    INTEGER :: id
 
     ALLOCATE(dbd_add_new_block)
     id = &
@@ -1140,8 +1139,6 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    CLASS(eis_deck_block_definition), POINTER :: par
-    INTEGER :: ipar
     INTEGER(eis_status) :: this_status
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
@@ -1251,8 +1248,6 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    CLASS(eis_deck_block_definition), POINTER :: par
-    INTEGER :: ipar
     INTEGER(eis_status) :: this_status
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
@@ -1298,8 +1293,6 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    CLASS(eis_deck_block_definition), POINTER :: par
-    INTEGER :: ipar
     INTEGER(eis_status) :: this_status
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
@@ -1567,7 +1560,6 @@ MODULE eis_deck_definition_mod
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
-    INTEGER :: inx
 
     ALLOCATE(new)
     CALL new%init(this, key_name, key_text_fn, key_value_fn, &
@@ -1609,7 +1601,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     INTEGER, INTENT(IN), OPTIONAL :: white_space_length
     PROCEDURE(parser_result_function), OPTIONAL :: value_function
-    TYPE(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
+    CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
 
     CLASS(*), POINTER :: ptr

@@ -241,7 +241,7 @@ CONTAINS
   !> @return eis_add_interop_parser
   FUNCTION eis_add_interop_parser(parser, holds)
     !> Parser to make interoperable
-    TYPE(eis_parser), POINTER, INTENT(IN) :: parser
+    CLASS(eis_parser), POINTER, INTENT(IN) :: parser
     LOGICAL, INTENT(IN), OPTIONAL :: holds
     !> Index of parser after storage
     INTEGER :: eis_add_interop_parser
@@ -816,7 +816,6 @@ CONTAINS
     LOGICAL :: exists
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element):: icoblock
-    INTEGER(eis_bitmask) :: icaps
     LOGICAL :: is_unary
     CHARACTER(LEN=:), ALLOCATABLE :: str
 
@@ -2564,7 +2563,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
-    LOGICAL :: is_global
 
     CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
         can_simplify, defer, global, description, hidden)
@@ -2612,7 +2610,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
-    LOGICAL :: is_global
 
     CALL this%add_constant(name, REAL(value, eis_num), errcode, cap_bits, &
         can_simplify, defer, global, description, hidden)
@@ -3310,7 +3307,7 @@ CONTAINS
     TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Allocatable array holding all the results from the evaluation.
     !> Will only be reallocated if it is too small to hold all the results
-    REAL(eis_num), DIMENSION(:), INTENT(OUT), ALLOCATABLE :: result
+    REAL(eis_num), DIMENSION(:), INTENT(INOUT), ALLOCATABLE :: result
     !> Error code describing any errors that occured
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)

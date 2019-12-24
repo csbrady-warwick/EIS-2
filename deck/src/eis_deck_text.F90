@@ -89,7 +89,6 @@ MODULE eis_deck_from_text_mod
 
     INTEGER :: i
     CHARACTER(LEN=:), ALLOCATABLE :: line
-    INTEGER, DIMENSION(:), ALLOCATABLE :: array
     TYPE(eis_deck_block_definition), POINTER :: cdef
     TYPE(eis_string_deck_block), POINTER :: cblock
     INTEGER(eis_status) :: this_status
@@ -543,11 +542,7 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
-
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) RETURN
 
@@ -587,10 +582,7 @@ MODULE eis_deck_from_text_mod
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
 
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)
@@ -638,10 +630,7 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
 
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)
@@ -685,10 +674,7 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
 
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) RETURN
     IF (.NOT. ALLOCATED(this%sdeck)) RETURN
@@ -727,10 +713,7 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_error), INTENT(OUT) :: errcode
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)
@@ -770,10 +753,7 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
 
-    TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err, host_state, status
-    TYPE(eis_deck_block_definition), POINTER :: bdef
-    LOGICAL :: parse_over, first_pass
+    INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)

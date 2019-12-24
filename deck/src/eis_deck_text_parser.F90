@@ -437,7 +437,7 @@ MODULE eis_string_deck_mod
     !> Error code
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER :: iline, cloc, ln, lnm
-    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename, raw
+    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename
     LOGICAL :: found
     INTEGER, DIMENSION(2) :: ranges
 
@@ -606,7 +606,7 @@ MODULE eis_string_deck_mod
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: max_level
     LOGICAL, INTENT(IN), OPTIONAL :: allow_root_keys, allow_empty_blocks
-    INTEGER :: iline, cloc, iline2
+    INTEGER :: iline, cloc
     LOGICAL :: ok
     CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
     INTEGER :: iblock, current_block, current_level, ln

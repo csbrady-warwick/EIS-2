@@ -458,8 +458,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name
     CLASS(*), INTENT(IN) :: item
     CLASS(*), POINTER :: copy
-    INTEGER(INT64) :: bucket
-    INTEGER :: id
 
     ALLOCATE(copy, SOURCE = item)
     CALL this%hold(name, copy, owns = .TRUE.)
@@ -485,7 +483,6 @@ CONTAINS
     CLASS(*), POINTER, INTENT(IN) :: item
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     INTEGER(INT64) :: bucket
-    INTEGER :: id
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)

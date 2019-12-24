@@ -268,10 +268,9 @@ CONTAINS
 
     CLASS(ordered_store), INTENT(INOUT) :: this
     LOGICAL :: success
-    TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: iindex
 
-    DEALLOCATE(this%items) 
+    DEALLOCATE(this%items)
+    success = .TRUE.
 
   END FUNCTION os_clear
 

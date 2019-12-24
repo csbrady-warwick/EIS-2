@@ -236,7 +236,6 @@ CONTAINS
     INTEGER :: dotloc, i
     CLASS(eis_namespace), POINTER :: item
     CLASS(*), POINTER :: gptr
-    CLASS(string_holder), POINTER :: i2
 
     ern_is_included = .FALSE.
 
@@ -1281,10 +1280,7 @@ CONTAINS
     CLASS(eis_registry), INTENT(INOUT) :: this
     !> Number of names in this registry
     INTEGER :: eir_get_name_count
-    CLASS(*), POINTER :: gptr
-    INTEGER :: i
 
-!    eir_get_name_count = this%uop_table%get_name_count()
     eir_get_name_count = 0
     eir_get_name_count = eir_get_name_count + this%stored_items%get_name_count()
 
@@ -1302,17 +1298,8 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     !> String containing retreived name
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: name
-    CLASS(*), POINTER :: gptr
-    INTEGER :: i
 
-!    IF (index <= this%uop_table%get_name_count()) THEN
-!      CALL this%uop_table%get_name(index, name)
-!    ELSE
-!      CALL this%stored_items%get_name(index - this%uop_table%get_name_count(), &
-!          name)
-!    END IF
-
-      CALL this%stored_items%get_name(index, name)
+    CALL this%stored_items%get_name(index, name)
 
   END SUBROUTINE eir_get_name
 

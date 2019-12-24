@@ -37,7 +37,7 @@ MODULE eis_parser_header
     SUBROUTINE parser_result_function(nresults, results, host_params, &
         status_code, errcode) BIND(C)
       IMPORT eis_num, eis_i4, C_PTR, eis_error, eis_status
-      INTEGER, INTENT(INOUT) :: nresults
+      INTEGER(eis_i4), INTENT(INOUT) :: nresults
       REAL(eis_num), DIMENSION(nresults), INTENT(OUT) :: results
       TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
       INTEGER(eis_status), INTENT(INOUT) :: status_code
@@ -45,9 +45,9 @@ MODULE eis_parser_header
     END SUBROUTINE
 
     FUNCTION parser_param_update_fn(user_params) BIND(C)
-      IMPORT C_PTR
+      IMPORT C_PTR, eis_i4
       TYPE(C_PTR), VALUE, INTENT(IN) :: user_params
-      INTEGER :: parser_param_update_fn
+      INTEGER(eis_i4) :: parser_param_update_fn
     END FUNCTION
 
     SUBROUTINE parser_store_data_fn(nresults, results, errcode) BIND(C)

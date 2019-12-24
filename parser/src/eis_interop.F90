@@ -14,7 +14,7 @@ MODULE eis_parser_interop
   !> Create a new interoperable parser
   !> @return create_new_parser
   FUNCTION create_new_parser()
-    TYPE(eis_parser), POINTER :: new
+    CLASS(eis_parser), POINTER :: new
     INTEGER :: create_new_parser !< Index of returned parser
 
     ALLOCATE(new)
@@ -60,7 +60,6 @@ MODULE eis_parser_interop
    INTEGER(C_INT), VALUE, INTENT(IN) :: should_simplify, should_minify
    INTEGER(C_INT), VALUE, INTENT(IN) :: no_import, physics
    INTEGER(C_INT) :: parser_id
-   CHARACTER(LEN=:), ALLOCATABLE :: language_f
 
    parser_id = create_new_parser()
    CALL interop_parsers(parser_id)%contents%init(errcode, &
