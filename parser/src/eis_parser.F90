@@ -615,6 +615,13 @@ CONTAINS
           4, err, err_handler = this%err_handler, description = '`supergauss(&
           &x,x0,w,n)` - Returns a superGaussian function of the form &
           &exp(((x-x0)/w)^n)')
+      CALL global_registry%add_function('utility.interpolate', eis_interpol, &
+          -1, err, err_handler = this%err_handler, description = 'interpolate(&
+          &p, (x0, y0), (x1, y1), ...) - get a value from a specified &
+          &interpolation function. Specify a point p and a series of control &
+          &points as (x,y) pairs. The nearest x points to p will be selected &
+          &and the corresponding y value will be selected by linear &
+          &interpolation')
 
       CALL global_registry%add_function('logic.if', eis_if, &
           3, err, err_handler = this%err_handler, description = '`if(a,b,c)` - &

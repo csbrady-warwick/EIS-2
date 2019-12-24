@@ -4,6 +4,7 @@ MODULE eis_core_functions_mod
   USE eis_constants
   USE eis_header
   USE eis_parser_header
+  USE eis_algorithm
   IMPLICIT NONE
 
   CONTAINS
@@ -1031,6 +1032,46 @@ MODULE eis_core_functions_mod
     END IF
 
   END FUNCTION eis_if
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Interpolate through a set of control points
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_interpol(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+    INTEGER :: n_items, i
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: x, y
+
+    IF (MOD(nparams,2) == 0) THEN
+      !EPOCH style interpolate
+      n_items = (nparams-2)/2
+      IF (n_items /= params(nparams)) THEN
+        res = 0
+        errcode = eis_err_wrong_parameters
+        RETURN
+      END IF
+    ELSE
+      !EIS style interpolate
+      n_items = (nparams-1)/2
+    END IF
+    ALLOCATE(x(n_items), y(n_items))
+    DO i = 1, n_items
+      x(i) = params(i*2)
+      y(i) = params(i*2+1)
+    END DO
+    res = eis_interpolate(params(1), x, y, errcode)
+
+  END FUNCTION eis_interpol
 
 #ifdef F2008
   !> @author C.S.Brady@warwick.ac.uk
