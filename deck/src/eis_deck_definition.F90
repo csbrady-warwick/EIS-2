@@ -793,9 +793,9 @@ MODULE eis_deck_definition_mod
       pass_number)
     CLASS(eis_deck_block_definition), INTENT(IN) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
-    INTEGER(eis_status), INTENT(INOUT) :: status_code
-    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_status), INTENT(INOUT), OPTIONAL :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER(eis_error), INTENT(INOUT), OPTIONAL :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: pass_number
     CLASS(eis_deck_block_definition), POINTER :: dbd_get_block
     CLASS(*), POINTER :: ptr
@@ -803,9 +803,9 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_block_name, &
         c_remap_name
     TYPE(C_PTR) :: c_block_ptr, c_remap_ptr
-    INTEGER(eis_status) :: this_status
-    INTEGER(eis_bitmask) :: this_state
-    INTEGER(eis_error) :: this_errcode
+    INTEGER(eis_status) :: outer_status, this_status
+    INTEGER(eis_bitmask) :: outer_state, this_state
+    INTEGER(eis_error) :: outer_errcode, this_errcode
     INTEGER :: npass
     INTEGER, DIMENSION(0) :: dummy
 
@@ -813,18 +813,24 @@ MODULE eis_deck_definition_mod
 
     npass = npass_global
     IF (PRESENT(pass_number)) npass = pass_number
+    outer_status = eis_status_none
+    IF (PRESENT(status_code)) outer_status = status_code
+    outer_state = 0_eis_bitmask
+    IF (PRESENT(host_state)) outer_state = host_state
+    outer_errcode = eis_err_none
+    IF (PRESENT(errcode)) outer_errcode = errcode
 
     !Try to remap using the Fortran remapper function first
     IF (.NOT. ASSOCIATED(ptr) .AND. ASSOCIATED(this%block_remap_fn)) THEN
       ALLOCATE(CHARACTER(LEN=this%info%longest_block_name)::remap_name)
       this_status = eis_status_none
-      this_state = 0
+      this_state = 0_eis_bitmask
       this_errcode = eis_err_none
       CALL this%block_remap_fn(block_name, npass, remap_name, this_status, &
           this_state, this_errcode)
-      status_code = IOR(status_code, this_status)
-      host_state = IOR(host_state, this_state)
-      errcode = IOR(host_state, this_errcode)
+      outer_status = IOR(outer_status, this_status)
+      outer_state = IOR(outer_state, this_state)
+      outer_errcode = IOR(outer_errcode, this_errcode)
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
         errcode = IOR(errcode, eis_err_unknown_block)
       END IF
@@ -850,9 +856,9 @@ MODULE eis_deck_definition_mod
           this_status, this_state, this_errcode)
       CALL c_f_string(c_remap_ptr, remap_name)
       DEALLOCATE(c_remap_name, c_block_name)
-      status_code = IOR(status_code, this_status)
-      host_state = IOR(host_state, this_state)
-      errcode = IOR(host_state, this_errcode)
+      outer_status = IOR(outer_status, this_status)
+      outer_state = IOR(outer_state, this_state)
+      outer_errcode = IOR(outer_errcode, this_errcode)
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
         errcode = IOR(errcode, eis_err_unknown_block)
       END IF
@@ -877,7 +883,7 @@ MODULE eis_deck_definition_mod
     IF (errcode /= eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
         CALL this%info%on_block_failure_fn(block_name, npass, dummy, &
-            dummy, status_code, host_state, errcode)
+            dummy, outer_status, outer_state, outer_errcode)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
@@ -885,11 +891,15 @@ MODULE eis_deck_definition_mod
         CALL f_c_string(block_name, LEN(block_name), c_block_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_block_name), &
             INT(npass, C_INT), SIZE(dummy, KIND=C_INT), &
-            INT(dummy, C_INT), INT(dummy, C_INT), status_code, &
-            host_state, errcode)
+            INT(dummy, C_INT), INT(dummy, C_INT), outer_status, &
+            outer_state, outer_errcode)
         DEALLOCATE(c_block_name)
       END IF
     END IF
+
+    IF (PRESENT(status_code)) status_code = outer_status
+    IF (PRESENT(host_state)) host_state = outer_state
+    IF (PRESENT(errcode)) errcode = outer_errcode
 
   END FUNCTION dbd_get_block
 
