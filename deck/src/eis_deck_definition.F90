@@ -1621,7 +1621,7 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error) :: this_err, stack_err
     INTEGER(eis_bitmask) :: this_bitmask
     INTEGER :: eindex, cindex, sindex, ct, stack_id
-    LOGICAL :: handled, is_key_value, is_directive
+    LOGICAL :: handled, is_key_value, is_directive, is_key_stack
     CHARACTER(LEN=:), ALLOCATABLE :: key, value
     TYPE(eis_stack), TARGET :: stack
     TYPE(eis_stack), POINTER :: stack_ptr
@@ -1696,6 +1696,7 @@ MODULE eis_deck_definition_mod
     END IF
 
     is_key_value = (sindex > 0 .AND. sindex < LEN(key_text) .AND. sindex > 1)
+    is_key_stack = is_key_value .OR. PRESENT(value_function)
     IF (is_key_value) THEN
       ALLOCATE(key, SOURCE = key_text(1:sindex-1))
       ALLOCATE(value, SOURCE = key_text(sindex+1:))
@@ -1707,12 +1708,10 @@ MODULE eis_deck_definition_mod
       END IF
     END IF
 
-    IF (is_key_value) THEN
-      ALLOCATE(c_key(LEN(key)))
-      CALL f_c_string(key, LEN(key), c_key)
-      ALLOCATE(c_value(LEN(value)))
-      CALL f_c_string(value, LEN(value), c_value)
-    END IF
+    ALLOCATE(c_key(LEN(key)))
+    CALL f_c_string(key, LEN(key), c_key)
+    ALLOCATE(c_value(LEN(value)))
+    CALL f_c_string(value, LEN(value), c_value)
 
     IF (is_directive) THEN
       base_stat = eis_status_directive
@@ -1720,15 +1719,13 @@ MODULE eis_deck_definition_mod
       base_stat = eis_status_none
     END IF
 
-    IF (is_key_value) THEN
-      ptr => this%keys%get(key)
-      SELECT TYPE(ptr)
-        CLASS IS (deck_key_definition)
-          dkd => ptr
-        CLASS DEFAULT
-          dkd => NULL()
-      END SELECT
-    END IF
+    ptr => this%keys%get(key)
+    SELECT TYPE(ptr)
+      CLASS IS (deck_key_definition)
+        dkd => ptr
+      CLASS DEFAULT
+        dkd => NULL()
+    END SELECT
 
     CALL this%get_parents(parent_kind)
     handled = .FALSE.
@@ -1769,61 +1766,36 @@ MODULE eis_deck_definition_mod
       IF (dkd%use_le) run = run .OR. (pass_number <= dkd%pass_le)
       IF (dkd%use_ge) run = run .OR. (pass_number >= dkd%pass_ge)
       IF (ASSOCIATED(dkd%should_key_trigger_fn)) THEN
-        IF (is_key_value) THEN
-          run = run .AND. dkd%should_key_trigger_fn(key, pass_number, &
-                parents, parent_kind, this_stat, this_bitmask, this_err)
-        ELSE
-          run = run .AND. dkd%should_key_trigger_fn(key_text, &
-                pass_number, parents, parent_kind, this_stat, this_bitmask, &
-                this_err)
-        END IF
+        run = run .AND. dkd%should_key_trigger_fn(key, pass_number, &
+              parents, parent_kind, this_stat, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
         status = IOR(status, this_stat)
         IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
       END IF
       IF (ASSOCIATED(dkd%c_should_key_trigger_fn)) THEN
-        IF (is_key_value) THEN
-          run = run .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key), &
-              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-              this_bitmask, this_err) /= 0_C_INT)
-        ELSE
-          run = run &
-              .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key_text), &
-              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-              this_bitmask, this_err) /= 0_C_INT)
-        END IF
+        run = run .AND. (dkd%c_should_key_trigger_fn(C_LOC(c_key), &
+            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+            this_bitmask, this_err) /= 0_C_INT)
         errcode = IOR(errcode, this_err)
         status = IOR(status, this_stat)
         IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
       END IF
+
       IF (.NOT. run) THEN
         IF (ASSOCIATED(this%info%on_key_no_trigger_fn)) THEN
-          IF (is_key_value) THEN
-            CALL this%info%on_key_no_trigger_fn(key, pass_number, parents, &
-                parent_kind, this_stat, this_bitmask, this_err)
-          ELSE
-            CALL this%info%on_key_no_trigger_fn(key_text, pass_number, &
-                parents, parent_kind, this_stat, this_bitmask, this_err)
-          END IF
+          CALL this%info%on_key_no_trigger_fn(key, pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
           errcode = IOR(errcode, this_err)
           status = IOR(status, this_stat)
           IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
         END IF
 
         IF (ASSOCIATED(this%info%c_on_key_no_trigger_fn)) THEN
-          IF (is_key_value) THEN
-            CALL this%info%c_on_key_no_trigger_fn(C_LOC(c_key), &
-                INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-                INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-                this_bitmask, this_err)
-          ELSE
-            CALL this%info%c_on_key_no_trigger_fn(C_LOC(c_key_text), &
-                INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-                INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-                this_bitmask, this_err)
-          END IF
+          CALL this%info%c_on_key_no_trigger_fn(C_LOC(c_key), &
+              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
           errcode = IOR(errcode, this_err)
           status = IOR(status, this_stat)
           IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
@@ -1895,14 +1867,18 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%key_numeric_value_fn) .AND. &
-          ASSOCIATED(ps) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = ps%evaluate(value, value_array, this_err, &
-              filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          IF (is_key_value) THEN
+            ct = ps%evaluate(value, value_array, this_err, &
+                filename = filename, line_number = line_number, &
+                char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
@@ -1928,14 +1904,18 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(dkd%c_key_numeric_value_fn) .AND. &
-          ASSOCIATED(ps) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = ps%evaluate(value, value_array, this_err, &
-              filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          IF (is_key_value) THEN
+            ct = ps%evaluate(value, value_array, this_err, &
+                filename = filename, line_number = line_number, &
+                char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          ELSE
+            errcode = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
@@ -1961,9 +1941,13 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF ((ASSOCIATED(dkd%key_stack_fn) .OR. ASSOCIATED(dkd%c_key_stack_fn)) &
-          .AND. is_key_value .AND. .NOT. handled) THEN
+          .AND. is_key_stack .AND. .NOT. handled) THEN
         IF (.NOT. PRESENT(value_function)) THEN
-          CALL ps%tokenize(value, stack, stack_err)
+          IF (is_key_value) THEN
+            CALL ps%tokenize(value, stack, stack_err)
+          ELSE
+            stack_err = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               stack_err)
@@ -2006,14 +1990,18 @@ MODULE eis_deck_definition_mod
         END IF
       END IF
 
-      IF ((isscalarvar .OR. isarrayvar) .AND. is_key_value &
+      IF ((isscalarvar .OR. isarrayvar) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
 
         this_err = eis_err_none
-        IF (.NOT. PRESENT(value_function)) THEN 
-          ct = ps%evaluate(value, value_array, this_err, &
-              filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl) 
+        IF (.NOT. PRESENT(value_function)) THEN
+          IF (is_key_value) THEN
+            ct = ps%evaluate(value, value_array, this_err, &
+                filename = filename, line_number = line_number, &
+                char_offset = sindex - 1 + wsl)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
         ELSE 
           CALL ps%set_result_function(value_function, stack, &
               this_err)
@@ -2217,14 +2205,18 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%any_key_numeric_value_fn) .AND. &
-          ASSOCIATED(ps) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = ps%evaluate(value, value_array, this_err, &
-              filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          IF (is_key_value) THEN
+            ct = ps%evaluate(value, value_array, this_err, &
+                filename = filename, line_number = line_number, &
+                char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
@@ -2246,14 +2238,18 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%c_any_key_numeric_value_fn) .AND. &
-          ASSOCIATED(ps) .AND. is_key_value &
+          ASSOCIATED(ps) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          ct = ps%evaluate(value, value_array, this_err, &
-              filename = filename, line_number = line_number, &
-              char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          IF (is_key_value) THEN
+            ct = ps%evaluate(value, value_array, this_err, &
+                filename = filename, line_number = line_number, &
+                char_offset = sindex - 1 + wsl, cap_bits = cbits)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               this_err)
@@ -2280,11 +2276,15 @@ MODULE eis_deck_definition_mod
       IF ((ASSOCIATED(this%any_key_stack_fn) &
           .OR. ASSOCIATED(this%c_any_key_stack_fn)) &
           .AND. ASSOCIATED(ps) &
-          .AND. is_key_value .AND. .NOT. handled) THEN
+          .AND. is_key_stack .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
         IF (.NOT. PRESENT(value_function)) THEN
-          CALL ps%tokenize(value, stack, stack_err)
+          IF (is_key_value) THEN
+            CALL ps%tokenize(value, stack, stack_err)
+          ELSE
+            stack_err = eis_err_bad_value
+          END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
               stack_err)
