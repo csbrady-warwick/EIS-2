@@ -832,7 +832,7 @@ MODULE eis_deck_definition_mod
       outer_state = IOR(outer_state, this_state)
       outer_errcode = IOR(outer_errcode, this_errcode)
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
-        errcode = IOR(errcode, eis_err_unknown_block)
+        outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
       IF (this_errcode == eis_err_none) THEN
         ptr => this%sub_blocks%get(TRIM(remap_name))
@@ -860,7 +860,7 @@ MODULE eis_deck_definition_mod
       outer_state = IOR(outer_state, this_state)
       outer_errcode = IOR(outer_errcode, this_errcode)
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
-        errcode = IOR(errcode, eis_err_unknown_block)
+        outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
       IF (this_errcode == eis_err_none) THEN
         ptr => this%sub_blocks%get(TRIM(remap_name))
@@ -874,13 +874,13 @@ MODULE eis_deck_definition_mod
         CLASS IS (eis_deck_block_definition)
           dbd_get_block => ptr
         CLASS DEFAULT
-          errcode = IOR(errcode, eis_err_unknown_block)
+          outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END SELECT
     ELSE
-      errcode = IOR(errcode, eis_err_unknown_block)
+      outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
     END IF
 
-    IF (errcode /= eis_err_none) THEN
+    IF (outer_errcode /= eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
         CALL this%info%on_block_failure_fn(block_name, npass, dummy, &
             dummy, outer_status, outer_state, outer_errcode)
