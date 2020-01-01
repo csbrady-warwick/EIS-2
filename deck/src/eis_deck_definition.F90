@@ -1675,8 +1675,8 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
 
-    ALLOCATE(c_key_text(LEN(key_text)))
-    CALL eis_f_c_string(key_text, LEN(key_text), c_key_text)
+    ALLOCATE(c_key_text(LEN(TRIM(key_text))))
+    CALL eis_f_c_string(TRIM(key_text), LEN(TRIM(key_text)), c_key_text)
     eindex = INDEX(key_text, '=')
     cindex = INDEX(key_text, ':')
     sindex = 0
@@ -1698,11 +1698,11 @@ MODULE eis_deck_definition_mod
     is_key_value = (sindex > 0 .AND. sindex < LEN(key_text) .AND. sindex > 1)
     is_key_stack = is_key_value .OR. PRESENT(value_function)
     IF (is_key_value) THEN
-      ALLOCATE(key, SOURCE = key_text(1:sindex-1))
-      ALLOCATE(value, SOURCE = key_text(sindex+1:))
+      ALLOCATE(key, SOURCE = TRIM(key_text(1:sindex-1)))
+      ALLOCATE(value, SOURCE = TRIM(key_text(sindex+1:)))
     ELSE
       IF (PRESENT(value_function)) THEN
-        ALLOCATE(key, SOURCE = key_text)
+        ALLOCATE(key, SOURCE = TRIM(key_text))
         ALLOCATE(value, SOURCE = "{Unknown value}")
         is_key_value = .TRUE.
       END IF
@@ -1812,8 +1812,8 @@ MODULE eis_deck_definition_mod
       IF (ASSOCIATED(dkd%key_text_fn)) THEN
         this_err = eis_err_none
         this_stat = base_stat
-        CALL dkd%key_text_fn(key_text, pass_number, parents, parent_kind, &
-            this_stat, this_bitmask, this_err)
+        CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
+            parent_kind, this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
         IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
@@ -2149,8 +2149,8 @@ MODULE eis_deck_definition_mod
       IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
         this_err = eis_err_none
         this_stat = base_stat
-        CALL this%any_key_text_fn(key_text, pass_number, parents, parent_kind, &
-            this_stat, this_bitmask, this_err)
+        CALL this%any_key_text_fn(TRIM(key_text), pass_number, parents,&
+            parent_kind, this_stat, this_bitmask, this_err)
         !If the block is flagged handled then you care about the error code
         !value
         IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
@@ -2346,7 +2346,7 @@ MODULE eis_deck_definition_mod
 
     IF (errcode == eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_key_success_fn)) THEN
-        CALL this%info%on_key_success_fn(key_text, pass_number, parents, &
+        CALL this%info%on_key_success_fn(TRIM(key_text), pass_number, parents, &
               parent_kind, this_stat, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
         status = IOR(status, this_stat)
@@ -2362,7 +2362,7 @@ MODULE eis_deck_definition_mod
       END IF
     ELSE
       IF (ASSOCIATED(this%info%on_key_failure_fn)) THEN
-        CALL this%info%on_key_failure_fn(key_text, pass_number, parents, &
+        CALL this%info%on_key_failure_fn(TRIM(key_text), pass_number, parents, &
               parent_kind, this_stat, this_bitmask, errcode)
       END IF
 
