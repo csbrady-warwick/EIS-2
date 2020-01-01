@@ -845,7 +845,7 @@ MODULE eis_deck_definition_mod
       ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
       ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR):: &
           c_remap_name(this%info%longest_block_name))
-      CALL f_c_string(block_name, LEN(block_name), c_block_name)
+      CALL eis_f_c_string(block_name, LEN(block_name), c_block_name)
       c_block_ptr = C_LOC(c_block_name)
       c_remap_ptr = C_LOC(c_remap_name)
       this_status = eis_status_none
@@ -854,7 +854,7 @@ MODULE eis_deck_definition_mod
       CALL this%c_block_remap_fn(c_block_ptr, INT(npass, C_INT), &
           INT(this%info%longest_block_name, C_INT), c_remap_ptr, &
           this_status, this_state, this_errcode)
-      CALL c_f_string(c_remap_ptr, remap_name)
+      CALL eis_c_f_string(c_remap_ptr, remap_name)
       DEALLOCATE(c_remap_name, c_block_name)
       outer_status = IOR(outer_status, this_status)
       outer_state = IOR(outer_state, this_state)
@@ -888,7 +888,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
-        CALL f_c_string(block_name, LEN(block_name), c_block_name)
+        CALL eis_f_c_string(block_name, LEN(block_name), c_block_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_block_name), &
             INT(npass, C_INT), SIZE(dummy, KIND=C_INT), &
             INT(dummy, C_INT), INT(dummy, C_INT), outer_status, &
@@ -957,7 +957,7 @@ MODULE eis_deck_definition_mod
     IF (this%lastinit /= pass_number .AND. (ASSOCIATED(this%c_init_block_fn) &
         .OR. ASSOCIATED(this%c_start_pass_block_fn))) THEN
       ALLOCATE(c_this_name(LEN(this%name)))
-      CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
       IF (this%lastinit == 0 .AND. ASSOCIATED(this%c_init_block_fn)) THEN
         this_status = eis_status_none
         this_err = eis_err_none
@@ -1029,7 +1029,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_no_trigger_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_no_trigger_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parent_kind, C_INT), this_status, &
@@ -1082,7 +1082,7 @@ MODULE eis_deck_definition_mod
 
     IF (ASSOCIATED(this%c_start_block_fn)) THEN
       ALLOCATE(c_this_name(LEN(this_name)))
-      CALL f_c_string(this_name, LEN(this_name), c_this_name)
+      CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
       this_err = eis_err_none
       this_status = eis_status_none
       CALL this%c_start_block_fn(C_LOC(c_this_name), &
@@ -1108,7 +1108,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_start_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_start_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), this_status, &
@@ -1123,7 +1123,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), status, &
@@ -1194,7 +1194,7 @@ MODULE eis_deck_definition_mod
 
     IF (ASSOCIATED(this%c_end_block_fn)) THEN
       ALLOCATE(c_this_name(LEN(this_name)))
-      CALL f_c_string(this_name, LEN(this_name), c_this_name)
+      CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
       this_err = eis_err_none
       this_status = eis_status_none
       CALL this%c_end_block_fn(C_LOC(c_this_name), &
@@ -1220,7 +1220,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_end_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_end_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), status, &
@@ -1235,7 +1235,7 @@ MODULE eis_deck_definition_mod
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
         ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parents, C_INT), status, &
@@ -1281,7 +1281,7 @@ MODULE eis_deck_definition_mod
 
     IF (ASSOCIATED(this%c_end_pass_block_fn)) THEN
       ALLOCATE(c_this_name(LEN(this%name)))
-      CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
       this_status = eis_status_none
       this_err = eis_err_none
       CALL this%c_end_pass_block_fn(C_LOC(c_this_name), &
@@ -1328,7 +1328,7 @@ MODULE eis_deck_definition_mod
 
     IF (ASSOCIATED(this%c_final_block_fn)) THEN
       ALLOCATE(c_this_name(LEN(this%name)))
-      CALL f_c_string(this%name, LEN(this%name), c_this_name)
+      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
       this_status = eis_status_none
       this_err = eis_err_none
       CALL this%c_final_block_fn(C_LOC(c_this_name), &
@@ -1676,7 +1676,7 @@ MODULE eis_deck_definition_mod
     END IF
 
     ALLOCATE(c_key_text(LEN(key_text)))
-    CALL f_c_string(key_text, LEN(key_text), c_key_text)
+    CALL eis_f_c_string(key_text, LEN(key_text), c_key_text)
     eindex = INDEX(key_text, '=')
     cindex = INDEX(key_text, ':')
     sindex = 0
@@ -1709,9 +1709,9 @@ MODULE eis_deck_definition_mod
     END IF
 
     ALLOCATE(c_key(LEN(key)))
-    CALL f_c_string(key, LEN(key), c_key)
+    CALL eis_f_c_string(key, LEN(key), c_key)
     ALLOCATE(c_value(LEN(value)))
-    CALL f_c_string(value, LEN(value), c_value)
+    CALL eis_f_c_string(value, LEN(value), c_value)
 
     IF (is_directive) THEN
       base_stat = eis_status_directive

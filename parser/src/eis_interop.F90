@@ -98,7 +98,7 @@ MODULE eis_parser_interop
     END IF
 
     stack_id = create_new_stack(INT(parser_id))
-    CALL c_f_string(expression, fstring)
+    CALL eis_c_f_string(expression, fstring)
     f_errcode = 0_eis_error
     CALL interop_stacks(stack_id)%parser%tokenize(fstring, &
         interop_stacks(stack_id)%contents, f_errcode)
@@ -146,7 +146,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_function(fstring, fn, errcode, f_bitmask, expected_params, &
@@ -191,7 +191,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_variable(fstring, fn, errcode, f_bitmask, &
@@ -234,7 +234,7 @@ MODULE eis_parser_interop
     IF (parser_id < 1 .OR. parser_id > interop_parser_count) RETURN
     parser => interop_parsers(parser_id)%contents
 
-    CALL c_f_string(name, fstring)
+    CALL eis_c_f_string(name, fstring)
     f_errcode = eis_err_none
     f_bitmask = INT(cap_bits, eis_bitmask)
     CALL parser%add_constant(fstring, value, errcode, f_bitmask, &

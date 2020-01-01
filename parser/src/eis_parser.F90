@@ -24,6 +24,12 @@
 !(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 !SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+!While this file is derived from a pre-GPL version of EPOCH's parser to avoid
+!license issues, many improvements have been made to the parser since then.
+!While the author for all of these routines is c.s.brady@warwick.ac.uk, much
+!of the background for the text parser is based of work done by other EPOCH
+!developers, most notably k.bennett@warwick.ac.uk
+
 MODULE eis_parser_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -132,6 +138,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: add_functor => eip_add_functor
+    PROCEDURE, PUBLIC :: add_functor_pointer => eip_add_functor_ptr
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
@@ -1649,11 +1656,11 @@ CONTAINS
       errcode_l = eis_err_none
       IF (ALLOCATED(tree_node%co_value%text)) THEN
         ALLOCATE(interop_name(LEN(tree_node%co_value%text)+1))
-        CALL f_c_string(tree_node%co_value%text, &
+        CALL eis_f_c_string(tree_node%co_value%text, &
             LEN(tree_node%co_value%text)+1, interop_name)
       ELSE
         ALLOCATE(interop_name(1))
-        CALL f_c_string("", 1, interop_name)
+        CALL eis_f_c_string("", 1, interop_name)
       END IF
       CALL late_bind_fn_c(C_LOC(interop_name), nparams, params_interop, &
           host_params, interop_stack_id, status_code, errcode_l)
@@ -1884,6 +1891,11 @@ CONTAINS
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Add a functor to the parser
+  !> @details
+  !> Functors are like functions but carry persistent information with them.
+  !> When you call this function the functor that you supply is copied. If your
+  !> functor is large enough that you don't want to make copies then use
+  !> add_functor_pointer
   !> @param[inout] this
   !> @param[in] name
   !> @param[in] functor
@@ -1949,6 +1961,93 @@ CONTAINS
 
   END SUBROUTINE eip_add_functor
 
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a functor to the parser using a pointer to the functor.
+  !> @details
+  !> Unlike add_functor no copy is made of the functor passed to this function
+  !> the pointer is used as is. By default EIS assumes ownership of the pointer
+  !> and it is automatically deleted when the parser wants to discard it. If the
+  !> host code is maintaining the pointer itself, set the "owns" parameter to
+  !> .FALSE. then the parser will discard the pointer without deleting it.
+  !> If you want the same functor under different names without making copies
+  !> then at most only one of then should own the functor. Care must be taken
+  !> because reusing the name that is associated with the ownership of the
+  !> functor will invalidate all of the other names. Unassociated pointers
+  !> cause this routine to return immediately
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] functor
+  !> @param[inout] errcode
+  !> @param[in] cap_bits
+  !> @param[in] expected_params
+  !> @param[in] can_simplify
+  !> @param[in] defer
+  !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
+  !> @param[in] owns
+  SUBROUTINE eip_add_functor_ptr(this, name, functor, errcode,  cap_bits, &
+      expected_params, can_simplify, defer, global, &
+      description, hidden, owns)
+
+    CLASS(eis_parser) :: this
+    !> Name to register function with. Will be used in expressions to
+    !> call the function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Functor to use when the block is accessed
+    CLASS(eis_functor), POINTER :: functor
+    !> Error code from storing the function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Capability bits that will be induced in a stack by using this function
+    !> Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Number of expected parameters for this function. Optional, default -1
+    !> (variadic function)
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Whether this function can be simplified. Optional, default .TRUE. 
+    LOGICAL, INTENT(IN), OPTIONAL :: can_simplify
+    !> Whether this function should be deferred. If .TRUE. effect is the
+    !> same as calling eip_add_functor_defer
+    LOGICAL, INTENT(IN), OPTIONAL :: defer
+    !> Whether to add this function to the global list of functions for all 
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    !> Description of this symbol
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    !> Should the parser take ownership of this pointer? Optional, default TRUE
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
+    INTEGER :: params
+    LOGICAL :: is_global
+
+    IF (.NOT. ASSOCIATED(functor)) RETURN
+
+    IF (PRESENT(expected_params)) THEN
+      params = expected_params
+    ELSE
+      params = -1
+    END IF
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    IF (is_global) THEN
+      CALL global_registry%add_functor_pointer(name, functor, params, errcode, &
+          can_simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, description = description, hidden = hidden, &
+          owns = owns)
+    ELSE
+      CALL this%registry%add_functor_pointer(name, functor, params, errcode, &
+          can_simplify, cap_bits, err_handler = this%err_handler, &
+          defer = defer, description = description, hidden = hidden, &
+          owns = owns)
+    END IF
+
+  END SUBROUTINE eip_add_functor_ptr
 
 
   !> @author C.S.Brady@warwick.ac.uk

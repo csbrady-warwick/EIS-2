@@ -7,11 +7,11 @@ MODULE eis_utils
   PRIVATE
 
   PUBLIC :: eis_default_status
-  PUBLIC :: eis_append_string, c_f_string, f_c_string
+  PUBLIC :: eis_append_string, eis_c_f_string, eis_f_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
   PUBLIC :: eis_compare_string, eis_present_and_alloc
-
+  PUBLIC :: eis_integer_as_string
 
   INTERFACE eis_copy_string
     MODULE PROCEDURE eis_copy_string_aa
@@ -52,13 +52,17 @@ MODULE eis_utils
 #endif
   END INTERFACE eis_compare_string
 
-  INTERFACE c_f_string
+  INTERFACE eis_c_f_string
     MODULE PROCEDURE c_f_string_array, c_f_string_ptr
-  END INTERFACE c_f_string
+  END INTERFACE eis_c_f_string
 
-  INTERFACE f_c_string
+  INTERFACE eis_f_c_string
     MODULE PROCEDURE f_c_string_array, f_c_string_ptr
-  END INTERFACE f_c_string
+  END INTERFACE eis_f_c_string
+
+  INTERFACE eis_integer_as_string
+    MODULE PROCEDURE integer4_as_string, integer8_as_string
+  END INTERFACE eis_integer_as_string
 
   CONTAINS
 
@@ -750,7 +754,7 @@ MODULE eis_utils
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), POINTER :: c_string_arr
 
     CALL C_F_POINTER(c_string, c_string_arr, [len_c_string])
-    CALL f_c_string(f_string, len_c_string, c_string_arr)
+    CALL eis_f_c_string(f_string, len_c_string, c_string_arr)
 
   END SUBROUTINE f_c_string_ptr
 
@@ -824,5 +828,60 @@ MODULE eis_utils
         .AND. ALLOCATED(string)
 
   END FUNCTION eis_present_and_alloc
+
+
+  !> @author Keith Bennett <K.Bennett@warwick.ac.uk>
+  !> @brief
+  !> Returns an integer as the smallest string containing it
+  !> taken from EPOCH
+  !> @param[in] int_in
+  !> @param[out] string
+  SUBROUTINE integer4_as_string(int_in, string)
+
+    INTEGER(INT32), INTENT(IN) :: int_in
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: string
+
+    INTEGER :: n_nums
+    CHARACTER(LEN=9) :: numfmt
+
+    IF (int_in == 0) THEN
+      n_nums = 1
+    ELSE
+      n_nums = 1 + INT(LOG10(REAL(ABS(int_in), eis_num)))
+    END IF
+    IF (int_in < 0) n_nums = n_nums + 1
+    ALLOCATE(CHARACTER(LEN=n_nums) :: string)
+    WRITE(numfmt, '(''(I'', I6.6, '')'')') n_nums
+    WRITE(string, numfmt) int_in
+
+  END SUBROUTINE integer4_as_string
+
+
+
+  !> @author Keith Bennett <K.Bennett@warwick.ac.uk>
+  !> @brief
+  !> Returns a long integer as the smallest string containing it
+  !> taken from EPOCH
+  !> @param[in] int_in
+  !> @param[out] string
+  SUBROUTINE integer8_as_string(int_in, string)
+
+    INTEGER(INT64), INTENT(IN) :: int_in
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: string
+
+    INTEGER :: n_nums
+    CHARACTER(LEN=12) :: numfmt
+
+    IF (int_in == 0) THEN
+      n_nums = 1
+    ELSE
+      n_nums = 1 + INT(LOG10(REAL(ABS(int_in), eis_num)))
+    END IF
+    IF (int_in < 0) n_nums = n_nums + 1
+    ALLOCATE(CHARACTER(LEN=n_nums)::string)
+    WRITE(numfmt, '(''(I'', I9.9, '')'')') n_nums
+    WRITE(string, numfmt) int_in
+
+  END SUBROUTINE integer8_as_string
 
 END MODULE eis_utils
