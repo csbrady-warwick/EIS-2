@@ -835,7 +835,7 @@ MODULE eis_deck_definition_mod
         outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
       IF (this_errcode == eis_err_none) THEN
-        ptr => this%sub_blocks%get(TRIM(remap_name))
+        ptr => this%sub_blocks%get(TRIM(ADJUSTL(remap_name)))
       END IF
       DEALLOCATE(remap_name)
     END IF
@@ -863,7 +863,7 @@ MODULE eis_deck_definition_mod
         outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
       IF (this_errcode == eis_err_none) THEN
-        ptr => this%sub_blocks%get(TRIM(remap_name))
+        ptr => this%sub_blocks%get(TRIM(ADJUSTL(remap_name)))
       END IF
       DEALLOCATE(remap_name)
     END IF
@@ -1675,8 +1675,9 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
 
-    ALLOCATE(c_key_text(LEN(TRIM(key_text))))
-    CALL eis_f_c_string(TRIM(key_text), LEN(TRIM(key_text)), c_key_text)
+    ALLOCATE(c_key_text(LEN(TRIM(ADJUSTL(key_text)))))
+    CALL eis_f_c_string(TRIM(ADJUSTL(key_text)), LEN(TRIM(ADJUSTL(key_text))), &
+        c_key_text)
     eindex = INDEX(key_text, '=')
     cindex = INDEX(key_text, ':')
     sindex = 0
@@ -1698,11 +1699,11 @@ MODULE eis_deck_definition_mod
     is_key_value = (sindex > 0 .AND. sindex < LEN(key_text) .AND. sindex > 1)
     is_key_stack = is_key_value .OR. PRESENT(value_function)
     IF (is_key_value) THEN
-      ALLOCATE(key, SOURCE = TRIM(key_text(1:sindex-1)))
-      ALLOCATE(value, SOURCE = TRIM(key_text(sindex+1:)))
+      ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text(1:sindex-1))))
+      ALLOCATE(value, SOURCE = TRIM(ADJUSTL(key_text(sindex+1:))))
     ELSE
       IF (PRESENT(value_function)) THEN
-        ALLOCATE(key, SOURCE = TRIM(key_text))
+        ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text)))
         ALLOCATE(value, SOURCE = "{Unknown value}")
         is_key_value = .TRUE.
       END IF
