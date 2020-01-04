@@ -1702,11 +1702,9 @@ MODULE eis_deck_definition_mod
       ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text(1:sindex-1))))
       ALLOCATE(value, SOURCE = TRIM(ADJUSTL(key_text(sindex+1:))))
     ELSE
-      IF (PRESENT(value_function)) THEN
-        ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text)))
-        ALLOCATE(value, SOURCE = "{Unknown value}")
-        is_key_value = .TRUE.
-      END IF
+      ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text)))
+      ALLOCATE(value, SOURCE = "{Unknown value}")
+      is_key_value = PRESENT(value_function)
     END IF
 
     ALLOCATE(c_key(LEN(key)))
