@@ -10,9 +10,9 @@ MODULE eis_header
   INTEGER, PRIVATE, PARAMETER :: eis_v3 = 0
 
   ABSTRACT INTERFACE
-    SUBROUTINE on_error_callback(errcode)
+    SUBROUTINE on_error_callback(errcode) BIND(C)
       IMPORT eis_error
-      INTEGER(eis_error), INTENT(IN) :: errcode
+      INTEGER(eis_error), VALUE, INTENT(IN) :: errcode
     END SUBROUTINE on_error_callback
   END INTERFACE
 

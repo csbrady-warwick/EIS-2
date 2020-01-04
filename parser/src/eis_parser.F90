@@ -89,7 +89,7 @@ MODULE eis_parser_mod
     TYPE(eis_registry) :: registry
     TYPE(eis_eval_stack) :: evaluator
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
-    LOGICAL :: owns_err_handler
+    LOGICAL :: owns_err_handler = .FALSE.
     INTEGER :: last_block_type, last_block_value, last_charindex
     CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
     LOGICAL :: is_init = .FALSE.

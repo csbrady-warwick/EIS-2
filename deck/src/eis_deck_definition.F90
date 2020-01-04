@@ -1599,7 +1599,7 @@ MODULE eis_deck_definition_mod
 
   SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, status, &
       errcode, host_state, filename, line_number, white_space_length, &
-      value_function, parser, interop_parser_id)
+      value_function, parser, interop_parser_id, non_value_line_is_blank)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
@@ -1613,6 +1613,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE(parser_result_function), OPTIONAL :: value_function
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
+    LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
 
     CLASS(*), POINTER :: ptr
     CLASS(deck_key_definition), POINTER :: dkd
@@ -1630,7 +1631,7 @@ MODULE eis_deck_definition_mod
         c_value
     TYPE(eis_parser), POINTER :: ps
     INTEGER :: interop_parser, wsl
-    LOGICAL :: run, any_candidates, isscalarvar, isarrayvar
+    LOGICAL :: run, any_candidates, isscalarvar, isarrayvar, non_value_blank
     INTEGER(INT32), DIMENSION(:), POINTER :: c_i32
     INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
     REAL(REAL32), DIMENSION(:), POINTER :: c_r32
@@ -1661,6 +1662,12 @@ MODULE eis_deck_definition_mod
       wsl = white_space_length
     ELSE
       wsl = 0
+    END IF
+
+    IF (PRESENT(non_value_line_is_blank)) THEN
+      non_value_blank = non_value_line_is_blank
+    ELSE
+      non_value_blank = .FALSE.
     END IF
 
     ptr => NULL()
@@ -1706,6 +1713,7 @@ MODULE eis_deck_definition_mod
       ALLOCATE(value, SOURCE = "{Unknown value}")
       is_key_value = PRESENT(value_function)
     END IF
+    IF (.NOT. is_key_value .AND. non_value_blank) RETURN
 
     ALLOCATE(c_key(LEN(key)))
     CALL eis_f_c_string(key, LEN(key), c_key)

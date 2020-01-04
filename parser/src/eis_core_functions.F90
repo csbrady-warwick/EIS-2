@@ -1055,7 +1055,7 @@ MODULE eis_core_functions_mod
     IF (MOD(nparams,2) == 0) THEN
       !EPOCH style interpolate
       n_items = (nparams-2)/2
-      IF (n_items /= params(nparams)) THEN
+      IF (n_items /= NINT(params(nparams))) THEN
         res = 0
         errcode = eis_err_wrong_parameters
         RETURN
