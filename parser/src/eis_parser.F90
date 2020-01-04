@@ -1042,6 +1042,8 @@ CONTAINS
           .OR. this%last_block_type == eis_pt_pointer_variable &
           .OR. this%last_block_type == eis_pt_constant &
           .OR. this%last_block_type == eis_pt_stored_variable &
+          .OR. this%last_block_type == eis_pt_function &
+          .OR. this%last_block_type == eis_pt_emplaced_function &
           .OR. (this%last_block_type == eis_pt_parenthesis &
           .AND. this%last_block_value == eis_paren_right_bracket))
 

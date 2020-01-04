@@ -371,12 +371,14 @@ MODULE eis_deck_from_text_mod
   !> @param[inout] this
   !> @param[in] definition
   !> @param[out] errcode
+  !> @param[in] pass_number
   !> @param[inout] state
-  SUBROUTINE tdp_initialise_deck(this, definition, errcode, state)
+  SUBROUTINE tdp_initialise_deck(this, definition, errcode, state, pass_number)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: state
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
     INTEGER(eis_error) :: err
     INTEGER(eis_bitmask) :: host_state
 
@@ -384,7 +386,8 @@ MODULE eis_deck_from_text_mod
 
     CALL eis_default_status(errcode = err, bitmask = host_state)
     CALL eis_default_status(errcode = errcode)
-    CALL definition%initialise_blocks(host_state, err)
+    CALL definition%initialise_blocks(host_state, err, &
+        pass_number = pass_number)
     errcode = IOR(errcode, err)
     IF (PRESENT(state)) state = IOR(state, host_state)
 
@@ -491,7 +494,8 @@ MODULE eis_deck_from_text_mod
     IF (first_pass) CALL definition%reset()
     IF (should_init) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
-      CALL this%initialise_deck(definition, err, state = host_state)
+      CALL this%initialise_deck(definition, err, state = host_state, &
+          pass_number = pass_number)
       errcode = IOR(errcode, err)
       IF (PRESENT(state)) state = IOR(state, host_state)
       IF (errcode /= eis_err_none) RETURN
@@ -515,6 +519,8 @@ MODULE eis_deck_from_text_mod
 
     CALL eis_default_status(errcode = err, bitmask = host_state)
     CALL definition%end_pass(host_state, err, pass_number = pass_number)
+    IF (PRESENT(state)) state = IOR(state, host_state)
+    errcode = IOR(errcode, err)
 
     IF (parse_over) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
