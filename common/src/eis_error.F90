@@ -31,6 +31,7 @@ MODULE eis_error_mod
     !>Is this error handler initialised
     LOGICAL :: is_init = .FALSE.
     CHARACTER(LEN=:), ALLOCATABLE :: language_pack
+    PROCEDURE(on_error_callback), NOPASS, POINTER :: on_error_fn => NULL()
     CONTAINS
     PROCEDURE, PUBLIC:: add_error => eeh_add_error !< Add an error
     PROCEDURE, PUBLIC :: flush_errors => eeh_flush !< Delete all stored errors
@@ -59,13 +60,16 @@ MODULE eis_error_mod
   !> @param[inout] this
   !> @param[out] errcode
   !> @param[in] language_pack
-  SUBROUTINE eeh_init(this, errcode, language_pack)
+  !> @param[in] on_error
+  SUBROUTINE eeh_init(this, errcode, language_pack, on_error)
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
     INTEGER(eis_error), INTENT(OUT) :: errcode
     !> Optional filename for a language pack. This will described the required
     !> errors in a "key=value" form. See the manual for a description of the
     !> keys needed
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: language_pack
+    !> Function to be called whenever an error is added to the error handler
+    PROCEDURE(on_error_callback), OPTIONAL :: on_error
     LOGICAL :: same_language, lang_default
 
     IF (ALLOCATED(this%language_pack)) THEN
@@ -84,6 +88,8 @@ MODULE eis_error_mod
         same_language = .TRUE.
       END IF
     END IF
+
+    IF (PRESENT(on_error)) this%on_error_fn => on_error
 
     IF (this%is_init .AND. same_language) RETURN
     this%is_init = .TRUE.
@@ -243,6 +249,8 @@ MODULE eis_error_mod
     IF (PRESENT(full_line)) ALLOCATE(temp(sz)%full_line, SOURCE = full_line)
     IF (PRESENT(full_line_pos)) temp(sz)%full_line_pos = full_line_pos
     CALL MOVE_ALLOC(temp, this%errors)
+
+    IF (ASSOCIATED(this%on_error_fn)) CALL this%on_error_fn(errcode)
 
   END SUBROUTINE eeh_add_error
 

@@ -9,6 +9,13 @@ MODULE eis_header
   INTEGER, PRIVATE, PARAMETER :: eis_v2 = 0
   INTEGER, PRIVATE, PARAMETER :: eis_v3 = 0
 
+  ABSTRACT INTERFACE
+    SUBROUTINE on_error_callback(errcode)
+      IMPORT eis_error
+      INTEGER(eis_error), INTENT(IN) :: errcode
+    END SUBROUTINE on_error_callback
+  END INTERFACE
+
   INTEGER(eis_error), PARAMETER :: eis_err_parser = 2**0 !< Error in parser
   !> Error in simplify
   INTEGER(eis_error), PARAMETER :: eis_err_simplifier = 2**1
