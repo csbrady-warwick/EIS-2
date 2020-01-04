@@ -766,7 +766,8 @@ MODULE eis_string_deck_mod
     DO iblock = 0, UBOUND(this%data%blocks, 1)
       CALL this%data%blocks(iblock)%compact_lines()
       IF (iblock > 0 .AND. .NOT. empty_blocks) THEN
-        IF (this%data%blocks(iblock)%get_line_count() < 1) THEN
+        IF (this%data%blocks(iblock)%get_line_count() < 1 &
+            .AND. this%data%blocks(iblock)%get_child_count() < 1) THEN
           errcode = eis_err_deck_empty_block
           IF (ALLOCATED(src_filename)) THEN
             CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
