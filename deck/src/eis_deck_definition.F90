@@ -931,6 +931,14 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+    LOGICAL :: run
+
+    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
+    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
+    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
+    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
+
+    IF (.NOT. run) RETURN
 
     CALL this%get_parents(parent_kind)
 
@@ -1266,6 +1274,14 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+    LOGICAL :: run
+
+    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
+    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
+    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
+    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
+    !You only trigger block_no_trigger on block starts, not block ends
+    IF (.NOT. run) RETURN
 
     CALL this%get_parents(parent_kind)
 
@@ -1311,6 +1327,14 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
+    LOGICAL :: run
+
+    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
+    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
+    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
+    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
+    !You only trigger block_no_trigger on block starts, not block ends
+    IF (.NOT. run) RETURN
 
     CALL this%get_parents(parent_kind)
 
