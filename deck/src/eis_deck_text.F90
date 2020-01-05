@@ -345,6 +345,7 @@ MODULE eis_deck_from_text_mod
     IF (this%owns_parser .AND. ASSOCIATED(this%parser)) DEALLOCATE(this%parser)
 
     IF (PRESENT(parser)) THEN
+      this%owns_parser = .FALSE.
       this%parser => parser
       IF (PRESENT(interop_parser_id)) THEN
         this%interop_parser = interop_parser_id

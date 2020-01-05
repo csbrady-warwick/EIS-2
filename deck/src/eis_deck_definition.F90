@@ -563,7 +563,6 @@ MODULE eis_deck_definition_mod
     IF (this%info%owns_interop) &
         CALL eis_release_interop_parser(this%info%interop_parser)
     IF (ASSOCIATED(this%info)) DEALLOCATE(this%info)
-    IF (ASSOCIATED(this%root_definition)) DEALLOCATE(this%root_definition)
   END SUBROUTINE dd_destructor
 
 
@@ -636,6 +635,7 @@ MODULE eis_deck_definition_mod
     INTEGER :: dbd_init
     LOGICAL :: inherit
 
+    IF (ALLOCATED(this%name)) DEALLOCATE(this%name)
     ALLOCATE(this%name, SOURCE = block_name)
     info%longest_block_name = MAX(info%longest_block_name, LEN(block_name))
     this%info => info
@@ -780,10 +780,14 @@ MODULE eis_deck_definition_mod
     CLASS(eis_deck_block_definition), POINTER, INTENT(INOUT) :: old_block
     CLASS(eis_deck_block_definition), POINTER :: dbd_add_old_block
     CLASS(*), POINTER :: ptr
+    INTEGER :: id
 
-    dbd_add_old_block => old_block
-    ptr => old_block
+    ALLOCATE(dbd_add_old_block, SOURCE = old_block)
+    id = dbd_add_old_block%init(this%info, old_block%name, this%depth + 1, &
+        this%id)
+    ptr => dbd_add_old_block
     CALL this%sub_blocks%hold(old_block%name, ptr, owns = .FALSE.)
+    CALL this%info%add_block(dbd_add_old_block)
     
   END FUNCTION dbd_add_old_block
 
