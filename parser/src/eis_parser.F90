@@ -33,6 +33,7 @@
 MODULE eis_parser_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
+  USE eis_string_store_mod
   USE eis_core_functions_mod
   USE eis_error_mod
   USE eis_eval_stack_mod
@@ -88,6 +89,7 @@ MODULE eis_parser_mod
     PRIVATE
     TYPE(eis_registry) :: registry
     TYPE(eis_eval_stack) :: evaluator
+    TYPE(eis_string_store) :: string_param_store
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
     LOGICAL :: owns_err_handler = .FALSE.
     INTEGER :: last_block_type, last_block_value, last_charindex
@@ -95,6 +97,7 @@ MODULE eis_parser_mod
     LOGICAL :: is_init = .FALSE.
     LOGICAL :: should_simplify = .TRUE.
     LOGICAL :: should_minify = .FALSE.
+    LOGICAL :: allow_text = .FALSE.
     TYPE(eis_stack) :: stack, brackets
     INTEGER :: physics_units = eis_physics_none
     CONTAINS
@@ -156,6 +159,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_symbol_info => eip_get_symbol_info
     PROCEDURE, PUBLIC :: optimise => eip_optimise
     PROCEDURE, PUBLIC :: optimize => eip_optimise
+    PROCEDURE, PUBLIC :: get_text => eip_get_text
 
     PROCEDURE, PUBLIC :: get_global_symbol_count => eip_get_global_symbol_count
     PROCEDURE, PUBLIC :: get_global_symbol => eip_get_global_symbol
@@ -361,6 +365,8 @@ CONTAINS
   !> default .TRUE.
   !> @param[in] should_minify - Should the parser autominify. Optional,
   !> default .FALSE
+  !> @param[in] allow_text - Should the parser allow text blocks. Optional
+  !> default .FALSE.
   !> @param[in] no_import - Should the parser not import default namepaces
   !> Optional, default .FALSE.
   !> @param[in] physics - What (if any) physics module should be loaded
@@ -368,11 +374,12 @@ CONTAINS
   !> @param[in] err_handler - Pass in a pointer to an externally supplied error
   !> handler
   SUBROUTINE eip_init(this, errcode, should_simplify, should_minify, &
-      no_import, physics, err_handler)
+      allow_text, no_import, physics, err_handler)
 
     CLASS(eis_parser) :: this
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_text
     INTEGER, INTENT(IN), OPTIONAL :: physics
     CLASS(eis_error_handler), POINTER, INTENT(IN), OPTIONAL :: err_handler
     INTEGER(eis_error) :: err
@@ -1134,8 +1141,9 @@ CONTAINS
   !> @param[in] line_number
   !> @param[in] char_offset
   !> @param[in] append
+  !> @param[in] allow_text
   SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify, &
-      filename, line_number, char_offset, append)
+      filename, line_number, char_offset, append, allow_text)
 
     CLASS(eis_parser) :: this
     !> Expression to convert to stack
@@ -1164,11 +1172,14 @@ CONTAINS
     !> Whether the newly parsed value should be appended to
     !> the values in the stack or no. Optional, default false
     LOGICAL, INTENT(IN), OPTIONAL :: append
+    !> Should the parser allow text blocks. Optional, default false
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_text
     LOGICAL :: maybe_e, should_simplify, should_minify, should_dealloc
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
     INTEGER :: charindex
+    LOGICAL :: atext
 
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
@@ -1177,6 +1188,8 @@ CONTAINS
     IF (PRESENT(minify)) should_minify = minify
     should_simplify = this%should_simplify
     IF (PRESENT(simplify)) should_simplify = simplify
+    atext = this%allow_text
+    IF (PRESENT(allow_text)) atext = allow_text
 
     IF (.NOT. this%is_init) CALL this%init(err)
     should_dealloc = .TRUE.
@@ -1245,7 +1258,7 @@ CONTAINS
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
             cap_bits, charindex + output%char_offset, charindex, output, err, &
-            filename, line_number, expression)
+            filename, line_number, expression, atext)
         charindex = i
         IF (err /= eis_err_none) THEN
           err = IOR(err, eis_err_parser)
@@ -1267,7 +1280,7 @@ CONTAINS
 
     CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
         cap_bits, charindex + output%char_offset,  charindex, output, err, &
-        filename, line_number, expression)
+        filename, line_number, expression, atext)
     output%cap_bits = IOR(output%cap_bits, cap_bits)
 
     IF (err == eis_err_none) THEN
@@ -1370,10 +1383,11 @@ CONTAINS
   !> @param[in] line_number
   !> @param[in] char_offset
   !> @param[out] cap_bits
+  !> @param[in] allow_text
   !> @return eip_evaluate_string
   FUNCTION eip_evaluate_string(this, str, result, errcode, host_params, &
       is_no_op, simplify, minify, filename, line_number, char_offset, &
-      cap_bits)
+      cap_bits, allow_text)
     CLASS(eis_parser) :: this
     !> String to evaluate as maths
     CHARACTER(LEN=*), INTENT(IN) :: str
@@ -1404,6 +1418,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: char_offset
     !> Capability bits of the parsed stack
     INTEGER(eis_bitmask), INTENT(OUT), OPTIONAL :: cap_bits
+    !> Should the returned stack be able to handle text elements
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_text
     !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_string
     TYPE(eis_stack) :: stack
@@ -1418,7 +1434,7 @@ CONTAINS
     errcode = eis_err_none
 
     CALL this%tokenize(str, stack, errcode, simplify, minify, filename, &
-        line_number, char_offset)
+        line_number, char_offset, allow_text = allow_text)
     IF (stack%has_emplaced) CALL this%emplace(stack, errcode, &
         host_params = host_params)
     IF (errcode == eis_err_none) THEN
@@ -1791,8 +1807,10 @@ CONTAINS
   !> @param[in] global
   !> @param[in] description
   !> @param[in] hidden
+  !> @param[in] text_params
   SUBROUTINE eip_add_function_defer(this, name, errcode,  cap_bits, &
-      expected_params, can_simplify, global, description, hidden)
+      expected_params, can_simplify, global, description, hidden, &
+      text_params)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -1814,9 +1832,12 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    !> Can this functor have text parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: text_params
 
     CALL this%add_function(name, eis_dummy, errcode, cap_bits, &
-        expected_params, can_simplify, .TRUE., global, description, hidden)
+        expected_params, can_simplify, .TRUE., global, description, hidden, &
+        text_params)
 
   END SUBROUTINE eip_add_function_defer
 
@@ -1835,8 +1856,10 @@ CONTAINS
   !> @param[in] global
   !> @param[in] description
   !> @param[in] hidden
+  !> @param[in] text_params
   SUBROUTINE eip_add_function_now(this, name, fn, errcode,  cap_bits, &
-      expected_params, can_simplify, defer, global, description, hidden)
+      expected_params, can_simplify, defer, global, description, hidden, &
+      text_params)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -1864,6 +1887,8 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    !> Can this functor have text parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: text_params
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -1879,11 +1904,13 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_function(name, fn, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, description = description, hidden = hidden)
+          defer = defer, description = description, hidden = hidden, &
+          can_have_text_params = text_params)
     ELSE
       CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
-          description = description, hidden = hidden)
+          description = description, hidden = hidden, &
+          can_have_text_params = text_params)
     END IF
 
   END SUBROUTINE eip_add_function_now
@@ -1909,9 +1936,10 @@ CONTAINS
   !> @param[in] global
   !> @param[in] description
   !> @param[in] hidden
+  !> @param[in] text_params
   SUBROUTINE eip_add_functor(this, name, functor, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global, &
-      description, hidden)
+      description, hidden, text_params)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -1939,6 +1967,8 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    !> Can this functor have text parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: text_params
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -1954,11 +1984,13 @@ CONTAINS
     IF (is_global) THEN
       CALL global_registry%add_functor(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, description = description, hidden = hidden)
+          defer = defer, description = description, hidden = hidden, &
+          can_have_text_params = text_params)
     ELSE
       CALL this%registry%add_functor(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
-          defer = defer, description = description, hidden = hidden)
+          defer = defer, description = description, hidden = hidden, &   
+          can_have_text_params = text_params)
     END IF
 
   END SUBROUTINE eip_add_functor
@@ -1991,9 +2023,10 @@ CONTAINS
   !> @param[in] description
   !> @param[in] hidden
   !> @param[in] owns
+  !> @param[in] text_params
   SUBROUTINE eip_add_functor_ptr(this, name, functor, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global, &
-      description, hidden, owns)
+      description, hidden, owns, text_params)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -2023,6 +2056,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Should the parser take ownership of this pointer? Optional, default TRUE
     LOGICAL, INTENT(IN), OPTIONAL :: owns
+    !> Can this functor have text parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: text_params
     INTEGER :: params
     LOGICAL :: is_global
 
@@ -2041,12 +2076,12 @@ CONTAINS
       CALL global_registry%add_functor_pointer(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          owns = owns)
+          owns = owns, can_have_text_params = text_params)
     ELSE
       CALL this%registry%add_functor_pointer(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          owns = owns)
+          owns = owns, can_have_text_params = text_params)
     END IF
 
   END SUBROUTINE eip_add_functor_ptr
@@ -2946,9 +2981,10 @@ CONTAINS
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] full_line
+  !> @param[in] allow_text
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
       cap_bits, charindex, trim_charindex, output, err, filename, line_number, &
-      full_line)
+      full_line, allow_text)
 
     CLASS(eis_parser) :: this
     !> Text to parse
@@ -2976,6 +3012,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     !> Full version of the line being parsed
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
+    !> Should the parser allow text blocks 
+    LOGICAL, INTENT(IN) :: allow_text
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
     LOGICAL :: stack_empty
@@ -2993,11 +3031,52 @@ CONTAINS
       CALL this%err_handler%add_error(eis_err_parser, err, current, charindex, &
         filename = filename, line_number = line_number, full_line = full_line, &
         full_line_pos = trim_charindex)
-      CALL deallocate_stack(this%stack)
       RETURN
     END IF
 
     IF (iblock%ptype == eis_pt_null) RETURN
+
+    IF (iblock%ptype == eis_pt_character) THEN
+      IF (allow_text) THEN
+        IF (this%last_block_type == eis_pt_parenthesis &
+            .OR. this%last_block_type == eis_pt_parenthesis &
+            .OR. this%last_block_type == eis_pt_null) THEN
+          iblock%ptype = eis_pt_constant
+          iblock%can_simplify = .FALSE.
+          iblock%value = eis_pt_character
+          iblock%numerical_data = this%string_param_store%store(&
+              icoblock%text(2:LEN(icoblock%text)-1))
+          IF (this%stack%stack_point > 1) THEN
+            this%stack%entries(this%stack%stack_point-1)%has_string_params &
+                = .TRUE.
+          END IF 
+        ELSE
+          err = IOR(err, eis_err_malformed)
+          CALL this%err_handler%add_error(eis_err_parser, err, current, &
+            charindex, filename = filename, line_number = line_number, &
+            full_line = full_line, full_line_pos = trim_charindex)
+          RETURN
+        END IF
+      ELSE
+        err = IOR(err, eis_err_bad_value)
+        CALL this%err_handler%add_error(eis_err_parser, err, current, &
+          charindex, filename = filename, line_number = line_number, &
+          full_line = full_line, full_line_pos = trim_charindex)
+        RETURN
+      END IF
+    END IF
+
+    !Character variables must be followed by either a comma or a close bracket
+    IF (this%last_block_type == eis_pt_character .AND. &
+          .NOT. (iblock%ptype == eis_pt_separator &
+          .OR. (iblock%ptype == eis_pt_parenthesis &
+          .AND. iblock%value == eis_paren_right_bracket))) THEN
+      err = IOR(err, eis_err_bad_value)
+      CALL this%err_handler%add_error(eis_err_parser, err, current, &
+        charindex, filename = filename, line_number = line_number, &
+        full_line = full_line, full_line_pos = trim_charindex)
+      RETURN
+    END IF
 
     !Functions must be followed by a left bracket
     IF ((this%last_block_type == eis_pt_function &
@@ -3140,6 +3219,23 @@ CONTAINS
                         "{unknown}", charindex)
                   END IF
                 END IF
+
+                IF ((this%stack%entries(this%stack%stack_point) &
+                    %has_string_params .NEQV. &
+                    this%stack%co_entries(this%stack%stack_point)% &
+                    can_have_string_params)) THEN
+                  err = IOR(err, eis_err_text)
+                  IF (ALLOCATED(this%stack%co_entries)) THEN
+                    CALL this%err_handler%add_error(eis_err_parser, err, &
+                        this%stack%co_entries(this%stack%stack_point)%text, &
+                        this%stack%co_entries(this%stack%stack_point)%charindex&
+                        , filename = filename, line_number = line_number, &
+                        full_line = full_line, full_line_pos = trim_charindex)
+                  ELSE
+                    CALL this%err_handler%add_error(eis_err_parser, err, &
+                        "{unknown}", charindex)
+                  END IF
+                END IF
                 CALL pop_to_stack(this%stack, output)
                 CALL pop_to_null(this%brackets)
               END IF
@@ -3237,6 +3333,9 @@ CONTAINS
 
     IF (iblock%ptype /= eis_pt_null) THEN
       this%last_block_type = iblock%ptype
+      IF (iblock%ptype == eis_pt_constant &
+          .AND. iblock%value == eis_pt_character) &
+          this%last_block_type = eis_pt_character
       this%last_block_value = iblock%value
       this%last_charindex = charindex
       IF (ALLOCATED(this%last_block_text)) THEN
@@ -3493,6 +3592,28 @@ CONTAINS
     CALL global_registry%optimise()
 
   END SUBROUTINE eip_optimise
+
+
+
+  !> @brief
+  !> Optimise the global and local registries
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[in] str
+  !> @param[out] errcode
+  SUBROUTINE eip_get_text(this, index, str, errcode)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index !< Index of string to retrieve
+    !> String to retieve
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str
+    !> Error code
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+
+    errcode = eis_err_none
+    IF (.NOT. this%string_param_store%get(index, str)) THEN
+      errcode = eis_err_bad_value
+    END IF
+  END SUBROUTINE eip_get_text
 
 
 

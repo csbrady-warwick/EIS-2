@@ -76,6 +76,8 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_bad_key = 2**30
   !> Fatal error was reported by the host code
   INTEGER(eis_error), PARAMETER :: eis_err_host = 2_eis_error**31_eis_error
+  !> Function had a text parameter that should not have had a text parameter
+  INTEGER(eis_error), PARAMETER :: eis_err_text = 2_eis_error**32_eis_error
 
   CONTAINS
 

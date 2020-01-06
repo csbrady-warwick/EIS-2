@@ -111,6 +111,7 @@ MODULE eis_parser_header
   TYPE eis_stack_co_element
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
+    LOGICAL :: can_have_string_params = .FALSE.
     INTEGER :: charindex = -1
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
@@ -124,6 +125,7 @@ MODULE eis_parser_header
     INTEGER :: ptype
     INTEGER :: value
     INTEGER :: actual_params = -1
+    LOGICAL :: has_string_params = .FALSE.
     REAL(eis_num) :: numerical_data
     INTEGER(INT32), POINTER :: i32data => NULL()
     INTEGER(INT64), POINTER :: i64data => NULL()
