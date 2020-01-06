@@ -47,6 +47,7 @@ MODULE eis_deck_from_text_mod
     PROCEDURE :: get_block_name => tdp_get_block_name
     PROCEDURE :: get_block_parents => tdp_get_block_parents
     PROCEDURE :: get_block_structure => tdp_get_block_structure
+    PROCEDURE :: release_strings => tdp_release_strings
     FINAL :: tdp_destructor
 
   END TYPE eis_text_deck_parser
@@ -949,5 +950,16 @@ MODULE eis_deck_from_text_mod
     END IF
 
   END SUBROUTINE tdp_get_block_structure
+
+
+
+  !> @brief
+  !> Deallocate the string representation of the deck
+  !> @param[inout] this
+  SUBROUTINE tdp_release_strings(this)
+    CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
+
+    IF (ALLOCATED(this%sdeck)) DEALLOCATE(this%sdeck)
+  END SUBROUTINE tdp_release_strings
 
 END MODULE eis_deck_from_text_mod

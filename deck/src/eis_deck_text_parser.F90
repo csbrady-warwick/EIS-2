@@ -53,9 +53,11 @@ MODULE eis_string_deck_mod
     PROCEDURE(filename_processor_proto), POINTER, NOPASS :: &
         filename_processor => NULL()
     INTEGER :: max_block_id = -1
+    LOGICAL :: is_generated = .FALSE.
     CONTAINS
     PRIVATE
     PROCEDURE :: parse_core => esd_parse_core
+    PROCEDURE :: clear_blocklist => esd_clear_blocklist
     PROCEDURE, PUBLIC :: init => esd_init
     PROCEDURE, PUBLIC :: load_deck_file => esd_parse_deck_file
     PROCEDURE, PUBLIC :: read_deck_string => esd_parse_deck_string
@@ -427,6 +429,19 @@ MODULE eis_string_deck_mod
   END SUBROUTINE esd_init
 
 
+
+  !> Delete the parsed blocklist
+  SUBROUTINE esd_clear_blocklist(this)
+    CLASS(eis_string_deck), INTENT(INOUT) :: this
+
+    IF (ASSOCIATED(this%data%blocks)) DEALLOCATE(this%data%blocks)
+    this%data%blocks => NULL()
+    this%is_generated = .FALSE.
+
+  END SUBROUTINE esd_clear_blocklist
+
+
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Routine containing the core parsing information that is common
@@ -440,6 +455,8 @@ MODULE eis_string_deck_mod
     CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename
     LOGICAL :: found
     INTEGER, DIMENSION(2) :: ranges
+
+    CALL this%clear_blocklist()
 
     errcode = eis_err_none
     CALL this%data%strings%remove_comments(slc_start='#', mlc_start='/*', &
@@ -493,6 +510,7 @@ MODULE eis_string_deck_mod
         END IF
       END IF
     END DO
+
   END SUBROUTINE esd_parse_core
 
 
@@ -617,6 +635,9 @@ MODULE eis_string_deck_mod
     TYPE(bholder), POINTER :: head => NULL(), new
     INTEGER :: mlevel
     LOGICAL :: root_keys, empty_blocks
+
+    IF (this%is_generated) RETURN
+    this%is_generated = .TRUE.
 
     mlevel = HUGE(mlevel)
     IF (PRESENT(max_level)) mlevel = max_level
