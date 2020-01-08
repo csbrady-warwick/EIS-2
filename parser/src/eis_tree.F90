@@ -265,10 +265,12 @@ MODULE eis_tree_mod
   !> of the stack
   !> @param[in] stack - Stack to visualise
   !> @param[inout] str - String to hold the dot representation
-  SUBROUTINE eis_visualise_stack(stack, str)
+  !> @param[in] nformat - Format string for literal numbers
+  SUBROUTINE eis_visualise_stack(stack, str, nformat)
 
     TYPE(eis_stack), INTENT(IN) :: stack
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
 
@@ -278,7 +280,7 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL eis_tree_to_dot(root, str)
+      CALL eis_tree_to_dot(root, str, nformat)
       DEALLOCATE(root)
     END DO
 
@@ -286,27 +288,30 @@ MODULE eis_tree_mod
 
 
 
-  SUBROUTINE eis_tree_to_dot(root, str)
+  SUBROUTINE eis_tree_to_dot(root, str, nformat)
     TYPE(eis_tree_item) :: root
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
     INTEGER :: root_level
 
     root_level = 1
 
     CALL eis_append_string(str, 'strict graph G {')
-    CALL dot_output(root, str, root_level)
+    CALL dot_output(root, str, root_level, nformat)
     CALL eis_append_string(str, '}')
 
   END SUBROUTINE eis_tree_to_dot
 
 
 
-  RECURSIVE SUBROUTINE dot_output(node, str, id_in)
+  RECURSIVE SUBROUTINE dot_output(node, str, id_in, nformat)
 
     TYPE(eis_tree_item), INTENT(IN) :: node
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     INTEGER, INTENT(INOUT) :: id_in
-    INTEGER :: inode, my_id
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
+    INTEGER :: inode, my_id, ios
+    CHARACTER(LEN=100) :: rstring
     CHARACTER(LEN=10) :: ds
     CHARACTER(LEN=5) ::  val1, val2
 
@@ -322,8 +327,15 @@ MODULE eis_tree_mod
     END SELECT
 
     WRITE(val1, '(I5.5)') id_in
-    CALL eis_append_string(str, TRIM(val1) // '[label="' // node%co_value%text &
-        // '"] [shape=' // TRIM(ds) //'];')
+    IF (node%value%ptype /= eis_pt_constant .OR. .NOT. PRESENT(nformat)) THEN
+      CALL eis_append_string(str, TRIM(val1) // '[label="' // &
+          node%co_value%text // '"] [shape=' // TRIM(ds) //'];')
+    ELSE
+      WRITE(rstring, nformat, iostat = ios) node%value%numerical_data
+      IF (ios /= 0) rstring = 'FORMAT ERROR!'
+      CALL eis_append_string(str, TRIM(val1) // '[label="' // &
+          TRIM(rstring) // '"] [shape=' // TRIM(ds) //'];')
+    END IF
 
     IF (ASSOCIATED(node%nodes)) THEN
       DO inode = SIZE(node%nodes), 1, -1
@@ -331,7 +343,7 @@ MODULE eis_tree_mod
         WRITE(val1, '(I5.5)') my_id
         WRITE(val2, '(I5.5)') id_in
         CALL eis_append_string(str, val1 // ' -- ' // val2 // ';')
-        CALL dot_output(node%nodes(inode), str, id_in)
+        CALL dot_output(node%nodes(inode), str, id_in, nformat)
       END DO
     END IF
 

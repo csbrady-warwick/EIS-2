@@ -418,11 +418,16 @@ MODULE eis_deck_from_text_mod
   !> @param[in] definition
   !> @param[out] errcode
   !> @param[inout] state
-  SUBROUTINE tdp_finalise_deck(this, definition, errcode, state)
+  !> @param[in] pass_number
+  !> @param[in] last_pass
+  SUBROUTINE tdp_finalise_deck(this, definition, errcode, state, &
+      pass_number, last_pass)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: state
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    LOGICAL, INTENT(IN), OPTIONAL :: last_pass
     INTEGER(eis_error) :: err
     INTEGER(eis_bitmask) :: host_state
 
@@ -430,7 +435,8 @@ MODULE eis_deck_from_text_mod
 
     CALL eis_default_status(errcode = errcode)
     CALL eis_default_status(errcode = err, bitmask = host_state)
-    CALL definition%finalise_blocks(host_state, err)
+    CALL definition%finalise_blocks(host_state, err, &
+        pass_number = pass_number, last_pass = last_pass)
     errcode = IOR(errcode, err)
     IF (PRESENT(state)) state = IOR(state, host_state)
 
@@ -544,12 +550,11 @@ MODULE eis_deck_from_text_mod
     IF (PRESENT(state)) state = IOR(state, host_state)
     errcode = IOR(errcode, err)
 
-    IF (parse_over) THEN
-      CALL eis_default_status(errcode = err, bitmask = host_state)
-      CALL this%finalise_deck(definition, err, state = host_state)
-      IF (PRESENT(state)) state = IOR(state, host_state)
-      errcode = IOR(errcode, err)
-    END IF
+    CALL eis_default_status(errcode = err, bitmask = host_state)
+    CALL this%finalise_deck(definition, err, state = host_state, &
+        pass_number = pass_number, last_pass = parse_over)
+    IF (PRESENT(state)) state = IOR(state, host_state)
+    errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_object
 

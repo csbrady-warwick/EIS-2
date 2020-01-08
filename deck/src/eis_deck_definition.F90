@@ -10,7 +10,9 @@ MODULE eis_deck_definition_mod
   USE :: eis_error_mod
   IMPLICIT NONE
 
-  INTEGER, PRIVATE, PARAMETER :: npass_global = 1
+  PRIVATE
+  INTEGER, PARAMETER :: npass_global = 1
+  
 
   TYPE :: eis_deck_definition_info
     INTEGER :: id_max = -1 !Want live UID to start from 0
@@ -43,6 +45,31 @@ MODULE eis_deck_definition_mod
         => NULL()
     PROCEDURE(event_callback_c), POINTER, NOPASS :: c_on_block_no_trigger_fn &
         => NULL()
+
+    PROCEDURE(generic_event_callback), POINTER, NOPASS :: &
+        on_generic_init_fn => NULL()
+    PROCEDURE(generic_event_callback_c), POINTER, NOPASS :: &
+        c_on_generic_init_fn => NULL()
+
+    PROCEDURE(generic_event_callback), POINTER, NOPASS :: &
+        on_generic_start_pass_fn => NULL()
+    PROCEDURE(generic_event_callback_c), POINTER, NOPASS :: &
+        c_on_generic_start_pass_fn => NULL()
+
+    PROCEDURE(generic_event_callback), POINTER, NOPASS :: &
+        on_generic_end_pass_fn => NULL()
+    PROCEDURE(generic_event_callback_c), POINTER, NOPASS :: &
+        c_on_generic_end_pass_fn => NULL()
+
+    PROCEDURE(generic_event_callback), POINTER, NOPASS :: &
+        on_generic_final_fn => NULL()
+    PROCEDURE(generic_event_callback_c), POINTER, NOPASS :: &
+        c_on_generic_final_fn => NULL()
+
+    PROCEDURE(generic_event_callback), POINTER, NOPASS :: &
+        on_generic_failure_fn => NULL()
+    PROCEDURE(generic_event_callback_c), POINTER, NOPASS :: &
+        c_on_generic_failure_fn => NULL()
 
     CONTAINS
 
@@ -213,7 +240,222 @@ MODULE eis_deck_definition_mod
     FINAL :: dd_destructor
   END TYPE eis_deck_definition
 
+  PUBLIC :: eis_deck_definition, eis_deck_block_definition
+
   CONTAINS
+
+  SUBROUTINE eis_call_generic_triplet(fn, fn_c, succ_fn, succ_fn_c, err_fn, &
+      err_fn_c, name, pass_number, parent_kind, status, errcode, host_state)
+
+    PROCEDURE(block_generic_callback), POINTER :: fn
+    PROCEDURE(block_generic_callback_c), POINTER :: fn_c
+    PROCEDURE(generic_event_callback), POINTER :: succ_fn, err_fn
+    PROCEDURE(generic_event_callback_c), POINTER :: succ_fn_c, err_fn_c
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: c_name
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    LOGICAL :: called_dual
+
+    called_dual = .FALSE.
+    this_bitmask = 0_eis_bitmask
+    IF (PRESENT(host_state)) this_bitmask = host_state
+
+    ALLOCATE(c_name(LEN(name)))
+    CALL eis_f_c_string(name, LEN(name), c_name)
+    IF (ASSOCIATED(fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL fn(name, pass_number, parent_kind, this_status, this_bitmask, &
+          this_err)
+      called_dual = .TRUE.
+      CALL eis_call_generic_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parent_kind, this_status, this_bitmask, &
+          this_err)
+      errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
+    END IF
+
+    IF (ASSOCIATED(fn_c)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+          SIZE(parent_kind, KIND=C_INT), INT(parent_kind, C_INT), &
+          this_status, this_bitmask, this_err)
+      called_dual = .TRUE.
+      CALL eis_call_generic_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parent_kind, this_status, this_bitmask, &
+          this_err)
+      errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
+    END IF
+
+    IF (.NOT. called_dual) THEN
+      CALL eis_call_generic_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parent_kind, this_status, this_bitmask, &
+          this_err)
+    END IF
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    DEALLOCATE(c_name)
+
+  END SUBROUTINE eis_call_generic_triplet
+
+
+
+  SUBROUTINE eis_call_generic_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, name, &
+      c_name, pass_number, parent_kind, this_status, this_bitmask, errcode)
+
+    PROCEDURE(generic_event_callback), POINTER :: succ_fn, err_fn
+    PROCEDURE(generic_event_callback_c), POINTER :: succ_fn_c, err_fn_c
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(*), TARGET :: c_name
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: this_status
+    INTEGER(eis_bitmask), INTENT(INOUT) :: this_bitmask
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (errcode == eis_err_none) THEN
+      IF (ASSOCIATED(succ_fn)) THEN
+        CALL succ_fn(name, pass_number, parent_kind, this_status, &
+            this_bitmask, errcode)
+      END IF
+
+      IF (ASSOCIATED(succ_fn_c)) THEN
+        CALL succ_fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+            SIZE(parent_kind, KIND = C_INT), INT(parent_kind, C_INT), &
+            this_status, this_bitmask, errcode)
+      END IF
+    ELSE
+      IF (ASSOCIATED(err_fn)) THEN
+        CALL err_fn(name, pass_number, parent_kind, this_status, &
+            this_bitmask, errcode)
+      END IF
+
+      IF (ASSOCIATED(err_fn_c)) THEN
+        CALL err_fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+            SIZE(parent_kind, KIND = C_INT), INT(parent_kind, C_INT), &
+            this_status, this_bitmask, errcode)
+      END IF
+    END IF
+  END SUBROUTINE eis_call_generic_dual
+
+
+
+  SUBROUTINE eis_call_specific_triplet(fn, fn_c, succ_fn, succ_fn_c, err_fn, &
+      err_fn_c, name, pass_number, parents, parent_kind, status, errcode, &
+      host_state)
+
+    PROCEDURE(block_callback), POINTER :: fn
+    PROCEDURE(block_callback_c), POINTER :: fn_c
+    PROCEDURE(event_callback), POINTER :: succ_fn, err_fn
+    PROCEDURE(event_callback_c), POINTER :: succ_fn_c, err_fn_c
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: c_name
+    INTEGER(eis_status) :: this_status
+    INTEGER(eis_error) :: this_err
+    INTEGER(eis_bitmask) :: this_bitmask
+    LOGICAL :: called_dual
+
+    called_dual = .FALSE.
+    this_bitmask = 0_eis_bitmask
+    IF (PRESENT(host_state)) this_bitmask = host_state
+
+    ALLOCATE(c_name(LEN(name)))
+    CALL eis_f_c_string(name, LEN(name), c_name)
+    IF (ASSOCIATED(fn)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL fn(name, pass_number, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+      called_dual = .TRUE.
+      CALL eis_call_specific_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
+    END IF
+
+    IF (ASSOCIATED(fn_c)) THEN
+      this_status = eis_status_none
+      this_err = eis_err_none
+      CALL fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+          SIZE(parent_kind, KIND=C_INT), INT(parents, C_INT), &
+          INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
+      called_dual = .TRUE.
+      CALL eis_call_specific_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+      errcode = IOR(errcode, this_err)
+      status = IOR(status, this_status)
+    END IF
+
+    IF (.NOT. called_dual) THEN
+      CALL eis_call_specific_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+          name, c_name, pass_number, parents, parent_kind, this_status, &
+          this_bitmask, this_err)
+    END IF
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    DEALLOCATE(c_name)
+
+  END SUBROUTINE eis_call_specific_triplet
+
+
+
+  SUBROUTINE eis_call_specific_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
+      name, c_name, pass_number, parents, parent_kind, this_status, &
+      this_bitmask, errcode)
+
+    PROCEDURE(event_callback), POINTER :: succ_fn, err_fn
+    PROCEDURE(event_callback_c), POINTER :: succ_fn_c, err_fn_c
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(*), TARGET :: c_name
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents, parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: this_status
+    INTEGER(eis_bitmask), INTENT(INOUT) :: this_bitmask
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (errcode == eis_err_none) THEN
+      IF (ASSOCIATED(succ_fn)) THEN
+        CALL succ_fn(name, pass_number, parents, parent_kind, this_status, &
+            this_bitmask, errcode)
+      END IF
+
+      IF (ASSOCIATED(succ_fn_c)) THEN
+        CALL succ_fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+            SIZE(parent_kind, KIND = C_INT), INT(parents, C_INT), &
+            INT(parent_kind, C_INT), this_status, this_bitmask, errcode)
+      END IF
+    ELSE
+      IF (ASSOCIATED(err_fn)) THEN
+        CALL err_fn(name, pass_number, parents, parent_kind, this_status, &
+            this_bitmask, errcode)
+      END IF
+
+      IF (ASSOCIATED(err_fn_c)) THEN
+        CALL err_fn_c(C_LOC(c_name), INT(pass_number, C_INT), &
+            SIZE(parent_kind, KIND = C_INT), INT(parents, C_INT), &
+            INT(parent_kind, C_INT), this_status, this_bitmask, errcode)
+      END IF
+    END IF
+  END SUBROUTINE eis_call_specific_dual
+
+
 
   FUNCTION ddi_get_next_id(this)
     CLASS(eis_deck_definition_info), INTENT(INOUT) :: this
@@ -282,8 +524,10 @@ MODULE eis_deck_definition_mod
       on_key_no_trigger, on_block_start, on_block_end, on_block_no_trigger, &
       on_block_failure, c_on_key_success, c_on_key_failure, &
       c_on_key_no_trigger, c_on_block_start, c_on_block_end, &
-      c_on_block_no_trigger, c_on_block_failure, parser, &
-      interop_parser) RESULT(root)
+      c_on_block_no_trigger, c_on_block_failure, on_init, on_start_pass, &
+      on_end_pass, on_final, on_generic_block_failure, c_on_init, &
+      c_on_start_pass, c_on_end_pass, c_on_final, c_on_generic_block_failure, &
+      parser, interop_parser) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
     PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
@@ -310,6 +554,11 @@ MODULE eis_deck_definition_mod
     PROCEDURE(event_callback), OPTIONAL :: on_block_end
     PROCEDURE(event_callback), OPTIONAL :: on_block_no_trigger
     PROCEDURE(event_callback), OPTIONAL :: on_block_failure
+    PROCEDURE(generic_event_callback), OPTIONAL :: on_init
+    PROCEDURE(generic_event_callback), OPTIONAL :: on_start_pass
+    PROCEDURE(generic_event_callback), OPTIONAL :: on_end_pass
+    PROCEDURE(generic_event_callback), OPTIONAL :: on_final
+    PROCEDURE(generic_event_callback), OPTIONAL :: on_generic_block_failure
 
     PROCEDURE(event_callback_c), OPTIONAL :: c_on_key_success
     PROCEDURE(event_callback_c), OPTIONAL :: c_on_key_failure
@@ -318,6 +567,11 @@ MODULE eis_deck_definition_mod
     PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_end
     PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_no_trigger
     PROCEDURE(event_callback_c), OPTIONAL :: c_on_block_failure
+    PROCEDURE(generic_event_callback_c), OPTIONAL :: c_on_init
+    PROCEDURE(generic_event_callback_c), OPTIONAL :: c_on_start_pass
+    PROCEDURE(generic_event_callback_c), OPTIONAL :: c_on_end_pass
+    PROCEDURE(generic_event_callback_c), OPTIONAL :: c_on_final
+    PROCEDURE(generic_event_callback_c), OPTIONAL :: c_on_generic_block_failure
 
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser
@@ -354,6 +608,19 @@ MODULE eis_deck_definition_mod
         => c_on_block_start
     IF (PRESENT(c_on_block_failure)) this%info%c_on_block_failure_fn &
         => c_on_block_failure
+
+    IF (PRESENT(on_init)) this%info%on_generic_init_fn => on_init
+    IF (PRESENT(on_start_pass)) this%info%on_generic_start_pass_fn &
+        => on_start_pass
+    IF (PRESENT(on_end_pass)) this%info%on_generic_end_pass_fn => on_end_pass
+    IF (PRESENT(on_final)) this%info%on_generic_final_fn => on_final
+
+    IF (PRESENT(c_on_init)) this%info%c_on_generic_init_fn => c_on_init
+    IF (PRESENT(c_on_start_pass)) this%info%c_on_generic_start_pass_fn &
+        => c_on_start_pass
+    IF (PRESENT(c_on_end_pass)) this%info%c_on_generic_end_pass_fn &
+        => c_on_end_pass
+    IF (PRESENT(c_on_final)) this%info%c_on_generic_final_fn => c_on_final
 
     ALLOCATE(this%root_definition)
     dummy = this%root_definition%init(this%info, '{ROOT}', 0, -1, init_deck, &
@@ -467,23 +734,29 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dd_finalise_blocks(this, host_state, errcode, pass_number)
+  SUBROUTINE dd_finalise_blocks(this, host_state, errcode, pass_number, &
+      last_pass)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    LOGICAL, INTENT(IN), OPTIONAL :: last_pass
     INTEGER :: nblocks, iblock
     CLASS(eis_deck_block_definition), POINTER :: p
     INTEGER :: npass
+    LOGICAL :: lpass
 
     npass = npass_global
     IF (PRESENT(pass_number)) npass = pass_number
+
+    lpass = .TRUE.
+    IF (PRESENT(last_pass)) lpass = last_pass
 
     nblocks = this%info%get_block_count()
     DO iblock = 0, nblocks
       p => this%info%get_block(iblock)
       IF (p%lastinit /= 0 .OR. this%finalise_absent) THEN
-        CALL p%finalise_block(npass, errcode, host_state)
+        CALL p%finalise_block(npass, lpass, errcode, host_state)
       END IF
     END DO
 
@@ -933,13 +1206,6 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
 
-    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
-    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
-    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
-    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
-
-    IF (.NOT. run) RETURN
-
     CALL this%get_parents(parent_kind)
 
     IF (PRESENT(host_state)) THEN
@@ -947,53 +1213,31 @@ MODULE eis_deck_definition_mod
     ELSE
       this_bitmask = 0_eis_bitmask
     END IF
+
+    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
+    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
+    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
+    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
+
+    IF (.NOT. run) RETURN
+
     IF (this%lastinit /= pass_number) THEN
-      IF (this%lastinit == 0 .AND. ASSOCIATED(this%init_block_fn)) THEN
-        this_status = eis_status_none
-        this_err = eis_err_none
-        CALL this%init_block_fn(this%name, pass_number, parent_kind, &
-           this_status, this_bitmask, this_err)
-        errcode = IOR(errcode, this_err)
-        status = IOR(status, this_status)
+      IF (this%lastinit == 0) THEN
+        CALL eis_call_generic_triplet(this%init_block_fn, &
+            this%c_init_block_fn, this%info%on_generic_init_fn, &
+            this%info%c_on_generic_init_fn, &
+            this%info%on_generic_failure_fn, &
+            this%info%c_on_generic_failure_fn, &
+            this%name, pass_number, parent_kind, status, errcode, host_state)
       END IF
-      IF (ASSOCIATED(this%start_pass_block_fn)) THEN
-        this_status = eis_status_none
-        this_err = eis_err_none
-        CALL this%start_pass_block_fn(this%name, pass_number, parent_kind, &
-           this_status, this_bitmask, this_err)
-        errcode = IOR(errcode, this_err)
-        status = IOR(status, this_status)
-      END IF
+      CALL eis_call_generic_triplet(this%start_pass_block_fn, &
+          this%c_start_pass_block_fn, this%info%on_generic_start_pass_fn, &
+          this%info%c_on_generic_start_pass_fn, &
+          this%info%on_generic_failure_fn, &
+          this%info%c_on_generic_failure_fn, &
+          this%name, pass_number, parent_kind, status, errcode, host_state)
+       this%lastinit = pass_number
     END IF
-
-    IF (this%lastinit /= pass_number .AND. (ASSOCIATED(this%c_init_block_fn) &
-        .OR. ASSOCIATED(this%c_start_pass_block_fn))) THEN
-      ALLOCATE(c_this_name(LEN(this%name)))
-      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
-      IF (this%lastinit == 0 .AND. ASSOCIATED(this%c_init_block_fn)) THEN
-        this_status = eis_status_none
-        this_err = eis_err_none
-        CALL this%c_init_block_fn(C_LOC(c_this_name), INT(pass_number, C_INT), &
-            SIZE(parent_kind, KIND=C_INT), INT(parent_kind, C_INT), &
-            this_status, this_bitmask, this_err)
-        errcode = IOR(errcode, this_err)
-        status = IOR(status, this_status)
-        DEALLOCATE(c_this_name)
-      END IF
-      IF (ASSOCIATED(this%c_start_pass_block_fn)) THEN
-        this_status = eis_status_none
-        this_err = eis_err_none
-        CALL this%c_start_pass_block_fn(C_LOC(c_this_name), &
-            INT(pass_number, C_INT), SIZE(parent_kind, KIND=C_INT), &
-            INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
-        errcode = IOR(errcode, this_err)
-        status = IOR(status, this_status)
-        DEALLOCATE(c_this_name)
-      END IF
-    END IF
-    this%lastinit = pass_number
-
-    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
 
     DEALLOCATE(parent_kind)
 
@@ -1080,70 +1324,13 @@ MODULE eis_deck_definition_mod
     IF (ASSOCIATED(this%i64count_variable)) this%i64count_variable &
         = this%i64count_variable + 1_INT64
 
-    IF (ASSOCIATED(this%start_block_fn)) THEN
-      this_err = eis_err_none
-      this_status = eis_status_none
-      CALL this%start_block_fn(this_name, pass_number, parents, parent_kind, &
-          this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
-        this_err = IOR(this_err, eis_err_unknown_block)
-        status = IOR(status, this_status)
-      END IF
-      errcode = IOR(errcode, this_err)
-    END IF
+    CALL eis_call_specific_triplet(this%start_block_fn, &
+        this%c_start_block_fn, this%info%on_block_start_fn, &
+        this%info%c_on_block_start_fn, &
+        this%info%on_block_failure_fn, &
+        this%info%c_on_block_failure_fn, this_name, pass_number, parents, &
+        parent_kind, status, errcode, host_state)
 
-    IF (ASSOCIATED(this%c_start_block_fn)) THEN
-      ALLOCATE(c_this_name(LEN(this_name)))
-      CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-      this_err = eis_err_none
-      this_status = eis_status_none
-      CALL this%c_start_block_fn(C_LOC(c_this_name), &
-          INT(pass_number, KIND = C_INT), &
-          SIZE(parents, KIND = C_INT), &
-          INT(parents, C_INT), INT(parent_kind, C_INT), &
-          this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
-        this_err = IOR(this_err, eis_err_unknown_block)
-        status = IOR(status, this_status)
-      END IF
-      errcode = IOR(errcode, this_err)
-      DEALLOCATE(c_this_name)
-    END IF
-
-    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
-
-    IF (errcode == eis_err_none) THEN
-      IF (ASSOCIATED(this%info%on_block_start_fn)) THEN
-        CALL this%info%on_block_start_fn(this_name, pass_number, parents, &
-            parent_kind, status, host_state, errcode)
-      END IF
-
-      IF (ASSOCIATED(this%info%c_on_block_start_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-        CALL this%info%c_on_block_start_fn(C_LOC(c_this_name), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), this_status, &
-            host_state, errcode)
-        DEALLOCATE(c_this_name)
-      END IF
-    ELSE
-      IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
-        CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
-            parent_kind, status, host_state, errcode)
-      END IF
-
-      IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-        CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), status, &
-            host_state, errcode)
-        DEALLOCATE(c_this_name)
-      END IF
-    END IF
-    
     DEALLOCATE(parent_kind)
     DEALLOCATE(this_name)
 
@@ -1175,15 +1362,7 @@ MODULE eis_deck_definition_mod
     !You only trigger block_no_trigger on block starts, not block ends
     IF (.NOT. run) RETURN
 
-    this_status = eis_status_none
-
     CALL this%get_parents(parent_kind)
-
-    IF (PRESENT(host_state)) THEN
-      this_bitmask = host_state
-    ELSE
-      this_bitmask = 0_eis_bitmask
-    END IF
 
     IF (PRESENT(display_name)) THEN
       ALLOCATE(this_name, SOURCE = display_name)
@@ -1191,71 +1370,12 @@ MODULE eis_deck_definition_mod
       ALLOCATE(this_name, SOURCE = this%name)
     END IF
 
-    IF (ASSOCIATED(this%end_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%end_block_fn(this_name, pass_number, parents, parent_kind, &
-          this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
-        this_err = IOR(this_err, eis_err_unknown_block)
-      ELSE
-        status = IOR(status, this_status)
-      END IF
-      errcode = IOR(errcode, this_err)
-    END IF
-
-    IF (ASSOCIATED(this%c_end_block_fn)) THEN
-      ALLOCATE(c_this_name(LEN(this_name)))
-      CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-      this_err = eis_err_none
-      this_status = eis_status_none
-      CALL this%c_end_block_fn(C_LOC(c_this_name), &
-          INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
-          INT(parents, C_INT), INT(parent_kind, C_INT), &
-          this_status, this_bitmask, this_err)
-      IF (IAND(this_status, eis_status_not_handled) /= 0) THEN
-        this_err = IOR(this_err, eis_err_unknown_block)
-      ELSE
-        status = IOR(status, this_status)
-      END IF
-      errcode = IOR(errcode, this_err)
-      DEALLOCATE(c_this_name)
-    END IF
-
-    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
-
-    IF (errcode == eis_err_none) THEN
-      IF (ASSOCIATED(this%info%on_block_end_fn)) THEN
-        CALL this%info%on_block_end_fn(this_name, pass_number, parents, &
-            parent_kind, status, host_state, errcode)
-      END IF
-
-      IF (ASSOCIATED(this%info%c_on_block_end_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-        CALL this%info%c_on_block_end_fn(C_LOC(c_this_name), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), status, &
-            host_state, errcode)
-        DEALLOCATE(c_this_name)
-      END IF
-    ELSE
-      IF (ASSOCIATED(this%info%on_block_failure_fn)) THEN
-        CALL this%info%on_block_failure_fn(this_name, pass_number, parents, &
-            parent_kind, status, host_state, errcode)
-      END IF
-
-      IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
-        CALL this%info%c_on_block_failure_fn(C_LOC(c_this_name), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parents, C_INT), status, &
-            host_state, errcode)
-        status = IOR(status, this_status)
-        DEALLOCATE(c_this_name)
-      END IF
-    END IF
+    CALL eis_call_specific_triplet(this%end_block_fn, &
+        this%c_end_block_fn, this%info%on_block_end_fn, &
+        this%info%c_on_block_end_fn, &
+        this%info%on_block_failure_fn, &
+        this%info%c_on_block_failure_fn, this_name, pass_number, parents, &
+        parent_kind, status, errcode, host_state)
 
     DEALLOCATE(parent_kind)
     DEALLOCATE(this_name)
@@ -1285,40 +1405,23 @@ MODULE eis_deck_definition_mod
 
     CALL this%get_parents(parent_kind)
 
-    IF (PRESENT(host_state)) THEN
-      this_bitmask = host_state
-    ELSE
-      this_bitmask = 0_eis_bitmask
-    END IF
+    CALL eis_call_generic_triplet(this%end_pass_block_fn, &
+        this%c_end_pass_block_fn, this%info%on_generic_end_pass_fn, &
+        this%info%c_on_generic_end_pass_fn, &
+        this%info%on_generic_failure_fn, &
+        this%info%c_on_generic_failure_fn, &
+        this%name, pass_number, parent_kind, this_status, errcode, host_state)
 
-    IF (ASSOCIATED(this%end_pass_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%end_pass_block_fn(this%name, pass_number, parent_kind, &
-          this_status, this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
-    END IF
-
-    IF (ASSOCIATED(this%c_end_pass_block_fn)) THEN
-      ALLOCATE(c_this_name(LEN(this%name)))
-      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%c_end_pass_block_fn(C_LOC(c_this_name), &
-          INT(pass_number, C_INT), SIZE(parent_kind, KIND = C_INT), &
-          INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
-      DEALLOCATE(c_this_name)
-    END IF
-
-    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
+    DEALLOCATE(parent_kind)
 
   END SUBROUTINE dbd_end_pass_block
 
 
-  SUBROUTINE dbd_finalise_block(this, pass_number, status, errcode, host_state)
+  SUBROUTINE dbd_finalise_block(this, pass_number, last_pass, status, errcode, &
+      host_state)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: pass_number
+    LOGICAL, INTENT(IN) :: last_pass
     INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
@@ -1328,47 +1431,32 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask) :: this_bitmask
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
+    INTEGER :: crit_pass
 
-    run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
-    IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
-    IF (this%use_le) run = run .OR. (pass_number <= this%pass_le)
-    IF (this%use_ge) run = run .OR. (pass_number >= this%pass_ge)
-    !You only trigger block_no_trigger on block starts, not block ends
+    run = last_pass
+    crit_pass = -1
+    !Finalise triggers on the last valid pass or the last pass if not
+    !otherwise triggered
+    IF (.NOT. run) THEN
+      IF (this%use_eq) crit_pass = MAX(crit_pass, this%pass_eq)
+      IF (this%use_le) crit_pass = MAX(crit_pass, this%pass_le)
+      run = (pass_number == crit_pass)
+    END IF
+
     IF (.NOT. run) RETURN
 
     CALL this%get_parents(parent_kind)
 
-    IF (PRESENT(host_state)) THEN
-      this_bitmask = host_state
-    ELSE
-      this_bitmask = 0_eis_bitmask
-    END IF
+    CALL eis_call_generic_triplet(this%final_block_fn, &
+        this%c_final_block_fn, this%info%on_generic_final_fn, &
+        this%info%c_on_generic_final_fn, &
+        this%info%on_generic_failure_fn, &
+        this%info%c_on_generic_failure_fn, &
+        this%name, pass_number, parent_kind, status, errcode, host_state)
 
-    IF (ASSOCIATED(this%final_block_fn)) THEN
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%final_block_fn(this%name, pass_number, parent_kind, &
-          this_status, this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
-      status = IOR(status, this_status)
-    END IF
-
-
-    IF (ASSOCIATED(this%c_final_block_fn)) THEN
-      ALLOCATE(c_this_name(LEN(this%name)))
-      CALL eis_f_c_string(this%name, LEN(this%name), c_this_name)
-      this_status = eis_status_none
-      this_err = eis_err_none
-      CALL this%c_final_block_fn(C_LOC(c_this_name), &
-          INT(pass_number, C_INT), SIZE(parent_kind, KIND = C_INT), &
-          INT(parent_kind, C_INT), this_status, this_bitmask, this_err)
-      errcode = IOR(errcode, this_err)
-      status = IOR(status, this_status)
-    END IF
+    DEALLOCATE(parent_kind)
 
     this%lastinit = 0
-
-    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
 
   END SUBROUTINE dbd_finalise_block
 
