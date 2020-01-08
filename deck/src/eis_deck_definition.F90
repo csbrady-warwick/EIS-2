@@ -1200,10 +1200,7 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    INTEGER(eis_status) :: this_status
-    INTEGER(eis_error) :: this_err
     INTEGER(eis_bitmask) :: this_bitmask
-    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
 
     CALL this%get_parents(parent_kind)
@@ -1348,11 +1345,7 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: display_name
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    INTEGER(eis_status) :: this_status
-    INTEGER(eis_error) :: this_err
-    INTEGER(eis_bitmask) :: this_bitmask
     CHARACTER(LEN=:), ALLOCATABLE :: this_name
-    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
 
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
@@ -1391,9 +1384,6 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
     INTEGER(eis_status) :: this_status
-    INTEGER(eis_error) :: this_err
-    INTEGER(eis_bitmask) :: this_bitmask
-    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
 
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
@@ -1426,10 +1416,6 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
     INTEGER, DIMENSION(:), ALLOCATABLE :: parent_kind
-    INTEGER(eis_status) :: this_status
-    INTEGER(eis_error) :: this_err
-    INTEGER(eis_bitmask) :: this_bitmask
-    CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_this_name
     LOGICAL :: run
     INTEGER :: crit_pass
 
