@@ -392,8 +392,15 @@ CONTAINS
         DEALLOCATE(this%err_handler)
 
     IF (PRESENT(err_handler)) THEN
-      this%err_handler => err_handler
-      this%owns_err_handler = .FALSE.
+      IF (ASSOCIATED(err_handler)) THEN
+        this%err_handler => err_handler
+        this%owns_err_handler = .FALSE.
+      ELSE IF (ASSOCIATED(this%err_handler)) THEN
+        !Do nothing
+      ELSE
+        ALLOCATE(this%err_handler)
+        this%owns_err_handler = .TRUE.
+      END IF
     ELSE
       ALLOCATE(this%err_handler)
       this%owns_err_handler = .TRUE.
@@ -404,6 +411,7 @@ CONTAINS
     IF (PRESENT(should_minify)) this%should_minify = should_minify
     IF (PRESENT(physics)) this%physics_units = physics
     IF (PRESENT(no_import)) no_import_l = no_import
+    IF (PRESENT(allow_text)) this%allow_text = allow_text
 
     CALL this%err_handler%init(errcode)
     IF (this%is_init) RETURN
@@ -3089,6 +3097,7 @@ CONTAINS
         !Functions that take no parameters
         this%stack%entries(this%stack%stack_point)%actual_params = 0
         CALL pop_to_stack(this%stack, output)
+        CALL pop_to_null(this%brackets)
       ELSE
         err = IOR(err, eis_err_malformed)
         CALL this%err_handler%add_error(eis_err_parser, err, &
@@ -3222,7 +3231,7 @@ CONTAINS
                 END IF
 
                 IF ((this%stack%entries(this%stack%stack_point) &
-                    %has_string_params .NEQV. &
+                    %has_string_params .AND. .NOT. &
                     this%stack%co_entries(this%stack%stack_point)% &
                     can_have_string_params)) THEN
                   err = IOR(err, eis_err_text)
@@ -3262,7 +3271,7 @@ CONTAINS
           output%has_emplaced = .TRUE.
       END IF
       CALL push_to_stack(this%stack, iblock, icoblock)
-      iblock%actual_params = 1
+        iblock%actual_params = 1
       CALL push_to_stack(this%brackets, iblock, icoblock)
 
     ELSE IF (iblock%ptype == eis_pt_separator) THEN
