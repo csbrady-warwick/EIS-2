@@ -143,6 +143,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_functor => eip_add_functor
     PROCEDURE, PUBLIC :: add_functor_pointer => eip_add_functor_ptr
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
+    PROCEDURE, PUBLIC :: tokenize_number => eip_tokenize_number
     PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
     PROCEDURE, PUBLIC :: simplify => eip_simplify
@@ -1323,6 +1324,52 @@ CONTAINS
     IF (should_minify) CALL this%minify(output, err)
 
   END SUBROUTINE eip_tokenize
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to tokenize a numer to a stack
+  !> @param[inout] this
+  !> @param[in] value_in
+  !> @param[inout] output
+  !> @param[inout] err
+  !> @param[in] append
+  SUBROUTINE eip_tokenize_number(this, value_in, output, err, append)
+
+    CLASS(eis_parser) :: this
+    !> Numerical value to convert to stack
+    REAL(eis_num), INTENT(IN) :: value_in
+    !> Stack to contain the output. If stack is not empty then new values
+    !> are pushed to the end of the stack. This will usually cause multi valued
+    !> results
+    TYPE(eis_stack), INTENT(INOUT)  :: output
+    !> Error code for errors during tokenize
+    INTEGER(eis_error), INTENT(INOUT) :: err
+    !> Whether the newly parsed value should be appended to
+    !> the values in the stack or no. Optional, default false
+    LOGICAL, INTENT(IN), OPTIONAL :: append
+    LOGICAL :: should_dealloc
+    TYPE(eis_stack_element) :: iblock
+    TYPE(eis_stack_co_element) :: icoblock
+
+    IF (PRESENT(append)) should_dealloc = .NOT. append
+    IF (should_dealloc) CALL deallocate_stack(output)
+    IF (.NOT. output%init) CALL initialise_stack(output)
+
+    iblock%ptype = eis_pt_constant
+    iblock%value = 0
+    iblock%numerical_data = value_in
+    ALLOCATE(CHARACTER(LEN=25)::icoblock%text)
+    WRITE(icoblock%text, '(ES25.17E3)') value_in
+
+    CALL push_to_stack(output, iblock, icoblock)
+
+
+  END SUBROUTINE eip_tokenize_number
+
+
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
