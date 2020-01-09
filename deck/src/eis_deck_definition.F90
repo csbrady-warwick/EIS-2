@@ -298,6 +298,7 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (.NOT. called_dual) THEN
+      this_err = eis_err_none
       CALL eis_call_generic_dual(succ_fn, succ_fn_c, err_fn, err_fn_c, &
           name, c_name, pass_number, parent_kind, this_status, this_bitmask, &
           this_err)
