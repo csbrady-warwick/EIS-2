@@ -507,6 +507,7 @@ MODULE eis_error_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: report
     CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp, &
         filename
+    CHARACTER(LEN=3) :: predots, postdots
     CHARACTER(LEN=9) :: posstr, linestr
     CHARACTER(LEN=19) :: format_str
     INTEGER :: charpos, nchar, line_number, spos, epos
@@ -536,9 +537,13 @@ MODULE eis_error_mod
       spos = MAX(1, this%errors(index)%full_line_pos-10)
       epos = MIN(LEN(this%errors(index)%full_line), &
           this%errors(index)%full_line_pos+10)
-      CALL eis_append_string(report, this%errors(index)%full_line(spos:epos))
+      predots = "" ; postdots = ""
+      IF (spos /= 1) predots = "..."
+      IF (epos /= LEN(this%errors(index)%full_line)) postdots = "..."
+      CALL eis_append_string(report, TRIM(predots) &
+           // this%errors(index)%full_line(spos:epos) // TRIM(postdots))
       CALL eis_append_string(report, REPEAT(" ", &
-          this%errors(index)%full_line_pos - spos) // "^")
+          this%errors(index)%full_line_pos - spos + LEN(TRIM(predots))) // "^")
     END IF
 
     CALL eis_append_string(report, "")
@@ -547,8 +552,8 @@ MODULE eis_error_mod
 
       IF (ALLOCATED(filename)) THEN
         IF (line_number > 0) THEN
-          nchar = CEILING(LOG10(REAL(line_number, eis_num))+1)
-          WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
+          nchar = FLOOR(LOG10(REAL(line_number, eis_num)))+1
+          WRITE(format_str, '(A,I3,A)') '(I',nchar+1,')'
           WRITE(linestr, format_str) line_number
           CALL errstr_store%store('errline', TRIM(linestr))
           CALL errstr_store%store('errfile', TRIM(filename))
@@ -564,8 +569,8 @@ MODULE eis_error_mod
     END IF
 
       IF (charpos > 0) THEN
-        nchar = CEILING(LOG10(REAL(charpos, eis_num))+1)
-        WRITE(format_str, '(A,I1,A)') '(I',nchar,')'
+        nchar = FLOOR(LOG10(REAL(charpos, eis_num)))+1
+        WRITE(format_str, '(A,I3,A)') '(I',nchar,')'
         WRITE(posstr, format_str) charpos
         CALL errstr_store%store('charpos', TRIM(posstr))
         CALL errstr_store%store('errtext', TRIM(errname))
