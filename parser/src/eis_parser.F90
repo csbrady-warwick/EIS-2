@@ -3026,7 +3026,9 @@ CONTAINS
     LOGICAL, INTENT(IN) :: allow_text
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
-    LOGICAL :: stack_empty
+    INTEGER :: istr
+    LOGICAL :: stack_empty, str_handled
+    CHARACTER(LEN=:), ALLOCATABLE :: str
 
     cap_bits = 0_eis_bitmask
     IF (ICHAR(current(1:1)) == 0) RETURN
@@ -3051,11 +3053,28 @@ CONTAINS
         IF (this%last_block_type == eis_pt_parenthesis &
             .OR. this%last_block_type == eis_pt_parenthesis &
             .OR. this%last_block_type == eis_pt_null) THEN
+          !Turn the block into a numerical constant with a value
+          !of the index of the string to look up
           iblock%ptype = eis_pt_constant
           iblock%can_simplify = .FALSE.
           iblock%value = eis_pt_character
-          iblock%numerical_data = this%string_param_store%store(&
-              icoblock%text(2:LEN(icoblock%text)-1))
+          !First check for already existing string to avoid repetition
+          !Consider switching to some kind of O(ln(n)) or O(1) store
+          DO istr = 1, this%string_param_store%get_size()
+            str_handled = this%string_param_store%get(istr, str)
+            IF (.NOT. str_handled) CYCLE
+            IF (str == icoblock%text(2:LEN(icoblock%text)-1)) THEN
+              iblock%numerical_data = istr
+              str_handled = .TRUE.
+              EXIT
+            END IF
+            str_handled = .FALSE.
+          END DO
+          IF (ALLOCATED(str)) DEALLOCATE(str)
+          IF (.NOT. str_handled) THEN
+            iblock%numerical_data = this%string_param_store%store(&
+                icoblock%text(2:LEN(icoblock%text)-1))
+          END IF
           IF (this%stack%stack_point > 1) THEN
             this%stack%entries(this%stack%stack_point-1)%has_string_params &
                 = .TRUE.
@@ -3125,7 +3144,8 @@ CONTAINS
     END IF
 
     !If previous block was an operator than almost anything else is valid
-    !except a separator or a right bracket
+    !except a separator or a right bracket. Don't need to check for characters
+    !because this will be checked as a parameter to the operator
     IF (this%last_block_type == eis_pt_operator .AND. &
         (iblock%ptype == eis_pt_separator &
         .OR. (iblock%ptype == eis_pt_parenthesis &
