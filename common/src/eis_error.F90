@@ -170,6 +170,10 @@ MODULE eis_error_mod
       CALL this%strings%store('err_host', 'A non-parser error was reported')
       CALL this%strings%store('err_text', 'This function should not take text &
           &parameters')
+      CALL this%strings%store('err_interop', 'You are using a Fortran/C &
+          &interoperability function but the parser is not interoperable')
+      CALL this%strings%store('err_out_of_range', 'The specified value is &
+          &outwith the range of acceptable values for this function')
 
       CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
           &{errline} : ')
@@ -454,6 +458,12 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_text) /=0) THEN
       ok = this%strings%append('err_text', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_interop) /=0) THEN
+      ok = this%strings%append('err_interop', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_out_of_range) /=0) THEN
+      ok = this%strings%append('err_out_of_range', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &

@@ -78,6 +78,16 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_host = 2_eis_error**31_eis_error
   !> Function had a text parameter that should not have had a text parameter
   INTEGER(eis_error), PARAMETER :: eis_err_text = 2_eis_error**32_eis_error
+  !> Trying to use a function that wants an interoperable parser but
+  !> the actual parser is not interoperable
+  INTEGER(eis_error), PARAMETER :: eis_err_interop = 2_eis_error**33_eis_error
+  !> Parameter was valid mathematically but was out of range in some other sense
+  INTEGER(eis_error), PARAMETER :: eis_err_out_of_range &
+      = 2_eis_error**34_eis_error
+
+
+  !Interoperable stack should be retained
+  INTEGER(eis_status), PARAMETER :: eis_status_retain_stack = 2**0
 
   CONTAINS
 

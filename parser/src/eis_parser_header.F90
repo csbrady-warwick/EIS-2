@@ -144,6 +144,7 @@ MODULE eis_parser_header
     PROCEDURE(parser_result_function), POINTER, NOPASS :: eval_fn => NULL()
     CHARACTER(LEN=:), ALLOCATABLE :: eval_string, full_line
     CHARACTER(LEN=:), ALLOCATABLE :: filename
+    INTEGER :: interop_id = -1
     INTEGER :: line_number = 0
     INTEGER :: char_offset = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
@@ -168,6 +169,17 @@ MODULE eis_parser_header
       INTEGER(eis_status), INTENT(INOUT) :: status_code
       INTEGER(eis_error), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_late_bind_fn
+    SUBROUTINE parser_late_bind_stack_fn(orig_string, nparams, params, &
+            host_params, stack_out, status_code, errcode)
+      IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
+      CHARACTER(LEN=*), INTENT(IN) :: orig_string
+      INTEGER, INTENT(IN) :: nparams
+      CLASS(eis_stack), DIMENSION(nparams), INTENT(IN) :: params
+      TYPE(C_PTR), INTENT(IN) :: host_params
+      TYPE(eis_stack), INTENT(INOUT) :: stack_out
+      INTEGER(eis_status), INTENT(INOUT) :: status_code
+      INTEGER(eis_error), INTENT(INOUT) :: errcode
+    END SUBROUTINE parser_late_bind_stack_fn
   END INTERFACE
   !> description of the function that is used to emplace a function through the
   !> interoperability interface
@@ -183,6 +195,18 @@ MODULE eis_parser_header
       INTEGER(eis_status_c), INTENT(INOUT) :: status_code
       INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     END SUBROUTINE parser_late_bind_interop_fn
+    SUBROUTINE parser_late_bind_stack_interop_fn(orig_string, nparams, params, &
+        host_params, stack_id_out, params_status, status_code, errcode) BIND(C)
+      IMPORT eis_num_c, C_PTR, eis_error_c, eis_status_c, C_INT
+      TYPE(C_PTR), INTENT(IN) :: orig_string
+      INTEGER(C_INT), VALUE, INTENT(IN) :: nparams
+      INTEGER(C_INT), DIMENSION(nparams), INTENT(IN) :: params
+      TYPE(C_PTR), INTENT(IN) :: host_params
+      INTEGER(C_INT), INTENT(INOUT) :: stack_id_out
+      INTEGER(eis_status_c), DIMENSION(nparams), INTENT(INOUT) :: params_status
+      INTEGER(eis_status_c), INTENT(INOUT) :: status_code
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+    END SUBROUTINE parser_late_bind_stack_interop_fn
   END INTERFACE
 
   CONTAINS

@@ -92,6 +92,7 @@ MODULE eis_parser_mod
     TYPE(eis_string_store) :: string_param_store
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
     LOGICAL :: owns_err_handler = .FALSE.
+    INTEGER :: interop_id = -1
     INTEGER :: last_block_type, last_block_value, last_charindex
     CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
     LOGICAL :: is_init = .FALSE.
@@ -138,7 +139,14 @@ MODULE eis_parser_mod
     GENERIC, PUBLIC :: add_integer_constant => add_constant_i4, add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string, add_stack_variable_defer
-    PROCEDURE, PUBLIC :: add_emplaced_function => eip_add_emplaced_function
+    PROCEDURE, PUBLIC :: add_emplaced_function &
+        => eip_add_emplaced_function
+    PROCEDURE, PUBLIC :: add_emplaced_stack_function &
+        => eip_add_emplaced_stack_function
+    PROCEDURE, PUBLIC :: add_emplaced_c_function &
+        => eip_add_emplaced_interop_function
+    PROCEDURE, PUBLIC :: add_emplaced_c_stack_function &
+        => eip_add_emplaced_interop_stack_function
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: add_functor => eip_add_functor
     PROCEDURE, PUBLIC :: add_functor_pointer => eip_add_functor_ptr
@@ -254,11 +262,16 @@ CONTAINS
   !> @return eis_add_interop_parser
   FUNCTION eis_add_interop_parser(parser, holds)
     !> Parser to make interoperable
-    CLASS(eis_parser), POINTER, INTENT(IN) :: parser
+    CLASS(eis_parser), POINTER, INTENT(INOUT) :: parser
     LOGICAL, INTENT(IN), OPTIONAL :: holds
     !> Index of parser after storage
     INTEGER :: eis_add_interop_parser
     TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: temp
+
+    IF (parser%interop_id > -1) THEN
+      eis_add_interop_parser = parser%interop_id
+      RETURN
+    END IF
 
     IF (.NOT. ALLOCATED(interop_parsers)) THEN
       ALLOCATE(interop_parsers(n_parsers_default))
@@ -272,7 +285,9 @@ CONTAINS
         CALL MOVE_ALLOC(temp, interop_parsers)
       END IF
     END IF
+    parser%interop_id = interop_parser_count
     interop_parsers(interop_parser_count)%contents => parser
+    interop_parsers(interop_parser_count)%holds = .FALSE.
     IF (PRESENT(holds)) interop_parsers(interop_parser_count)%holds = holds
     eis_add_interop_parser = interop_parser_count
   END FUNCTION eis_add_interop_parser
@@ -288,7 +303,7 @@ CONTAINS
   !> @return eis_get_interop_stack
   FUNCTION eis_add_interop_stack(stack, parser_index, holds)
     !> Stack to make interoperable
-    TYPE(eis_stack), POINTER, INTENT(IN) :: stack
+    TYPE(eis_stack), POINTER, INTENT(INOUT) :: stack
     !> Index of the interoperable parser that generated the stack
     INTEGER, INTENT(IN) :: parser_index
     !> Whether or not the interoperability layer holds the canonical
@@ -296,6 +311,11 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: holds
     INTEGER :: eis_add_interop_stack
     TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: temp
+
+    IF (stack%interop_id > -1) THEN
+      eis_add_interop_stack = stack%interop_id
+      RETURN
+    END IF
 
     eis_add_interop_stack = -1
 
@@ -311,9 +331,11 @@ CONTAINS
         CALL MOVE_ALLOC(temp, interop_stacks)
       END IF
     END IF
+    stack%interop_id = interop_stack_count
     interop_stacks(interop_stack_count)%contents => stack
     interop_stacks(interop_stack_count)%parser => &
         interop_parsers(parser_index)%contents
+    interop_stacks(interop_stack_count)%holds_stack = .FALSE.
     IF (PRESENT(holds)) &
         interop_stacks(interop_stack_count)%holds_stack = holds
     eis_add_interop_stack = interop_stack_count
@@ -331,6 +353,9 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
 
     IF (index < 1 .OR. index > interop_parser_count) RETURN
+    IF (index == interop_parser_count) &
+        interop_parser_count = interop_parser_count - 1
+    interop_parsers(index)%contents%interop_id = -1
     IF (interop_parsers(index)%holds) DEALLOCATE(interop_parsers(index)&
         %contents)
     interop_parsers(index)%contents => NULL()
@@ -348,8 +373,11 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
 
     IF (index < 1 .OR. index > interop_stack_count) RETURN
-    CALL deallocate_stack(interop_stacks(index)%contents)
+    IF (index == interop_stack_count) &
+        interop_stack_count = interop_stack_count - 1
+    interop_stacks(index)%contents%interop_id = -1
     IF (interop_stacks(index)%holds_stack) THEN
+      CALL deallocate_stack(interop_stacks(index)%contents)
       DEALLOCATE(interop_stacks(index)%contents)
       interop_stacks(index)%contents => NULL()
     END IF
@@ -1492,6 +1520,7 @@ CONTAINS
 
     CALL this%tokenize(str, stack, errcode, simplify, minify, filename, &
         line_number, char_offset, allow_text = allow_text)
+    IF (errcode /= eis_err_none) RETURN
     IF (stack%has_emplaced) CALL this%emplace(stack, errcode, &
         host_params = host_params)
     IF (errcode == eis_err_none) THEN
@@ -1662,14 +1691,22 @@ CONTAINS
     REAL(eis_num_c), DIMENSION(:), ALLOCATABLE :: params_interop
     PROCEDURE(parser_late_bind_fn), POINTER :: late_bind_fn
     PROCEDURE(parser_late_bind_interop_fn), POINTER :: late_bind_fn_c
+    PROCEDURE(parser_late_bind_stack_fn), POINTER :: stack_late_bind_fn
+    PROCEDURE(parser_late_bind_stack_interop_fn), POINTER :: &
+        stack_late_bind_fn_c
     INTEGER(eis_status) :: status_code
+    TYPE(eis_stack), DIMENSION(:), ALLOCATABLE :: stacks
+    TYPE(eis_stack), POINTER :: inter_stack
+    INTEGER(eis_status_c), DIMENSION(:), ALLOCATABLE :: per_stack_params
+    INTEGER(C_INT), DIMENSION(:), ALLOCATABLE :: interop_param_stack_ids
     INTEGER :: rcount
     INTEGER(C_INT) :: interop_stack_id
     CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: &
         interop_name
 
-    status_code = 0_eis_bitmask
+    status_code = eis_status_none
     errcode_l = eis_err_none
+    interop_stack_id = -1
 
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
@@ -1682,32 +1719,134 @@ CONTAINS
     IF (tree_node%value%ptype /= eis_pt_emplaced_function &
         .AND. tree_node%value%ptype /= eis_pt_emplaced_variable) RETURN
 
+    CALL this%registry%get_stored_emplacement(tree_node%value%value, &
+        late_bind_fn, late_bind_fn_c, stack_late_bind_fn, stack_late_bind_fn_c)
+
+    !If you are trying to use a non-interoperable parser with an interoperable
+    !function this is an error. Report and leave
+    IF (this%interop_id < 1 .AND. (ASSOCIATED(late_bind_fn_c) &
+        .OR. ASSOCIATED(stack_late_bind_fn_c))) THEN
+      errcode = eis_err_interop
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+            tree_node%co_value%text, tree_node%co_value%charindex)
+      ELSE
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode)
+      END IF
+      RETURN
+    END IF
+
+    !If we have an interoperable function then we will want a C string version
+    !of the name
+    IF (ASSOCIATED(late_bind_fn_c) .OR. ASSOCIATED(stack_late_bind_fn_c)) THEN
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        ALLOCATE(interop_name(LEN(tree_node%co_value%text)+1))
+        CALL eis_f_c_string(tree_node%co_value%text, &
+            LEN(tree_node%co_value%text)+1, interop_name)
+      ELSE
+        ALLOCATE(interop_name(1))
+        CALL eis_f_c_string("", 1, interop_name)
+      END IF
+    END IF
+
+    !Get stacks for the parameters
     nparams = 0
     IF (ASSOCIATED(tree_node%nodes)) THEN
       nparams = SIZE(tree_node%nodes)
+      ALLOCATE(stacks(nparams))
+      errcode_l = eis_err_none
+      DO inode = 1, nparams
+        CALL initialise_stack(stacks(inode))
+        CALL eis_tree_to_stack(tree_node%nodes(inode), stacks(inode))
+      END DO
+    ELSE
+      ALLOCATE(stacks(nparams))
+    END IF
+
+    !Fortran stack bind function
+    IF (ASSOCIATED(stack_late_bind_fn)) THEN
+      errcode_l = eis_err_none
+      IF (ALLOCATED(tree_node%co_value%text)) THEN
+        CALL stack_late_bind_fn(tree_node%co_value%text, nparams, stacks, &
+            host_params, temp_stack, status_code, errcode_l)
+      ELSE
+        CALL stack_late_bind_fn("", nparams, stacks, &
+            host_params, temp_stack, status_code, errcode_l)
+      END IF
+      emplace_stack => temp_stack
+      IF (errcode_l /= eis_err_none) THEN
+        errcode = IOR(errcode, errcode_l)
+        IF (ALLOCATED(tree_node%co_value%text)) THEN
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+              tree_node%co_value%text, tree_node%co_value%charindex)
+        ELSE
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+        END IF
+      END IF
+    END IF
+
+    !C stack binding function
+    IF (ASSOCIATED(stack_late_bind_fn_c)) THEN
+      ALLOCATE(per_stack_params(nparams))
+      per_stack_params = eis_status_none
+      ALLOCATE(interop_param_stack_ids(nparams))
+      DO inode = 1, nparams
+        ALLOCATE(inter_stack, SOURCE = stacks(inode))
+        interop_param_stack_ids(inode) = &
+            eis_add_interop_stack(inter_stack, this%interop_id, holds = .TRUE.)
+      END DO
+      errcode_l = eis_err_none
+      CALL stack_late_bind_fn_c(C_LOC(interop_name), nparams, &
+          interop_param_stack_ids, host_params, interop_stack_id, &
+          per_stack_params, status_code, errcode_l)
+      emplace_stack => eis_get_interop_stack(interop_stack_id)
+      !Now go through and release the stacks unless the interop function said
+      !to keep them. Go backwards so the interop list shrinks properly
+      DO inode = nparams, 1, -1
+        IF (IAND(per_stack_params(inode), eis_status_retain_stack) == 0) THEN
+          CALL eis_release_interop_stack(interop_param_stack_ids(inode))
+        END IF
+      END DO
+      DEALLOCATE(per_stack_params)
+      DEALLOCATE(interop_param_stack_ids)
+      IF (errcode_l /= eis_err_none) THEN
+        errcode = IOR(errcode, errcode_l)
+        IF (ALLOCATED(tree_node%co_value%text)) THEN
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+              tree_node%co_value%text, tree_node%co_value%charindex)
+        ELSE
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+        END IF
+      END IF
+    END IF
+
+    !Now deal with emplaced functions that want numerical rather than stack
+    !parameters
+
+    !First generate the parameters
+    IF (ASSOCIATED(tree_node%nodes)) THEN
       ALLOCATE(params(nparams))
       errcode_l = eis_err_none
       DO inode = 1, nparams
-        CALL initialise_stack(temp_stack)
-        CALL eis_tree_to_stack(tree_node%nodes(inode), temp_stack)
-        rcount = this%evaluate(temp_stack, results, errcode_l, &
+        rcount = this%evaluate(stacks(inode), results, errcode_l, &
             host_params = host_params)
         params(inode) = results(1)
-        CALL deallocate_stack(temp_stack)
         errcode = IOR(errcode, errcode_l)
       END DO
+      IF (errcode_l /= eis_err_none) THEN
+        errcode = IOR(errcode, errcode_l)
+        IF (ALLOCATED(tree_node%co_value%text)) THEN
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+              tree_node%co_value%text, tree_node%co_value%charindex)
+        ELSE
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+        END IF
+      END IF
     ELSE
       ALLOCATE(params(nparams))
     END IF
 
-    IF (errcode_l /= eis_err_none) THEN
-      DEALLOCATE(params)
-      RETURN
-    END IF
-
-    CALL this%registry%get_stored_emplacement(tree_node%value%value, &
-        late_bind_fn, late_bind_fn_c)
-
+    !Fortran bind function
     IF (ASSOCIATED(late_bind_fn)) THEN
       CALL initialise_stack(temp_stack)
       emplace_stack => temp_stack
@@ -1725,40 +1864,42 @@ CONTAINS
       ELSE
         CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
       END IF
-    ELSE
+    END IF
+
+    !Interop bind function
+    IF (ASSOCIATED(late_bind_fn_c)) THEN
       ALLOCATE(params_interop(nparams))
       params_interop = REAL(params, eis_num_c)
       errcode_l = eis_err_none
-      IF (ALLOCATED(tree_node%co_value%text)) THEN
-        ALLOCATE(interop_name(LEN(tree_node%co_value%text)+1))
-        CALL eis_f_c_string(tree_node%co_value%text, &
-            LEN(tree_node%co_value%text)+1, interop_name)
-      ELSE
-        ALLOCATE(interop_name(1))
-        CALL eis_f_c_string("", 1, interop_name)
-      END IF
       CALL late_bind_fn_c(C_LOC(interop_name), nparams, params_interop, &
           host_params, interop_stack_id, status_code, errcode_l)
-      DEALLOCATE(interop_name)
       errcode = IOR(errcode, errcode_l)
       emplace_stack => eis_get_interop_stack(interop_stack_id) 
       DEALLOCATE(params_interop)
-      IF (ALLOCATED(tree_node%co_value%text)) THEN
-        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
-            tree_node%co_value%text, tree_node%co_value%charindex)
-      ELSE
-        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+      IF (errcode /= eis_err_none) THEN
+        IF (ALLOCATED(tree_node%co_value%text)) THEN
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+              tree_node%co_value%text, tree_node%co_value%charindex)
+        ELSE
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode_l)
+        END IF
       END IF
     END IF
     DEALLOCATE(params)
+    DO inode = 1, SIZE(stacks)
+      CALL deallocate_stack(stacks(inode))
+    END DO
+    DEALLOCATE(stacks)
 
     remaining_functions = .TRUE.
     IF (.NOT. ASSOCIATED(emplace_stack)) RETURN
     IF (.NOT. emplace_stack%init) RETURN
     IF (emplace_stack%stack_point == 0) RETURN
 
-    IF (emplace_stack%has_emplaced) CALL this%emplace(emplace_stack, errcode, &
-        host_params = host_params)
+    IF (emplace_stack%has_emplaced) THEN
+      CALL this%emplace(emplace_stack, errcode_l, host_params = host_params)
+      errcode = IOR(errcode, errcode_l)
+    END IF
 
     capbits = IOR(capbits, emplace_stack%cap_bits)
     !If emplacement is not forbidden by status then build new node
@@ -1773,6 +1914,11 @@ CONTAINS
       remaining_functions = .FALSE.
     ELSE
       remaining_functions = .TRUE.
+    END IF
+
+    IF (interop_stack_id > 0 &
+        .AND. IAND(status_code, eis_status_retain_stack) == 0) THEN
+      CALL eis_release_interop_stack(interop_stack_id)
     END IF
 
     CALL deallocate_stack(emplace_stack)
@@ -2979,12 +3125,124 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
-    CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
+    CALL this%registry%add_emplaced_function(name, errcode, &
         err_handler = this%err_handler, &
         expected_parameters = expected_params, description = description, &
-        hidden = hidden)
+        hidden = hidden, lb_fn = def_fn)
 
   END SUBROUTINE eip_add_emplaced_function
+
+
+
+
+  !> @brief
+  !> Add an interoperable emplaced function to the parser. Emplaced functions
+  !> cannot be added globally or deferred
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_params
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_emplaced_interop_function(this, name, def_fn, errcode, &
+      expected_params, description, hidden)
+
+    CLASS(eis_parser) :: this
+    !> Name to associated with the emplaced function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Function to be called when emplacing the function
+    PROCEDURE(parser_late_bind_interop_fn) :: def_fn
+    !> Error code associated with the storing of the emplaced function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Number of parameters expected for the emplaced function. Optional, 
+    !> default = -1 (variadic function)
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+
+    CALL this%registry%add_emplaced_function(name, errcode, &
+        err_handler = this%err_handler, &
+        expected_parameters = expected_params, description = description, &
+        hidden = hidden, clb_fn = def_fn)
+
+  END SUBROUTINE eip_add_emplaced_interop_function
+
+
+
+  !> @brief
+  !> Add a stack emplaced function to the parser. Emplaced functions
+  !> cannot be added globally or deferred
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_params
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_emplaced_stack_function(this, name, def_fn, errcode, &
+      expected_params, description, hidden)
+
+    CLASS(eis_parser) :: this
+    !> Name to associated with the emplaced function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Stack function to be called when emplacing the function
+    PROCEDURE(parser_late_bind_stack_fn) :: def_fn
+    !> Error code associated with the storing of the emplaced function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Number of parameters expected for the emplaced function. Optional, 
+    !> default = -1 (variadic function)
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+
+    CALL this%registry%add_emplaced_function(name, errcode, &
+        err_handler = this%err_handler, &
+        expected_parameters = expected_params, description = description, &
+        hidden = hidden, lbs_fn = def_fn)
+
+  END SUBROUTINE eip_add_emplaced_stack_function
+
+
+
+  !> @brief
+  !> Add a stack emplaced function to the parser. Emplaced functions
+  !> cannot be added globally or deferred
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] def_fn
+  !> @param[inout] errcode
+  !> @param[in] expected_params
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_emplaced_interop_stack_function(this, name, def_fn, &
+      errcode, expected_params, description, hidden)
+
+    CLASS(eis_parser) :: this
+    !> Name to associated with the emplaced function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Stack function to be called when emplacing the function
+    PROCEDURE(parser_late_bind_stack_interop_fn) :: def_fn
+    !> Error code associated with the storing of the emplaced function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Number of parameters expected for the emplaced function. Optional, 
+    !> default = -1 (variadic function)
+    INTEGER, INTENT(IN), OPTIONAL :: expected_params
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+
+    CALL this%registry%add_emplaced_function(name, errcode, &
+        err_handler = this%err_handler, &
+        expected_parameters = expected_params, description = description, &
+        hidden = hidden, clbs_fn = def_fn)
+
+  END SUBROUTINE eip_add_emplaced_interop_stack_function
 
 
 
@@ -3013,9 +3271,9 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
-    CALL this%registry%add_emplaced_function(name, def_fn, errcode, &
+    CALL this%registry%add_emplaced_function(name, errcode, &
         err_handler = this%err_handler, expected_parameters = 0, &
-        description = description, hidden = hidden)
+        description = description, hidden = hidden, lb_fn = def_fn)
 
   END SUBROUTINE eip_add_emplaced_variable
 
