@@ -136,8 +136,6 @@ MODULE eis_error_mod
           &unresolved emplaced elements')
       CALL this%strings%store('err_has_deferred', 'The specified stack has &
           &unresolved deferred elements')
-      CALL this%strings%store('err_where', 'The specified stack uses the &
-        &"where" construct but is not tested for no-ops when evaluated')
       CALL this%strings%store('err_bracketed_constant', 'Attempting to &
           &subscript a constant')
       CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
@@ -406,9 +404,6 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_has_deferred) /= 0) THEN
       ok = this%strings%append('err_has_deferred', err_string)
-    END IF
-    IF (IAND(errcode, eis_err_where) /= 0) THEN
-      ok = this%strings%append('err_where', err_string)
     END IF
     IF (IAND(errcode, eis_err_bracketed_constant) /= 0) THEN
       ok = this%strings%append('err_bracketed_constant', err_string)

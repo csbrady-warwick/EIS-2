@@ -203,9 +203,8 @@ MODULE eis_eval_stack_mod
   !> @param[in] host_params
   !> @param[inout] errcode
   !> @param[inout] err_handler
-  !> @param[out] is_no_op
   FUNCTION ees_evaluate(this, stack, result_vals, host_params, errcode, &
-      err_handler, is_no_op) RESULT(result_count)
+      err_handler) RESULT(result_count)
     TYPE(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack), INTENT(IN) :: stack !< Stack to evaluate
     !> Array holding the results of the evaluation
@@ -214,14 +213,10 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code
     !< Error handler instance. Option, default no error reporting
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
-    !> Logical value for if expression is flagged as being a null operation.
-    !> Optional, default is not to return the null operation status
-    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     INTEGER(eis_error) :: err
     INTEGER(eis_status) :: stat_in, status
     INTEGER :: result_count
     INTEGER :: istack
-    REAL(eis_num) :: where_condition
 
     status = eis_status_none
     errcode = eis_err_none
@@ -280,21 +275,6 @@ MODULE eis_eval_stack_mod
       errcode = IOR(errcode, err)
     END DO
 
-    IF (stack%where_stack) THEN
-      where_condition = this%entries(1)
-      CALL ees_trim_first(this, where_condition, errcode)
-      IF (PRESENT(is_no_op)) THEN
-        is_no_op = ABS(where_condition) < eis_tiny
-      ELSE
-        errcode = IOR(errcode, eis_err_where)
-        CALL err_handler%add_error(eis_err_evaluator, errcode, 'where', 1)
-      END IF
-    ELSE
-      IF (PRESENT(is_no_op)) THEN
-        is_no_op = .FALSE.
-      END IF
-    END IF
-
     IF (.NOT. ALLOCATED(result_vals)) THEN
       ALLOCATE(result_vals(1:this%stack_point))
     ELSE IF (SIZE(result_vals) < this%stack_point) THEN
@@ -319,7 +299,6 @@ MODULE eis_eval_stack_mod
   !> @param[in] host_params
   !> @param[inout] errcode
   !> @param[inout] err_handler
-  !> @param[out] is_no_op
   FUNCTION ees_evaluate_fast(this, stack, result_vals, host_params, errcode&
       ) RESULT(result_count)
     TYPE(eis_eval_stack), INTENT(INOUT) :: this

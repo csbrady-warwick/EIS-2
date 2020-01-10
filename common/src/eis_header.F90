@@ -41,53 +41,46 @@ MODULE eis_header
   INTEGER(eis_error), PARAMETER :: eis_err_has_deferred = 2**13
   !> Stack has emplaced elements that have not been resolved
   INTEGER(eis_error), PARAMETER :: eis_err_has_emplaced = 2**14
-  !> Stack makes use of the "where" construct but the necessary "no-op"
-  !> value is not tested when the stack is evaluated
-  INTEGER(eis_error), PARAMETER :: eis_err_where = 2**15
   !> Attempted to subscript a constant as though it was a function
-  INTEGER(eis_error), PARAMETER :: eis_err_bracketed_constant = 2**16
+  INTEGER(eis_error), PARAMETER :: eis_err_bracketed_constant = 2**15
   !> Extra bracket in expression
-  INTEGER(eis_error), PARAMETER :: eis_err_extra_bracket = 2**17
+  INTEGER(eis_error), PARAMETER :: eis_err_extra_bracket = 2**16
   !> Stack specified through interoperable interface is invalid
-  INTEGER(eis_error), PARAMETER :: eis_err_bad_stack = 2**18
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_stack = 2**17
   !> Stack returned more results through interoperable interface than expected
-  INTEGER(eis_error), PARAMETER :: eis_err_extra_results = 2**19
+  INTEGER(eis_error), PARAMETER :: eis_err_extra_results = 2**18
   !> String handler couldn't find a LUN when loading a file
-  INTEGER(eis_error), PARAMETER :: eis_err_no_luns = 2**20
+  INTEGER(eis_error), PARAMETER :: eis_err_no_luns = 2**19
   !> String handler couldn't find a specified file
-  INTEGER(eis_error), PARAMETER :: eis_err_no_file = 2**21
+  INTEGER(eis_error), PARAMETER :: eis_err_no_file = 2**20
   !> String handler was given an invalid serialisation string
-  INTEGER(eis_error), PARAMETER :: eis_err_malformed_file = 2**22
+  INTEGER(eis_error), PARAMETER :: eis_err_malformed_file = 2**21
   !> Deck handler found an unmatched start and end block description
-  INTEGER(eis_error), PARAMETER :: eis_err_mismatched_begin_end = 2**23
+  INTEGER(eis_error), PARAMETER :: eis_err_mismatched_begin_end = 2**22
   !> Deck handler found a deck block that was deeper than permitted
-  INTEGER(eis_error), PARAMETER :: eis_err_deck_too_deep = 2**24
+  INTEGER(eis_error), PARAMETER :: eis_err_deck_too_deep = 2**23
   !> Deck handler found an unpermitted empty block
-  INTEGER(eis_error), PARAMETER :: eis_err_deck_empty_block = 2**25
+  INTEGER(eis_error), PARAMETER :: eis_err_deck_empty_block = 2**24
   !> Deck handler found an unpermitted key in the root block
-  INTEGER(eis_error), PARAMETER :: eis_err_root_keys = 2**26
+  INTEGER(eis_error), PARAMETER :: eis_err_root_keys = 2**25
   !> Deck handler tried to use an empty definition to parse a deck
-  INTEGER(eis_error), PARAMETER :: eis_bad_deck_definition = 2**27
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_deck_definition = 2**26
   !> Deck handler found an unknown block in a deck
-  INTEGER(eis_error), PARAMETER :: eis_err_unknown_block = 2**28
+  INTEGER(eis_error), PARAMETER :: eis_err_unknown_block = 2**27
   !> Deck handler found an unknown key in a deck
-  INTEGER(eis_error), PARAMETER :: eis_err_unknown_key = 2**29
+  INTEGER(eis_error), PARAMETER :: eis_err_unknown_key = 2**28
   !> Deck handler found a key that it was unable to handle
-  INTEGER(eis_error), PARAMETER :: eis_err_bad_key = 2**30
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_key = 2**29
   !> Fatal error was reported by the host code
-  INTEGER(eis_error), PARAMETER :: eis_err_host = 2_eis_error**31_eis_error
+  INTEGER(eis_error), PARAMETER :: eis_err_host = 2**30
   !> Function had a text parameter that should not have had a text parameter
-  INTEGER(eis_error), PARAMETER :: eis_err_text = 2_eis_error**32_eis_error
+  INTEGER(eis_error), PARAMETER :: eis_err_text = 2_eis_error**31_eis_error
   !> Trying to use a function that wants an interoperable parser but
   !> the actual parser is not interoperable
-  INTEGER(eis_error), PARAMETER :: eis_err_interop = 2_eis_error**33_eis_error
+  INTEGER(eis_error), PARAMETER :: eis_err_interop = 2_eis_error**32_eis_error
   !> Parameter was valid mathematically but was out of range in some other sense
   INTEGER(eis_error), PARAMETER :: eis_err_out_of_range &
-      = 2_eis_error**34_eis_error
-
-
-  !Interoperable stack should be retained
-  INTEGER(eis_status), PARAMETER :: eis_status_retain_stack = 2**0
+      = 2_eis_error**33_eis_error
 
   CONTAINS
 

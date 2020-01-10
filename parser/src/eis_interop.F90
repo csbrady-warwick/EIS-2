@@ -263,22 +263,17 @@ MODULE eis_parser_interop
   !> @param[inout] errcode - Error code
   !> @param[in] host_params - Pointer to C interoperable structure that is
   !> passed to all function that are called as expression keys are evaluated
-  !> @param[out] is_no_op - Used with the special "where" directive to specify
-  !> that the where condition has not been satisfied and no changes should be
-  !> made
   !> @return eis_evaluate_stack - Number of results actually returned
   FUNCTION eis_evaluate_stack(stack_id, res_len, result, errcode, &
-      host_params, is_no_op) BIND(C)
+      host_params) BIND(C)
 
     INTEGER(C_INT), VALUE :: stack_id, res_len
     REAL(eis_num_c), DIMENSION(res_len), INTENT(OUT) :: result
     INTEGER(eis_error_c), INTENT(OUT) :: errcode
     TYPE(C_PTR), VALUE :: host_params
-    INTEGER(C_INT), INTENT(OUT) :: is_no_op
     INTEGER(C_INT) :: eis_evaluate_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: f_result
     INTEGER(eis_error) :: f_errcode
-    LOGICAL :: f_is_no_op
     INTEGER :: returned_results, copied_results
 
     eis_evaluate_stack = -1
@@ -286,13 +281,11 @@ MODULE eis_parser_interop
 
     IF (stack_id < 1 .OR. stack_id > interop_stack_count) THEN
       errcode = IOR(errcode, INT(eis_err_bad_stack, eis_error_c))
-      is_no_op = 1_C_INT
       RETURN
     END IF
 
     returned_results =  interop_stacks(stack_id)%parser%evaluate(&
-        interop_stacks(stack_id)%contents, f_result, f_errcode, host_params, &
-        f_is_no_op)
+        interop_stacks(stack_id)%contents, f_result, f_errcode, host_params)
 
     errcode = IOR(errcode, INT(f_errcode, eis_error_c))
     IF (.NOT. ALLOCATED(f_result)) RETURN
@@ -303,11 +296,6 @@ MODULE eis_parser_interop
 
     copied_results = MIN(SIZE(f_result), res_len)
     result(1:copied_results) = REAL(f_result(1:copied_results), eis_num_c)
-    IF (f_is_no_op) THEN
-      is_no_op = 1_C_INT
-    ELSE
-      is_no_op = 0_C_INT
-    END IF
 
   END FUNCTION eis_evaluate_stack
 
@@ -392,7 +380,7 @@ MODULE eis_parser_interop
   !> code and given to the interoperable interface then it will not be 
   !> deallocated even when the reference count reaches zero
   !> @param[in] stack_id - ID of stored stack to decrement the reference of
-  SUBROUTINE eis_stack_deeis_ref(stack_id) BIND(C)
+  SUBROUTINE eis_stack_dec_ref(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
 
@@ -407,7 +395,40 @@ MODULE eis_parser_interop
       interop_stacks(stack_id)%contents => NULL()
     END IF
 
-  END SUBROUTINE eis_stack_deeis_ref
+  END SUBROUTINE eis_stack_dec_ref
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Decrement the reference count for a stack. Use to indicate
+  !> that another part of your code has finished using a given stack.
+  !> When the reference count reaches zero the stack will be deallocated
+  !> IF it was created by eis_create_stack. If it was created by a Fortran
+  !> code and given to the interoperable interface then it will not be 
+  !> deallocated even when the reference count reaches zero
+  !> @param[in] stack_id - ID of stored stack to decrement the reference of
+  !> @result eis_copy_stack - ID of copy of stack
+  FUNCTION eis_copy_stack(stack_id) BIND(C)
+
+    INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id
+    INTEGER(C_INT) :: eis_copy_stack
+    TYPE(eis_parser), POINTER :: parser
+    TYPE(eis_stack), POINTER :: old, new
+
+    IF (stack_id < 1 .OR. stack_id > interop_stack_count) THEN
+      RETURN
+    END IF
+
+    eis_copy_stack = -1
+    old => eis_get_interop_stack(stack_id, parser = parser)
+    IF (ASSOCIATED(old)) THEN
+      ALLOCATE(new, SOURCE = old)
+      eis_copy_stack = eis_add_interop_stack(new, parser%interop_id, &
+          holds = .TRUE.)
+    END IF
+
+  END FUNCTION eis_copy_stack
 
 
 END MODULE eis_parser_interop

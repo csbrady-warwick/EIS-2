@@ -62,6 +62,8 @@ MODULE eis_constants
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   !> Terminate operations status
   INTEGER(eis_status), PARAMETER :: eis_status_terminate = 2**0
+  !Interoperable stack should be retained
+  INTEGER(eis_status), PARAMETER :: eis_status_retain_stack = 2**1
 
   !> No error specified
   INTEGER(eis_error), PARAMETER :: eis_err_none = 0

@@ -97,9 +97,9 @@ MODULE eis_parser_header
   INTEGER, PARAMETER :: eis_paren_right_bracket = 2
 
   !> This key in a stack should not be simplified through
-  INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**1
+  INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**2
   !> This key in a stack is an emplaced value that should not be emplaced yet
-  INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**2
+  INTEGER(eis_status), PARAMETER :: eis_status_no_emplace = 2**3
 
   !> Symbol display infor
   INTEGER, PARAMETER :: eis_fsn_auto = 0
@@ -153,7 +153,6 @@ MODULE eis_parser_header
     LOGICAL :: sanity_checked = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
     LOGICAL :: has_deferred = .FALSE.
-    LOGICAL :: where_stack = .FALSE.
   END TYPE eis_stack
 
   INTERFACE

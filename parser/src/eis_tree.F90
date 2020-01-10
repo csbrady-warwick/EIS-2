@@ -74,7 +74,6 @@ MODULE eis_tree_mod
     ELSE
       simplified => stack_out
     END IF
-    simplified%where_stack = stack%where_stack
 
     IF (.NOT. simplified%init) CALL initialise_stack(simplified)
     sp = stack%stack_point + 1

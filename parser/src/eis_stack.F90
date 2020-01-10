@@ -185,7 +185,8 @@ MODULE eis_stack_mod
   !> @param[in] append - Stack to append to "stack"
   SUBROUTINE append_stack(stack, append)
 
-    TYPE(eis_stack), INTENT(INOUT) :: stack, append
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    TYPE(eis_stack), INTENT(IN) :: append
     INTEGER :: i, n, old_stack_point
 
     old_stack_point = stack%stack_point

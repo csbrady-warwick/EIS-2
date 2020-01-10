@@ -92,7 +92,7 @@ MODULE eis_parser_mod
     TYPE(eis_string_store) :: string_param_store
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
     LOGICAL :: owns_err_handler = .FALSE.
-    INTEGER :: interop_id = -1
+    INTEGER, PUBLIC :: interop_id = -1
     INTEGER :: last_block_type, last_block_value, last_charindex
     CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
     LOGICAL :: is_init = .FALSE.
@@ -170,6 +170,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: optimise => eip_optimise
     PROCEDURE, PUBLIC :: optimize => eip_optimise
     PROCEDURE, PUBLIC :: get_text => eip_get_text
+    PROCEDURE, PUBLIC :: combine_stacks => eip_combine_stacks
 
     PROCEDURE, PUBLIC :: get_global_symbol_count => eip_get_global_symbol_count
     PROCEDURE, PUBLIC :: get_global_symbol => eip_get_global_symbol
@@ -384,6 +385,27 @@ CONTAINS
 
   END SUBROUTINE eis_release_interop_stack
 
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Copy an interoperable stack
+  !> @param[in] index
+  !> @result eis_copy_interop_stack
+  FUNCTION eis_copy_interop_stack(index)
+    INTEGER, INTENT(IN) :: index !< Source stack
+    INTEGER :: eis_copy_interop_stack !< UID of copied stack
+    TYPE(eis_parser), POINTER :: parser
+    TYPE(eis_stack), POINTER :: old, new
+
+    eis_copy_interop_stack = -1
+    old => eis_get_interop_stack(index, parser = parser)
+    IF (ASSOCIATED(old)) THEN
+      ALLOCATE(new, SOURCE = old)
+      eis_copy_interop_stack = eis_add_interop_stack(new, parser%interop_id, &
+          holds = .TRUE.)
+    END IF
+
+  END FUNCTION eis_copy_interop_stack
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -1036,7 +1058,8 @@ CONTAINS
   !> @param[in] name
   !> @param[out] iblock
   !> @param[out] icoblock
-  SUBROUTINE eip_load_block(this, name, iblock, icoblock)
+  !> @param[in] unary
+  SUBROUTINE eip_load_block(this, name, iblock, icoblock, unary)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to look up in registry
@@ -1044,6 +1067,8 @@ CONTAINS
     TYPE(eis_stack_element), INTENT(OUT) :: iblock
     !> Coblock to fill with registry information
     TYPE(eis_stack_co_element), INTENT(OUT) :: icoblock
+    !> Can this be a unary operator
+    LOGICAL, INTENT(IN), OPTIONAL :: unary
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
     LOGICAL :: can_be_unary
@@ -1083,14 +1108,18 @@ CONTAINS
       RETURN
     END IF
 
-    can_be_unary = .NOT. (this%last_block_type == eis_pt_variable &
-          .OR. this%last_block_type == eis_pt_pointer_variable &
-          .OR. this%last_block_type == eis_pt_constant &
-          .OR. this%last_block_type == eis_pt_stored_variable &
-          .OR. this%last_block_type == eis_pt_function &
-          .OR. this%last_block_type == eis_pt_emplaced_function &
-          .OR. (this%last_block_type == eis_pt_parenthesis &
-          .AND. this%last_block_value == eis_paren_right_bracket))
+    IF (.NOT. PRESENT(unary)) THEN
+      can_be_unary = .NOT. (this%last_block_type == eis_pt_variable &
+            .OR. this%last_block_type == eis_pt_pointer_variable &
+            .OR. this%last_block_type == eis_pt_constant &
+            .OR. this%last_block_type == eis_pt_stored_variable &
+            .OR. this%last_block_type == eis_pt_function &
+            .OR. this%last_block_type == eis_pt_emplaced_function &
+            .OR. (this%last_block_type == eis_pt_parenthesis &
+            .AND. this%last_block_value == eis_paren_right_bracket))
+    ELSE
+      can_be_unary = unary
+    END IF
 
     CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
     IF (iblock%ptype /= eis_pt_bad) RETURN
@@ -1250,17 +1279,7 @@ CONTAINS
     IF (should_dealloc) CALL deallocate_stack(output)
     IF (.NOT. output%init) CALL initialise_stack(output)
 
-    IF (LEN(expression_in) > 6) THEN
-      IF (expression_in(1:6) == 'where(') THEN
-        output%where_stack = .TRUE.
-        ALLOCATE(expression, &
-            SOURCE = TRIM(expression_in(7:LEN(TRIM(expression_in))-1)))
-      ELSE
-        ALLOCATE(expression, SOURCE = TRIM(expression_in))
-      END IF
-    ELSE
-      ALLOCATE(expression, SOURCE = TRIM(expression_in))
-    END IF
+    ALLOCATE(expression, SOURCE = TRIM(expression_in))
 
     CALL initialise_stack(this%stack)
     CALL initialise_stack(this%brackets)
@@ -1407,10 +1426,8 @@ CONTAINS
   !> @param[inout] stack
   !> @param[inout] errcode
   !> @param[in] host_params
-  !> @param[out] is_no_op
   !> @return eip_evaluate_stack
-  FUNCTION eip_evaluate_stack(this, stack, result, errcode, host_params, &
-      is_no_op)
+  FUNCTION eip_evaluate_stack(this, stack, result, errcode, host_params)
     CLASS(eis_parser) :: this
     CLASS(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Allocatable array holding all the results from the evaluation.
@@ -1420,9 +1437,6 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
-    !> Logical determining if the stack should be a null operation. Currently
-    !> related to the "where" construct
-    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     !> Number of results returned by the evaluation
     INTEGER :: eip_evaluate_stack
     TYPE(C_PTR) :: params
@@ -1449,7 +1463,7 @@ CONTAINS
     END IF
 
     eip_evaluate_stack = ees_evaluate(this%evaluator, stack, result, params, &
-        errcode, this%err_handler, is_no_op = is_no_op)
+        errcode, this%err_handler)
 
     stack%sanity_checked = (errcode == eis_err_none)
 
@@ -1463,7 +1477,6 @@ CONTAINS
   !> @param[in] str
   !> @param[inout] errcode
   !> @param[in] host_params
-  !> @param[out] is_no_op
   !> @param[in] filename
   !> @param[in] line_number
   !> @param[in] char_offset
@@ -1471,7 +1484,7 @@ CONTAINS
   !> @param[in] allow_text
   !> @return eip_evaluate_string
   FUNCTION eip_evaluate_string(this, str, result, errcode, host_params, &
-      is_no_op, simplify, minify, filename, line_number, char_offset, &
+      simplify, minify, filename, line_number, char_offset, &
       cap_bits, allow_text)
     CLASS(eis_parser) :: this
     !> String to evaluate as maths
@@ -1484,9 +1497,6 @@ CONTAINS
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Host code parameters provided. Optional, default no values (C_PTR_NULL)
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
-    !> Logical determining if the stack should be a null operation. Currently
-    !> related to the "where" construct
-    LOGICAL, INTENT(OUT), OPTIONAL :: is_no_op
     !> Logical determining if the expression should be simplified before
     !> evaluation. Not usually beneficial for single direct string to value
     !> evaluations. Optional, default same as set during init
@@ -1525,7 +1535,7 @@ CONTAINS
         host_params = host_params)
     IF (errcode == eis_err_none) THEN
       eip_evaluate_string = this%evaluate(stack, result, errcode, &
-          host_params = host_params, is_no_op = is_no_op)
+          host_params = host_params)
       IF (PRESENT(cap_bits)) cap_bits = stack%cap_bits
       CALL deallocate_stack(stack)
     END IF
@@ -1757,7 +1767,8 @@ CONTAINS
       errcode_l = eis_err_none
       DO inode = 1, nparams
         CALL initialise_stack(stacks(inode))
-        CALL eis_tree_to_stack(tree_node%nodes(inode), stacks(inode))
+        CALL eis_tree_to_stack(tree_node%nodes(nparams - inode + 1), &
+            stacks(inode))
       END DO
     ELSE
       ALLOCATE(stacks(nparams))
@@ -3681,6 +3692,67 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_tokenize_subexpression_infix
+
+
+
+  !> @brief
+  !> Combine multiple stacks. Optionally combine as parameters to a function
+  !> or operator
+  !> @param[inout] this
+  !> @param[in] stacks
+  !> @param[inout] output
+  !> @param[in] append
+  !> @param[out] errcode
+  !> @param[in] function_str
+  SUBROUTINE eip_combine_stacks(this, stacks, output, errcode, append, &
+      function_str)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Array of stacks to combine
+    TYPE(eis_stack), DIMENSION(:), INTENT(IN) :: stacks
+    !> Stack to hold the combined stack
+    TYPE(eis_stack), INTENT(INOUT) :: output
+    !> Error code
+    INTEGER(eis_error), INTENT(OUT) :: errcode
+    !> Should the new stacks be appended to the existing stack?
+    LOGICAL, INTENT(IN), OPTIONAL :: append
+    !> Optional string for function to use to combine the stacks
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: function_str
+    LOGICAL :: should_append
+    INTEGER :: iel, expected_params
+    TYPE(eis_stack_element) :: iblock
+    TYPE(eis_stack_co_element) :: icoblock
+
+    errcode = eis_err_none
+
+    should_append = .FALSE.
+    IF (PRESENT(append)) should_append = .FALSE.
+    IF (.NOT. should_append .OR. .NOT. output%init) &
+        CALL initialise_stack(output)
+    IF (SIZE(stacks) == 0) RETURN
+
+    IF (PRESENT(function_str)) THEN
+      CALL this%load_block(function_str, iblock, icoblock)
+      IF (iblock%ptype /= eis_pt_function &
+          .AND. iblock%ptype /= eis_pt_operator &
+          .AND. iblock%ptype /= eis_pt_emplaced_function) RETURN
+      IF (icoblock%expected_params >= 0 &
+          .AND. icoblock%expected_params /= SIZE(stacks)) RETURN
+    END IF
+
+    DO iel = 1, SIZE(stacks)
+      IF (.NOT. stacks(iel)%init) THEN
+        errcode = eis_err_bad_stack
+        RETURN
+      END IF
+      CALL append_stack(output, stacks(iel))
+    END DO
+
+    IF (PRESENT(function_str)) THEN
+      iblock%actual_params = SIZE(stacks)
+      CALL push_to_stack(output, iblock, icoblock)
+    END IF
+
+  END SUBROUTINE eip_combine_stacks
 
 
 
