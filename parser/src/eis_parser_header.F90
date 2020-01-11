@@ -173,7 +173,7 @@ MODULE eis_parser_header
       IMPORT eis_num, eis_i4, C_PTR, eis_stack, eis_error, eis_status
       CHARACTER(LEN=*), INTENT(IN) :: orig_string
       INTEGER, INTENT(IN) :: nparams
-      CLASS(eis_stack), DIMENSION(nparams), INTENT(IN) :: params
+      CLASS(eis_stack), DIMENSION(:), INTENT(IN) :: params
       TYPE(C_PTR), INTENT(IN) :: host_params
       TYPE(eis_stack), INTENT(INOUT) :: stack_out
       INTEGER(eis_status), INTENT(INOUT) :: status_code

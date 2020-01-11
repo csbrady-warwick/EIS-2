@@ -309,10 +309,10 @@ MODULE eis_deck_from_text_mod
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
-    TYPE(eis_error_handler), INTENT(IN), POINTER, OPTIONAL :: err_handler
+    CLASS(eis_error_handler), INTENT(IN), POINTER, OPTIONAL :: err_handler
     !> Optional maths parser supplied from host code. Default is create own
     !> own maths parser
-    TYPE(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
+    CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     !> Optional C maths parser interoperable parser code. Default is create
     !> own maths parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
