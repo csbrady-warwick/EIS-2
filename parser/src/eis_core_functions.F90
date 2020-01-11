@@ -1069,7 +1069,7 @@ MODULE eis_core_functions_mod
       x(i) = params(i*2)
       y(i) = params(i*2+1)
     END DO
-    res = eis_interpolate(params(1), x, y, errcode)
+    res = eis_interpolate1d(params(1), x, y, errcode)
 
   END FUNCTION eis_interpol
 
