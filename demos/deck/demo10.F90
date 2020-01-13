@@ -1,6 +1,6 @@
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   SAVE
 
@@ -15,9 +15,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -27,6 +24,17 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *, 'This shows using assignment variables in the deck. You can point &
+      &a deck key to a specific pointer variable (or TARGET in F2008 mode) &
+      &and that variable will be automatically filled when the key is &
+      &encountered. Multiple keys will overwrite previous values without &
+      &warning unless other features of EIS are used to prevent this. &
+      &It is possible to store REAL32, REAL64, INT32 and INT64 values like &
+      &this. It is also possible to store rank 0 or rank 1 values. Parser &
+      &expressions for storing to rank 0 variables must return a single value. &
+      &Expressions for storing to rank 1 arrays must return <= the size of the &
+      &array.'
 
   ALLOCATE(scalar)
   ALLOCATE(array(4))

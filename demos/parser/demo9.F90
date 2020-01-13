@@ -1,7 +1,6 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
+  USE eis_parser_header
   IMPLICIT NONE
 
   TYPE(eis_stack), DIMENSION(2) :: stacks
@@ -32,13 +31,22 @@ END MODULE mymod
 PROGRAM test
 
   USE mymod
-  USE eis_parser_mod
-  USE eis_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
+
+  PRINT *,'This example shows the use of emplaced functions. Emplaced &
+      &functions are functions that take numerical values and return &
+      &a stack based on those values. These stacks are then used in &
+      &the same way as stack variables.'
+
+  PRINT *,'This example asks you to input two mathematical expressions &
+      &that are tokenized to stacks and stored. It then asks you to &
+      &specify a mathematical expression that can include the `emfunc` &
+      &function. `emfunc` takes one parameter that must be either 1 or 2 &
+      &and returns either the first or the second stack that you specified.'
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Input expression for stack 1 :"
   READ(*,'(A)') input

@@ -1,6 +1,6 @@
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -59,9 +59,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -71,6 +68,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example works with the demo1.deck file to demonstrate parsing &
+      &a simple deck file. It defines two blocks "block1" and "block2" that &
+      &*may* be present in a deck. Neither has any keys defined so specifying &
+      &any keys or any other blocks will raise an error'
 
   errcode = eis_err_none
   root => dfn%init()

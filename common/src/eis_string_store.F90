@@ -2,7 +2,6 @@ MODULE eis_string_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
   USE eis_constants
-  USE eis_header
   USE eis_ordered_store_mod
   USE eis_utils
 

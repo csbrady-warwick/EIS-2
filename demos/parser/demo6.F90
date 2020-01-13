@@ -1,7 +1,7 @@
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   TYPE, BIND(C) :: data_item
     REAL(eis_num) :: x = 0.0_eis_num
@@ -49,9 +49,6 @@ END MODULE mymod
 
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
-  USE eis_parser_header
   USE mymod
   TYPE(eis_parser) :: parser
   TYPE(eis_stack) :: stack
@@ -61,6 +58,11 @@ PROGRAM test
   INTEGER :: ct, ix, iy, it
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
+
+  PRINT *,'This example uses host parameters to evaluate an expression. &
+      &Specify an expression involving `x` and/or `y` and it will &
+      &be evaluated on  the domain [[0,1],[0,1]]. The result will be written &
+      &to a formatter file called `fort.10`'
 
   CALL parser%add_variable('x', get_x, errcode)
   CALL parser%add_variable('y', get_y, errcode)

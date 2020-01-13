@@ -38,7 +38,7 @@ MODULE eis_parser_mod
   USE eis_error_mod
   USE eis_eval_stack_mod
   USE eis_header
-  USE eis_parser_header
+  USE eis_parser_constants
   USE eis_raw_parser_mod
   USE eis_registry_mod
   USE eis_stack_mod

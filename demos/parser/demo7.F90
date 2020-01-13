@@ -1,7 +1,7 @@
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   TYPE, BIND(C) :: data_item
     REAL(eis_num) :: x = 0.0_eis_num
@@ -71,9 +71,6 @@ END MODULE mymod
 
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
-  USE eis_parser_header
   USE mymod
   TYPE(eis_parser) :: parser
   TYPE(eis_stack) :: stack
@@ -83,6 +80,12 @@ PROGRAM test
   INTEGER :: ct, ix, iy, it
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
+
+  PRINT *,'This is a version of demo6 but implements a custom function called &
+      &`cauchy` that calculates the cauchy distributiong. It takes 3 &
+      &parameters. The first parameter is the location to evaluate the &
+      &function at, the second is the x origin of the ray and the third is &
+      &the gamma parameter'
 
   CALL parser%add_variable('x', get_x, errcode)
   CALL parser%add_variable('y', get_y, errcode)

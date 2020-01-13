@@ -1,7 +1,5 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -62,9 +60,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -74,6 +69,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example shows how to create subblocks. "block2" is made a sub &
+      &block of "block1". It behaves exactly the same as "block2" in the &
+      &previous examples but "block2" should now be defined inside "block1". &
+      &If you put "block2" outside "block1" it is now an invalid block'
 
   errcode = eis_err_none
   root => dfn%init()

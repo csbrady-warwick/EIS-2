@@ -1,7 +1,6 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -79,9 +78,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -91,6 +87,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *, 'This extends demo2 with keys that have numerical values. &
+      &So long as the keys have values that are evaluable by the EIS parser &
+      &they will be evaluated and the result printed. Unknown keys or keys &
+      &that cannot be evaluated by the EIS parser will cause an error'
 
   errcode = eis_err_none
   root => dfn%init()

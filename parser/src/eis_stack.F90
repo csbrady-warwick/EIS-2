@@ -1,7 +1,7 @@
 MODULE eis_stack_mod
 
   USE eis_header
-  USE eis_parser_header
+  USE eis_parser_constants
   USE eis_utils
   IMPLICIT NONE
 

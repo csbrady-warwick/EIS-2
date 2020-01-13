@@ -2,7 +2,7 @@ MODULE eis_registry_mod
 
   USE eis_error_mod
   USE eis_header
-  USE eis_parser_header
+  USE eis_parser_constants
   USE eis_named_store_mod
   USE eis_ordered_store_mod
   USE eis_stack_mod

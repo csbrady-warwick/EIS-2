@@ -1,13 +1,13 @@
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
+  USE eis_parser_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
 
+  PRINT *, 'This example uses the base parser to calculate maths expressions'
   DO WHILE(.TRUE.)
     WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
     READ(*,'(A)') input

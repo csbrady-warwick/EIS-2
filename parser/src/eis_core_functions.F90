@@ -1,9 +1,8 @@
 MODULE eis_core_functions_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
-  USE eis_constants
   USE eis_header
-  USE eis_parser_header
+  USE eis_parser_constants
   USE eis_algorithm
   IMPLICIT NONE
 

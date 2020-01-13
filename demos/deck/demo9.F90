@@ -1,6 +1,6 @@
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   SAVE
 
@@ -177,9 +177,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -192,6 +189,15 @@ PROGRAM testprog
   TYPE(block1), POINTER :: p1
   TYPE(block2), POINTER :: p2
   CHARACTER(LEN=:), ALLOCATABLE :: dot
+
+  PRINT *,'This example shows how to use the visualisation routines in EIS. &
+      &It outputs two files "fort.10" contains a dot file showing &
+      &the structure of the actual deck that was being parsed. Blocks that &
+      &appear multiple times are shown multiple times. "fort.20" contains a &
+      &dot file describing the deck definition. It is not related to the &
+      &deck file that was actually read and only shows the blocks and keys &
+      &that could be in the file. You will need tools such as Graphviz to &
+      &convert dot files to viewable picture files'
 
   errcode = eis_err_none
   root => dfn%init(on_key_success = on_key_ok, on_key_failure = on_key_fail, &

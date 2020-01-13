@@ -2,7 +2,7 @@ MODULE eis_parser_interop
 
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_header
-  USE eis_parser_header
+  USE eis_parser_constants
   USE eis_parser_mod
   USE eis_utils
   IMPLICIT NONE

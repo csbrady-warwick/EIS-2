@@ -1,7 +1,5 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -62,9 +60,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -74,6 +69,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example shows the use of "any_key" functions. These optional &
+      &functions are called when a key is encountered that hasn`t been &
+      &explicitly added to the block. "block1" will accept any key but &
+      &"block2" still has only the fixed key "new_key'
 
   errcode = eis_err_none
   root => dfn%init()

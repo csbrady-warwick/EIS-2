@@ -1,10 +1,9 @@
 MODULE eis_eval_stack_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
-  USE eis_constants
-  USE eis_error_mod
   USE eis_header
-  USE eis_parser_header
+  USE eis_error_mod
+  USE eis_parser_constants
 
   IMPLICIT NONE
 

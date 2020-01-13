@@ -1,13 +1,10 @@
 MODULE eis_deck_definition_mod
 
-  USE :: eis_constants
-  USE :: eis_header
-  USE :: eis_deck_header
+  USE :: eis_parser_constants
+  USE :: eis_parser_mod
   USE :: eis_deck_function_mod
   USE :: eis_named_store_mod
   USE :: eis_numbered_store_mod
-  USE :: eis_parser_mod
-  USE :: eis_error_mod
   IMPLICIT NONE
 
   PRIVATE

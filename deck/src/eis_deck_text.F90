@@ -1,6 +1,5 @@
 MODULE eis_deck_from_text_mod
 
-  USE eis_deck_header
   USE eis_deck_definition_mod
   USE eis_string_deck_mod
   USE eis_parser_mod

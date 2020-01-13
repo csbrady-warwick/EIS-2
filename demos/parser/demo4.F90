@@ -1,7 +1,7 @@
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   CONTAINS
 
@@ -24,13 +24,15 @@ END MODULE mymod
 PROGRAM test
 
   USE mymod
-  USE eis_parser_mod
-  USE eis_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
+
+  PRINT *,'This example creates a named variable called `myvar` that &
+      &increases by one every time you call it. Use it in expressions &
+      & exactly like any other named constant'
 
   CALL parser%add_variable('myvar', get_var, errcode)
   IF (errcode /= eis_err_none) CALL parser%print_errors()

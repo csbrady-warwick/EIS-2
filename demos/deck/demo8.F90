@@ -1,6 +1,6 @@
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -74,9 +74,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -86,6 +83,10 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This demonstrates multiple passes through a deck. The block &
+      &"block1" is only parsed on the first pass through the deck. &
+      &"block2" is only parsed on the second pass through'
 
   errcode = eis_err_none
   root => dfn%init()

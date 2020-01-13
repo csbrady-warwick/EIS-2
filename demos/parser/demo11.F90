@@ -1,8 +1,6 @@
 PROGRAM test
 
-  USE eis_parser_mod
   USE eis_parser_header
-  USE eis_header
   IMPLICIT NONE
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
@@ -11,6 +9,13 @@ PROGRAM test
   INTEGER :: ct
   INTEGER, POINTER :: ptrvar
   INTEGER(eis_bitmask) :: cbits
+
+  PRINT *,'This shows an example of using pointer variables. Pointer variables &
+      &are variables that work by holding a pointer to a variable in your code &
+      &and having the *current* value of that variable be returned when &
+      &a maths expression involving the pointer variable is encountered. In &
+      &order to work correctly your pointer must have a lifespan as long as &
+      &the parser object that makes use of it'
 
   ALLOCATE(ptrvar)
   ptrvar = 100

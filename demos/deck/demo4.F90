@@ -1,7 +1,5 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -62,9 +60,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -74,6 +69,10 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str, serial_deck
   INTEGER :: ierr
+
+  PRINT *,'This is an extension of demo3. In this example keys can be handled &
+      &as either text (if they are enclosed in double quotes) or as numbers &
+      &if they are not in quotes.'
 
   errcode = eis_err_none
   root => dfn%init()

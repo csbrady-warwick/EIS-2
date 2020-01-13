@@ -1,10 +1,6 @@
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
   IMPLICIT NONE
   SAVE
   TYPE(eis_deck_definition) :: dfn
@@ -102,9 +98,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -112,6 +105,12 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example demonstrates block remapping. Block remapping allows &
+      &an EIS host code to tell EIS to look up a block under a name other than &
+      &the name that actually appears in the deck. In this case it involves &
+      &remapping any block containing the word "block" to the block &
+      &"generic_block"'
 
   errcode = eis_err_none
   root => dfn%init(block_remapper = remapper)

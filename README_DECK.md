@@ -325,7 +325,7 @@ In fact we can create a simple code using just these pieces, although they are n
 ```fortran
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -384,9 +384,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -396,6 +393,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example works with the demo1.deck file to demonstrate parsing &
+      &a simple deck file. It defines two blocks "block1" and "block2" that &
+      &*may* be present in a deck. Neither has any keys defined so specifying &
+      &any keys or any other blocks will raise an error'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -464,7 +466,7 @@ A very simple example is given below. This reuses the block init, final, start a
 ```fortran
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -475,7 +477,7 @@ MODULE mymod
     INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
     INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
-    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER(eis_error), INTENT(INOUT) :: errcodea
 
     PRINT *,'Calling init for block : ', block_text
   END SUBROUTINE init_block
@@ -538,9 +540,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -550,6 +549,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *, 'This extends demo1 by adding keys to the blocks. "block1" now has &
+      &keys "key1" and "key2" and "block2" has the key "new_key". When any or &
+      &all of these keys are encountered they are printed. If any other keys &
+      &are encountered an error occurs'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -632,8 +636,7 @@ The next most common thing to want to do is to parse the keys to numerical value
 ```fortran
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -711,9 +714,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -723,6 +723,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *, 'This extends demo2 with keys that have numerical values. &
+      &So long as the keys have values that are evaluable by the EIS parser &
+      &they will be evaluated and the result printed. Unknown keys or keys &
+      &that cannot be evaluated by the EIS parser will cause an error'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -776,8 +781,6 @@ A common thing to want to do is parse some kinds of keys as strings and some as 
 ```fortran
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -838,9 +841,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -850,6 +850,10 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str, serial_deck
   INTEGER :: ierr
+
+  PRINT *,'This is an extension of demo3. In this example keys can be handled &
+      &as either text (if they are enclosed in double quotes) or as numbers &
+      &if they are not in quotes.'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -938,8 +942,6 @@ You specify "Any" action functions when you create a block in the `add_block` fu
 ```fortran
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -1000,9 +1002,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -1012,6 +1011,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example shows the use of "any_key" functions. These optional &
+      &functions are called when a key is encountered that hasn`t been &
+      &explicitly added to the block. "block1" will accept any key but &
+      &"block2" still has only the fixed key "new_key'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -1048,8 +1052,6 @@ Decks that have blocks defined within blocks are called multi-level decks. Multi
 ```fortran
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
@@ -1110,9 +1112,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -1122,6 +1121,11 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example shows how to create subblocks. "block2" is made a sub &
+      &block of "block1". It behaves exactly the same as "block2" in the &
+      &previous examples but "block2" should now be defined inside "block1". &
+      &If you put "block2" outside "block1" it is now an invalid block'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -1219,11 +1223,7 @@ You set the remapping function by specifying the optional `block_remapper` argum
 ```fortran
 MODULE mymod
 
-  USE eis_header
-  USE eis_parser_mod
   USE eis_deck_header
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
   IMPLICIT NONE
   SAVE
   TYPE(eis_deck_definition) :: dfn
@@ -1321,9 +1321,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -1331,6 +1328,12 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This example demonstrates block remapping. Block remapping allows &
+      &an EIS host code to tell EIS to look up a block under a name other than &
+      &the name that actually appears in the deck. In this case it involves &
+      &remapping any block containing the word "block" to the block &
+      &"generic_block"'
 
   errcode = eis_err_none
   root => dfn%init(block_remapper = remapper)
@@ -1406,7 +1409,7 @@ On a pass which is flagged to not trigger a key they key is not processed. On a 
 ```fortran
 MODULE mymod
 
-  USE eis_header
+  USE eis_deck_header
   IMPLICIT NONE
   CONTAINS
 
@@ -1480,9 +1483,6 @@ END MODULE mymod
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -1492,6 +1492,10 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+
+  PRINT *,'This demonstrates multiple passes through a deck. The block &
+      &"block1" is only parsed on the first pass through the deck. &
+      &"block2" is only parsed on the second pass through'
 
   errcode = eis_err_none
   root => dfn%init()
@@ -1573,25 +1577,184 @@ The following example code shows a simple use of assignment variables
 
 ```fortran
 MODULE mymod
-  
-  USE eis_header
+
+  USE eis_deck_header
   IMPLICIT NONE
   SAVE
 
-  !Must be a POINTER variable in F2003
-  !Can be TARGET in F2008
-  !MUST NOT be a plain variable
-  INTEGER, POINTER :: scalar
-  REAL, DIMENSION(:), POINTER :: array
+  INTEGER :: block1_id, block2_id
+  TYPE :: block1
+    CHARACTER(LEN=:), ALLOCATABLE :: key1, key2
+    INTEGER :: block_uid
+    TYPE(block1), POINTER :: next => NULL()
+  END TYPE block1
+
+  TYPE :: block2
+    CHARACTER(LEN=:), ALLOCATABLE :: new_key
+    LOGICAL :: is_child = .FALSE.
+    INTEGER :: block_uid
+    TYPE(block2), POINTER :: next => NULL()
+  END TYPE block2
+
+  TYPE(block1), POINTER :: b1head => NULL(), b1tail => NULL()
+  TYPE(block2), POINTER :: b2head => NULL(), b2tail => NULL()
+
+  CONTAINS
+
+  SUBROUTINE start_block1(block_text, pass_number, parents, parent_kind, &
+      status, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (ASSOCIATED(b1tail)) THEN
+      ALLOCATE(b1tail%next)
+      b1tail => b1tail%next
+    ELSE
+      ALLOCATE(b1head)
+      b1tail => b1head
+    END IF
+    b1tail%block_uid = parents(SIZE(parents))
+
+  END SUBROUTINE start_block1
+
+  SUBROUTINE start_block2(block_text, pass_number, parents, parent_kind, &
+      status, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (ASSOCIATED(b2tail)) THEN
+      ALLOCATE(b2tail%next)
+      b2tail => b2tail%next
+    ELSE
+      ALLOCATE(b2head)
+      b2tail => b2head
+    END IF
+    b2tail%block_uid = parents(SIZE(parents))
+    IF (SIZE(parents) > 2) b2tail%is_child = .TRUE.
+
+  END SUBROUTINE start_block2
+
+  SUBROUTINE key1_sub(key_text, value_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text, value_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    ALLOCATE(b1tail%key1, SOURCE = value_text)
+
+  END SUBROUTINE key1_sub
+
+  SUBROUTINE key2_sub(key_text, value_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text, value_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    ALLOCATE(b1tail%key2, SOURCE = value_text)
+
+  END SUBROUTINE key2_sub
+
+  SUBROUTINE new_key_sub(key_text, value_text, pass_number, parents, &
+      parent_kind, status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text, value_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    ALLOCATE(b2tail%new_key, SOURCE = value_text)
+
+  END SUBROUTINE new_key_sub
+
+  SUBROUTINE on_key_ok(key_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    PRINT *,'|'//REPEAT('-', SIZE(parents)+1)//'Key "' // key_text // &
+        '" processed OK'
+
+  END SUBROUTINE on_key_ok
+
+  SUBROUTINE on_key_fail(key_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: key_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    PRINT *,'|'//REPEAT('-', SIZE(parents)+1)//'Key "' // key_text // &
+        '" failed processing'
+    errcode = eis_err_none
+
+  END SUBROUTINE on_key_fail
+
+  SUBROUTINE on_block_start(block_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (block_text == "{ROOT}") RETURN
+
+    IF (parents(SIZE(parents)) /= 1) PRINT *,'|'
+    PRINT *,'|'//REPEAT('-', SIZE(parents))//'Started block :', block_text
+
+  END SUBROUTINE on_block_start
+
+  SUBROUTINE on_block_end(block_text, pass_number, parents, parent_kind, &
+      status_code, host_state, errcode)
+    CHARACTER(LEN=*), INTENT(IN) :: block_text
+    INTEGER, INTENT(IN) :: pass_number
+    INTEGER, DIMENSION(:), INTENT(IN) :: parents
+    INTEGER, DIMENSION(:), INTENT(IN) :: parent_kind
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_bitmask), INTENT(INOUT) :: host_state
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+
+    IF (block_text == "{ROOT}") RETURN
+
+    PRINT *,'|'//REPEAT('-', SIZE(parents))//'Ended block :', block_text
+
+  END SUBROUTINE on_block_end
 
 END MODULE mymod
 
 
 PROGRAM testprog
 
-  USE eis_deck_definition_mod
-  USE eis_deck_from_text_mod
-  USE eis_deck_header
   USE mymod
   IMPLICIT NONE
 
@@ -1601,18 +1764,36 @@ PROGRAM testprog
   TYPE(eis_deck_block_definition), POINTER :: root, block
   CHARACTER(LEN=:), ALLOCATABLE :: str
   INTEGER :: ierr
+  TYPE(block1), POINTER :: p1
+  TYPE(block2), POINTER :: p2
+  CHARACTER(LEN=:), ALLOCATABLE :: dot
 
-  ALLOCATE(scalar)
-  ALLOCATE(array(4))
+  PRINT *,'This example shows how to use the visualisation routines in EIS. &
+      &It outputs two files "fort.10" contains a dot file showing &
+      &the structure of the actual deck that was being parsed. Blocks that &
+      &appear multiple times are shown multiple times. "fort.20" contains a &
+      &dot file describing the deck definition. It is not related to the &
+      &deck file that was actually read and only shows the blocks and keys &
+      &that could be in the file. You will need tools such as Graphviz to &
+      &convert dot files to viewable picture files'
 
   errcode = eis_err_none
-  root => dfn%init()
-  block => root%add_block('block1')
-  CALL block%add_key('scalar_value', i32value = scalar)
-  CALL block%add_key('array_value', r32array = array)
+  root => dfn%init(on_key_success = on_key_ok, on_key_failure = on_key_fail, &
+      on_block_start = on_block_start, on_block_end = on_block_end)
+
+  block => root%add_block('block1', start_block = start_block1)
+  CALL block%add_key('key1', key_value_fn = key1_sub)
+  CALL block%add_key('key2', key_value_fn = key2_sub)
+
+  block => block%add_block('block2', start_block = start_block2)
+  CALL block%add_key('new_key', key_value_fn = new_key_sub)
+
+  block => root%add_block('block2', start_block = start_block2)
+  CALL block%add_key('new_key', key_value_fn = new_key_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('demo10.deck', dfn, errcode)
+  CALL deck%parse_deck_file('demo9.deck', dfn, errcode, &
+      allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
       CALL deck%get_error_report(ierr, str)
@@ -1620,12 +1801,33 @@ PROGRAM testprog
     END DO
     STOP
   END IF
+  CALL deck%get_block_structure(dot, include_keys = .TRUE.)
+  WRITE(10,*) dot
+  DEALLOCATE(dot)
 
-  PRINT *, 'Scalar value is ', scalar
-  PRINT *, 'Array value is ', array
+  CALL dfn%visualise(dot)
+  WRITE(20,*) dot
+  DEALLOCATE(dot)
 
-  DEALLOCATE(scalar)
-  DEALLOCATE(array)
+  PRINT *, REPEAT('*',80)
+
+  p1 => b1head
+  DO WHILE(ASSOCIATED(p1))
+    PRINT *,'Unique block ID is ', p1%block_uid
+    IF (ALLOCATED(p1%key1)) PRINT *, 'Key1 is ', p1%key1
+    IF (ALLOCATED(p1%key2)) PRINT *, 'Key2 is ', p1%key2
+    PRINT *, ""
+    p1 => p1%next
+  END DO
+
+  p2 => b2head
+  DO WHILE(ASSOCIATED(p2))
+    PRINT *,'Unique block ID is ', p2%block_uid
+    IF (p2%is_child) PRINT *,"Block is a child block"
+    IF (ALLOCATED(p2%new_key)) PRINT *, 'New key is ', p2%new_key
+    PRINT *, ""
+    p2 => p2%next
+  END DO
 
 END PROGRAM testprog
 ```

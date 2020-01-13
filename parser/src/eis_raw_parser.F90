@@ -1,6 +1,5 @@
 MODULE eis_raw_parser_mod
 
-  USE eis_constants
   USE eis_header
   IMPLICIT NONE
 

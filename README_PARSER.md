@@ -2,7 +2,7 @@
 
 ## Concepts
 
-The core of the EIS parser is a parser object called an `eis_parser` that is defined in the `eis_parser_mod` module. You then hand this parser a mathematical expression as a string and it either evaluates that string directly to an array of numbers or an `eis_stack` object that can be evaluated multiple times without the overhead of parsing the string again. When you evaluate a string or a stack you can optionally pass it an object that contains information provided by the host code rather than directly read in from the user. None of the built in routines make use of this information because it is entirely specified by the host code. This object might, for example, contain information about where in space a stack should be evaluated and you could add functions or variables that give a different result based on the values in this object
+The core of the EIS parser is a parser object called an `eis_parser`. You then hand this parser a mathematical expression as a string and it either evaluates that string directly to an array of numbers or an `eis_stack` object that can be evaluated multiple times without the overhead of parsing the string again. When you evaluate a string or a stack you can optionally pass it an object that contains information provided by the host code rather than directly read in from the user. None of the built in routines make use of this information because it is entirely specified by the host code. This object might, for example, contain information about where in space a stack should be evaluated and you could add functions or variables that give a different result based on the values in this object
 
 ## Terms
 
@@ -48,14 +48,14 @@ The simplest parser program is just a glorified calculator and that can be imple
 ```fortran
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
+  USE eis_parser_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
 
+  PRINT *, 'This example uses the base parser to calculate maths expressions'
   DO WHILE(.TRUE.)
     WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
     READ(*,'(A)') input
@@ -81,20 +81,26 @@ EIS is more complicated than this in various ways but that is a good approximati
 ```fortran
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
+  USE eis_parser_header
   TYPE(eis_parser) :: parser
-  TYPE(eis_stack) :: stack
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
+  TYPE(eis_stack) :: stored_value
   INTEGER :: ct
 
+  PRINT *,'This is the same problems as demo1 but tokenizes the expression to &
+      &a stack so that it can be evaluated multiple times (although it isn`t &
+      &in this example)'
   DO WHILE(.TRUE.)
     WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
     READ(*,'(A)') input
-    CALL parser%tokenize(input, stack, errcode)
-    ct = parser%evaluate(stack, result, errcode)
+    CALL parser%tokenize(input, stored_value, errcode)
+    IF (errcode /= eis_err_none) THEN
+      CALL parser%print_errors()
+      STOP
+    END IF
+    ct = parser%evaluate(stored_value, result, errcode)
     IF (errcode == eis_err_none) THEN
       PRINT *,'Result is ', result(1:ct)
     ELSE
@@ -140,13 +146,15 @@ EIS comes with a decent list of physical and mathematical constants built in but
 ```fortran
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
+  USE eis_parser_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
+
+  PRINT *, 'This example adds a named constant `myconstant`. It always has &
+      &the same value (1.2345) but works without a getter function.'
 
   CALL parser%add_constant('myconstant', 1.2345_eis_num, errcode)
   IF (errcode /= eis_err_none) CALL parser%print_errors()
@@ -189,6 +197,7 @@ The getter functions are used in several places in the EIS parser and almost all
 MODULE mymod
 
   USE ISO_C_BINDING
+  USE eis_parser_header
 
   CONTAINS
 
@@ -203,7 +212,6 @@ MODULE mymod
     REAL(eis_num) :: store = 0.0_eis_num
 
     store = store + 1.0_eis_num
-    res = store
 
   END FUNCTION get_var
 
@@ -212,13 +220,15 @@ END MODULE mymod
 PROGRAM test
 
   USE mymod
-  USE eis_parser_mod
-  USE eis_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
+
+  PRINT *,'This example creates a named variable called `myvar` that &
+      &increases by one every time you call it. Use it in expressions &
+      & exactly like any other named constant'
 
   CALL parser%add_variable('myvar', get_var, errcode)
   IF (errcode /= eis_err_none) CALL parser%print_errors()
@@ -289,7 +299,7 @@ The final thing to do is slightly modify our call to `evaluate`. We create an in
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   TYPE, BIND(C) :: data_item
     REAL(eis_num) :: x = 0.0_eis_num
@@ -334,20 +344,23 @@ MODULE mymod
 
 END MODULE mymod
 
+
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
-  USE eis_parser_header
   USE mymod
   TYPE(eis_parser) :: parser
   TYPE(eis_stack) :: stack
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-  INTEGER :: ct, ix, iy
+  INTEGER :: ct, ix, iy, it
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
+
+  PRINT *,'This example uses host parameters to evaluate an expression. &
+      &Specify an expression involving `x` and/or `y` and it will &
+      &be evaluated on  the domain [[0,1],[0,1]]. The result will be written &
+      &to a formatter file called `fort.10`'
 
   CALL parser%add_variable('x', get_x, errcode)
   CALL parser%add_variable('y', get_y, errcode)
@@ -359,23 +372,23 @@ PROGRAM test
     CALL parser%print_errors()
     STOP
   END IF
-  !Sanity test first
   ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
   IF (errcode /= eis_err_none) THEN
     CALL parser%print_errors()
     STOP
   END IF
   DO iy = 1, 100
+    item%y = REAL(iy-1, eis_num)/99.0_eis_num
     DO ix = 1 , 100
       item%x = REAL(ix-1, eis_num)/99.0_eis_num
-      item%y = REAL(iy-1, eis_num)/99.0_eis_num
       ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
       WRITE(10,*) result(1)
     END DO
   END DO
 
-END PROGRAM test
+  DEALLOCATE(result)
 
+END PROGRAM test
 ```
 
 This test code will evaluate an expression using `x` and `y` to specify the location in a 2D spatial domain with each axis running from 0->1. The expression that you enter will be written to a file called `fort.10` in formatted form in Fortran column major ordering. Reading the data will show that it contains the function that you defined in your expression.
@@ -393,7 +406,7 @@ If the `expected_params` parameter is specified then the function will automatic
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   TYPE, BIND(C) :: data_item
     REAL(eis_num) :: x = 0.0_eis_num
@@ -442,7 +455,6 @@ MODULE mymod
   END FUNCTION get_x
 
 
-
   FUNCTION get_y(nparams, params, host_params, status_code, errcode) &
       RESULT(res) BIND(C)
     INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
@@ -461,20 +473,24 @@ MODULE mymod
 
 END MODULE mymod
 
+
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
-  USE eis_parser_header
   USE mymod
   TYPE(eis_parser) :: parser
   TYPE(eis_stack) :: stack
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-  INTEGER :: ct, ix, iy
+  INTEGER :: ct, ix, iy, it
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
+
+  PRINT *,'This is a version of demo6 but implements a custom function called &
+      &`cauchy` that calculates the cauchy distributiong. It takes 3 &
+      &parameters. The first parameter is the location to evaluate the &
+      &function at, the second is the x origin of the ray and the third is &
+      &the gamma parameter'
 
   CALL parser%add_variable('x', get_x, errcode)
   CALL parser%add_variable('y', get_y, errcode)
@@ -487,23 +503,23 @@ PROGRAM test
     CALL parser%print_errors()
     STOP
   END IF
-  !Sanity test first
   ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
   IF (errcode /= eis_err_none) THEN
     CALL parser%print_errors()
     STOP
   END IF
   DO iy = 1, 100
+    item%y = REAL(iy-1, eis_num)/99.0_eis_num
     DO ix = 1 , 100
       item%x = REAL(ix-1, eis_num)/99.0_eis_num
-      item%y = REAL(iy-1, eis_num)/99.0_eis_num
       ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
       WRITE(10,*) result(1)
     END DO
   END DO
 
-END PROGRAM test
+  DEALLOCATE(result)
 
+END PROGRAM test
 ```
 
 ## Errors in getter functions
@@ -512,6 +528,7 @@ All getter functions can report errors that occur when they are evaluating varia
 
 * `eis_err_wrong_parameters` Wrong number of parameters supplied to a function
 * `eis_err_maths_domain` Parameter to this function is mathematically invalid (log of negative number etc.)
+* `eis_err_out_of_range` Parameter to this function is out of valid range in a non-mathematical way
 * `eis_err_bad_value` Parameter to this function is invalid in some non-mathematical way
 
 ## Stack variables
@@ -522,15 +539,22 @@ This means that stack variables have exactly the same behaviour as typing the st
 
 ```fortran
 PROGRAM test
-  
-  USE mymod
-  USE eis_parser_mod
-  USE eis_header
+
+  USE eis_parser_header
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
   INTEGER :: ct
+
+  PRINT *,'This example demonstrates using stack variables to store a value &
+      &that a user provides and making it available for later use. First &
+      &specify an expression that evaluates to a single value. That expression &
+      &is then stored under the name `stackvar` and can be used in the second &
+      &part of the code. NB stackvar is NOT just storing the value of the &
+      &expression and returning it but storing the stack from your expression &
+      &and putting it in place when you use it by name. Functions and &
+      &variables that have changing values will change as expected'
 
   WRITE(*,'(A)', ADVANCE = 'NO') "Input expression for storage :"
   READ(*,'(A)') input
@@ -642,7 +666,7 @@ Errors should be returned through the `errcode` parameter in the usual way.
 MODULE mymod
 
   USE ISO_C_BINDING
-  USE eis_header
+  USE eis_parser_header
 
   TYPE, BIND(C) :: data_item
     REAL(eis_num) :: x = 0.0_eis_num
@@ -674,9 +698,6 @@ END MODULE mymod
 
 PROGRAM test
 
-  USE eis_parser_mod
-  USE eis_header
-  USE eis_parser_header
   USE mymod
   TYPE(eis_parser) :: parser
   TYPE(eis_stack) :: stack
@@ -686,6 +707,14 @@ PROGRAM test
   INTEGER :: ct, ix, iy, it
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
+
+  PRINT *,'This example makes use of a result function to show how to have &
+      &EIS return a stack with a value that is returned by a host code &
+      &provided function rather than a user provided stack. As with previous &
+      &examples it writes a function to "fort.10" but the result is returned &
+      &from the "get_values" function rather than a text mode stack. Note that &
+      &no text stack needs to be created, the result function can be bound &
+      &directly to an unused stack.'
 
   CALL parser%set_result_function(get_values, stack, errcode)
   DO iy = 1, 100
@@ -708,10 +737,8 @@ It is possible to specify a parser variable using a Fortran POINTER variable rat
 
 ```fortran
 PROGRAM test
-  
-  USE eis_parser_mod
+
   USE eis_parser_header
-  USE eis_header
   IMPLICIT NONE
   TYPE(eis_parser) :: parser
   CHARACTER(LEN=1000) :: input
@@ -721,11 +748,18 @@ PROGRAM test
   INTEGER, POINTER :: ptrvar
   INTEGER(eis_bitmask) :: cbits
 
+  PRINT *,'This shows an example of using pointer variables. Pointer variables &
+      &are variables that work by holding a pointer to a variable in your code &
+      &and having the *current* value of that variable be returned when &
+      &a maths expression involving the pointer variable is encountered. In &
+      &order to work correctly your pointer must have a lifespan as long as &
+      &the parser object that makes use of it'
+
   ALLOCATE(ptrvar)
   ptrvar = 100
   errcode = eis_err_none
 
-  CALL parser%init(errcode, physics = eis_physics_si)
+  CALL parser%init(errcode, physics = eis_physics_si)a
   IF (errcode /= eis_err_none) CALL parser%print_errors()
   !Create a parser pointer variable and set it to have a
   !capability bit value of 1

@@ -1,7 +1,6 @@
 MODULE eis_error_mod
 
   USE eis_constants
-  USE eis_header
   USE eis_key_value_store_mod
   USE eis_utils
   IMPLICIT NONE

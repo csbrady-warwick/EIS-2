@@ -1,7 +1,6 @@
 MODULE eis_tree_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
-  USE eis_constants
   USE eis_error_mod
   USE eis_eval_stack_mod
   USE eis_header
