@@ -776,7 +776,7 @@ end:block1
 
 ### Mixed keys
 
-A common thing to want to do is parse some kinds of keys as strings and some as numbers. Because the text parser runs before the numeric parser you have to use some kind of mechanism to detect which keys should be handled as text. There are a lot of ways to do this but for this example we're just going to enclose strings in quotes.
+A common thing to want to do is parse some kinds of values as strings and some as numbers. Normally the text parser runs before the numeric parser so you have to use some kind of mechanism to detect which keys should be handled as text. There are a lot of ways to do this but for this example we're just going to enclose strings in quotes.
 
 ```fortran
 MODULE mymod
@@ -916,7 +916,9 @@ you will get the output
 
 For keys where text parsing isn't possible then simply don't specify the `key_value_fn` parameter when creating the key and the parser will only try to parse that key to values. Similarly if you don't specify `key_numeric_value_fn` then only the text parsing will occur.
 
-If you want to try parsing the string to a number and then interpreting it as a string if that fails you have to do this manually. Set an action function to get the text version of the value and then evaluate that manually to an `eis_parser` object. If you detect an error from that evaluation then you should interpret the value as a string. Note that in this case you will probably want to call the `flush_errors` method of the parser after the parse to clear the error entries in the error log for the parser.
+### Text fallback parsing
+
+An alternative to the above behaviour is "text fallback" processing. In this the value is evaluated first to a value (or stack) and if this fails the text functions are called. To set this behaviour pass the `text_fallback = .TRUE.` parameter to `add_key`. To set this behaviour for all keys in a block (unless overridden for a specific key) pas the same parameter to the `add_block` method. To set this behaviour for all keys in a definition (unless overridden for a block or key) pass the same parameter to the definition `init` method
 
 ### Stack keys
 

@@ -110,6 +110,7 @@ MODULE eis_deck_definition_mod
     INTEGER :: expected_params = -1
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
+    LOGICAL :: text_fallback = .FALSE.
     PROCEDURE(key_text_callback), POINTER, NOPASS  :: key_text_fn  => NULL()
     PROCEDURE(key_text_callback_c), POINTER, NOPASS  :: c_key_text_fn  => NULL()
     PROCEDURE(key_value_callback), POINTER, NOPASS :: key_value_fn => NULL()
@@ -142,6 +143,8 @@ MODULE eis_deck_definition_mod
 
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
+    LOGICAL :: text_fallback = .FALSE.
+
     CHARACTER(LEN=:), ALLOCATABLE :: name
     CLASS(eis_deck_definition_info), POINTER :: info => NULL()
     INTEGER :: id = -1, parent = -1, depth = -1
@@ -208,7 +211,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
     GENERIC, PUBLIC :: call_key => call_key_text
-    GENERIC :: add_block => add_new_block, add_old_block
+    GENERIC :: add_block => add_new_block
   END TYPE eis_deck_block_definition
 
 
@@ -526,7 +529,7 @@ MODULE eis_deck_definition_mod
       c_on_block_no_trigger, c_on_block_failure, on_init, on_start_pass, &
       on_end_pass, on_final, on_generic_block_failure, c_on_init, &
       c_on_start_pass, c_on_end_pass, c_on_final, c_on_generic_block_failure, &
-      parser, interop_parser) RESULT(root)
+      parser, interop_parser, text_fallback) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
     PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
@@ -574,6 +577,7 @@ MODULE eis_deck_definition_mod
 
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser
+    LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
 
     CLASS(eis_deck_block_definition), POINTER :: root
     INTEGER :: dummy
@@ -628,7 +632,8 @@ MODULE eis_deck_definition_mod
         c_init_deck, c_start_pass, c_start_deck, c_end_deck, c_end_pass, &
         c_final_deck, c_any_key_text, c_any_key_value, &
         c_any_key_numeric_value, c_any_key_stack, c_block_remapper, &
-        description = 'Root block holding all other blocks')
+        description = 'Root block holding all other blocks', &
+        text_fallback = text_fallback)
     CALL this%info%add_block(this%root_definition)
     root => this%root_definition
 
@@ -864,7 +869,7 @@ MODULE eis_deck_definition_mod
       c_end_block, c_end_pass, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
       c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, &
-      init_flag, i32count, i64count, description, hidden)
+      init_flag, i32count, i64count, description, hidden, text_fallback)
 
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
@@ -903,6 +908,7 @@ MODULE eis_deck_definition_mod
     CLASS(eis_deck_block_definition), INTENT(IN), OPTIONAL :: parent_block
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
 
     INTEGER :: dbd_init
     LOGICAL :: inherit
@@ -974,6 +980,12 @@ MODULE eis_deck_definition_mod
       this%pass_le = parent_block%pass_le
     END IF
 
+    IF (PRESENT(text_fallback)) THEN
+      this%text_fallback = text_fallback
+    ELSE
+      IF (PRESENT(parent_block)) this%text_fallback = parent_block%text_fallback
+    END IF
+
     dbd_init = this%id
 
   END FUNCTION dbd_init
@@ -986,7 +998,7 @@ MODULE eis_deck_definition_mod
       c_init_block, c_start_pass, c_start_block, c_end_block, c_end_pass, &
       c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
       c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, &
-      i32count, i64count, description, hidden)
+      i32count, i64count, description, hidden, text_fallback)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -1021,6 +1033,7 @@ MODULE eis_deck_definition_mod
 #endif
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
 
     CLASS(eis_deck_block_definition), POINTER :: dbd_add_new_block
     CLASS(*), POINTER :: ptr
@@ -1037,7 +1050,7 @@ MODULE eis_deck_definition_mod
         c_block_remapper, parent_block = this, pass_eq = pass_eq, &
         pass_le = pass_le, pass_ge = pass_ge, description = description, &
         hidden = hidden, init_flag = init_flag, i32count = i32count, &
-        i64count = i64count)
+        i64count = i64count, text_fallback = text_fallback)
 
     ptr => dbd_add_new_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .FALSE.)
@@ -1609,7 +1622,8 @@ MODULE eis_deck_definition_mod
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
-      expected_params, pass_eq, pass_le, pass_ge, description, hidden)
+      expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
+      text_fallback)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1669,6 +1683,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
 
@@ -1690,7 +1705,8 @@ MODULE eis_deck_definition_mod
         c_r32value = c_r32value, c_r64value = c_r64value, c_i32len = c_i32len, &
         c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len, &
         init_flag = init_flag, i32count = i32count, i64count = i64count, &
-        description = description, hidden = hidden)
+        description = description, hidden = hidden, &
+        text_fallback = text_fallback)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -1917,63 +1933,66 @@ MODULE eis_deck_definition_mod
       IF (ASSOCIATED(dkd%i64count_variable)) dkd%i64count_variable &
           = dkd%i64count_variable + 1_INT64
 
-      IF (ASSOCIATED(dkd%key_text_fn)) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
-            parent_kind, this_stat, this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+      IF (.NOT. dkd%text_fallback) THEN
+        IF (ASSOCIATED(dkd%key_text_fn)) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL dkd%c_key_text_fn(C_LOC(c_key_text), INT(pass_number, C_INT), &
-            SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
-            INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%c_key_text_fn(C_LOC(c_key_text), INT(pass_number, C_INT), &
+              SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
+              INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(dkd%key_value_fn) .AND. is_key_value .AND. .NOT. handled) &
-          THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL dkd%key_value_fn(key, value, pass_number, parents, parent_kind, &
-            this_stat, this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(dkd%key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%key_value_fn(key, value, pass_number, parents, parent_kind, &
+              this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(dkd%c_key_value_fn) .AND. is_key_value .AND. &
-          .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL dkd%c_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
-            INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
-            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-            this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(dkd%c_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%c_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
+
       IF (ASSOCIATED(dkd%key_numeric_value_fn) .AND. &
           ASSOCIATED(ps) .AND. is_key_stack &
           .AND. .NOT. handled) THEN
@@ -2245,6 +2264,53 @@ MODULE eis_deck_definition_mod
           status = IOR(status, this_stat)
         END IF
       END IF
+      !Fallback to text if not handled earlier
+      IF (dkd%text_fallback .AND. errcode /= eis_err_none) THEN
+        handled = .FALSE.
+        IF (ASSOCIATED(dkd%key_text_fn)) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%c_key_text_fn(C_LOC(c_key_text), INT(pass_number, C_INT), &
+              SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
+              INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(dkd%key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%key_value_fn(key, value, pass_number, parents, parent_kind, &
+              this_stat, this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(dkd%c_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL dkd%c_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+              INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        !If have handled then there is no error
+        IF (handled) errcode = eis_err_none
+      END IF
     END IF
 
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
@@ -2254,63 +2320,65 @@ MODULE eis_deck_definition_mod
 
     IF (run .AND. (.NOT. ASSOCIATED(dkd) .OR. (ASSOCIATED(dkd) &
         .AND. any_candidates))) THEN
-      IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL this%any_key_text_fn(TRIM(key_text), pass_number, parents,&
-            parent_kind, this_stat, this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+      IF (.NOT. this%text_fallback) THEN
+        IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%any_key_text_fn(TRIM(key_text), pass_number, parents,&
+              parent_kind, this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(this%c_any_key_text_fn) .AND. .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL this%c_any_key_text_fn(C_LOC(c_key_text), &
-            INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
-            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-            this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(this%c_any_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%c_any_key_text_fn(C_LOC(c_key_text), &
+              INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(this%any_key_value_fn) .AND. is_key_value .AND. &
-          .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL this%any_key_value_fn(key, value, pass_number, parents, &
-            parent_kind, this_stat, this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(this%any_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%any_key_value_fn(key, value, pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
-      END IF
-      IF (ASSOCIATED(this%c_any_key_value_fn) .AND. is_key_value .AND. &
-          .NOT. handled) THEN
-        this_err = eis_err_none
-        this_stat = base_stat
-        CALL this%c_any_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
-            INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
-            INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-            this_bitmask, this_err)
-        !If the block is flagged handled then you care about the error code
-        !value
-        IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
-          errcode = IOR(errcode, this_err)
-          status = IOR(status, this_stat)
+        IF (ASSOCIATED(this%c_any_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%c_any_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+              INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          !If the block is flagged handled then you care about the error code
+          !value
+          IF (IAND(this_stat, eis_status_not_handled) == 0) THEN
+            errcode = IOR(errcode, this_err)
+            status = IOR(status, this_stat)
+          END IF
+          handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
-        handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF (ASSOCIATED(this%any_key_numeric_value_fn) .AND. &
           ASSOCIATED(ps) .AND. is_key_stack &
@@ -2436,6 +2504,51 @@ MODULE eis_deck_definition_mod
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
         END IF
       END IF
+      IF (this%text_fallback .AND. errcode /= eis_err_none) THEN
+        handled = .FALSE.
+        IF (ASSOCIATED(this%any_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%any_key_text_fn(TRIM(key_text), pass_number, parents,&
+              parent_kind, this_stat, this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(this%c_any_key_text_fn) .AND. .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%c_any_key_text_fn(C_LOC(c_key_text), &
+              INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(this%any_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%any_key_value_fn(key, value, pass_number, parents, &
+              parent_kind, this_stat, this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+        IF (ASSOCIATED(this%c_any_key_value_fn) .AND. is_key_value .AND. &
+            .NOT. handled) THEN
+          this_err = eis_err_none
+          this_stat = base_stat
+          CALL this%c_any_key_value_fn(C_LOC(c_key), C_LOC(c_value), &
+              INT(pass_number, C_INT), SIZE(parents, KIND = C_INT), &
+              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+              this_bitmask, this_err)
+          handled = (handled &
+              .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
+              .AND. this_err == eis_err_none)
+        END IF
+      END IF
     END IF
 
     !If there are no candidate functions but the block exists then you _have_
@@ -2501,7 +2614,8 @@ MODULE eis_deck_definition_mod
       r64value, logicalvalue, i32array, i64array, r32array, r64array, &
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
       c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
-      expected_params, pass_eq, pass_le, pass_ge, description, hidden)
+      expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
+      text_fallback)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -2559,6 +2673,7 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_eq, pass_le, pass_ge
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
     LOGICAL :: inherit
 
     ALLOCATE(this%name, SOURCE = key_name)
@@ -2628,6 +2743,12 @@ MODULE eis_deck_definition_mod
       this%use_le = parent_block%use_le
       this%pass_ge = parent_block%pass_ge
       this%use_ge = parent_block%use_ge
+    END IF
+
+    IF (PRESENT(text_fallback)) THEN
+      this%text_fallback = text_fallback
+    ELSE
+      this%text_fallback = parent_block%text_fallback
     END IF
 
   END SUBROUTINE dkd_init
