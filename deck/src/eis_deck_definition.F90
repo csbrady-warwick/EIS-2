@@ -529,7 +529,7 @@ MODULE eis_deck_definition_mod
       c_on_block_no_trigger, c_on_block_failure, on_init, on_start_pass, &
       on_end_pass, on_final, on_generic_block_failure, c_on_init, &
       c_on_start_pass, c_on_end_pass, c_on_final, c_on_generic_block_failure, &
-      parser, interop_parser, text_fallback) RESULT(root)
+      parser, interop_parser, text_fallback, no_interop) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
     PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
@@ -578,9 +578,11 @@ MODULE eis_deck_definition_mod
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser
     LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
+    LOGICAL, INTENT(IN), OPTIONAL :: no_interop
 
     CLASS(eis_deck_block_definition), POINTER :: root
     INTEGER :: dummy
+    LOGICAL :: stop_interop
 
     root => this%root_definition
     IF (this%is_init) RETURN
@@ -637,14 +639,18 @@ MODULE eis_deck_definition_mod
     CALL this%info%add_block(this%root_definition)
     root => this%root_definition
 
+    stop_interop = .FALSE.
+    IF (PRESENT(no_interop)) stop_interop = no_interop
     IF (PRESENT(parser)) THEN
       this%info%parser => parser
       IF (PRESENT(interop_parser)) THEN
         this%info%interop_parser = interop_parser
       ELSE
-        this%info%owns_interop = .TRUE.
-        this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
-            holds = .FALSE.)
+        IF (.NOT. stop_interop) THEN
+          this%info%owns_interop = .TRUE.
+          this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
+              owns = .FALSE.)
+        END IF
       END IF
     ELSE
       IF (PRESENT(interop_parser)) THEN
@@ -654,8 +660,10 @@ MODULE eis_deck_definition_mod
         this%info%owns_parser = .TRUE.
         this%info%owns_interop = .TRUE.
         ALLOCATE(this%info%parser)
-        this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
-            holds = .FALSE.)
+        IF (.NOT. stop_interop) THEN
+          this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
+              owns = .FALSE.)
+        END IF
       END IF
     END IF
 
@@ -838,7 +846,7 @@ MODULE eis_deck_definition_mod
     IF (ASSOCIATED(this%info%parser) .AND. this%info%owns_parser) &
         DEALLOCATE(this%info%parser)
     IF (this%info%owns_interop) &
-        CALL eis_release_interop_parser(this%info%interop_parser)
+        CALL eis_release_interop_parser(this%info%interop_parser, gone = .TRUE.)
     IF (ASSOCIATED(this%info)) DEALLOCATE(this%info)
   END SUBROUTINE dd_destructor
 
@@ -1716,6 +1724,7 @@ MODULE eis_deck_definition_mod
   END SUBROUTINE dbd_add_key
 
 
+
   SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, status, &
       errcode, host_state, filename, line_number, white_space_length, &
       value_function, parser, interop_parser_id, non_value_line_is_blank)
@@ -2097,9 +2106,10 @@ MODULE eis_deck_definition_mod
         END IF
         IF (ASSOCIATED(dkd%c_key_stack_fn) .AND. stack_err == eis_err_none &
             .AND. .NOT. handled) THEN
-          stack_ptr => stack
+          ALLOCATE(stack_ptr)
+          stack_ptr = stack
           stack_id = eis_add_interop_stack(stack_ptr, &
-              interop_parser, holds = .FALSE.)
+              interop_parser, owns = .TRUE.)
           this_err = eis_err_none
           this_stat = base_stat
           CALL dkd%c_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &
@@ -2487,7 +2497,7 @@ MODULE eis_deck_definition_mod
             .AND. .NOT. handled) THEN
           stack_ptr => stack
           stack_id = eis_add_interop_stack(stack_ptr, &
-              interop_parser, holds = .FALSE.)
+              interop_parser, owns = .FALSE.)
           this_err = eis_err_none
           this_stat = base_stat
           CALL this%c_any_key_stack_fn(C_LOC(c_key), INT(stack_id, C_INT), &

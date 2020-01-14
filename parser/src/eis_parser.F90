@@ -64,14 +64,14 @@ MODULE eis_parser_mod
   !>Type holding a pointer to a parser for interoperability interface
   TYPE :: parser_holder
     CLASS(eis_parser), POINTER :: contents => NULL()
-    LOGICAL :: holds = .FALSE.
+    LOGICAL :: owns = .FALSE.
     CONTAINS
     FINAL :: ph_destructor
   END TYPE parser_holder
 
   !>Type holding a pointer to a stack for interoperability interface
   TYPE :: stack_holder
-    LOGICAL :: holds_stack = .FALSE.
+    LOGICAL :: owns_stack = .FALSE.
     INTEGER :: refcount = 1
     CLASS(eis_parser), POINTER :: parser => NULL()
     CLASS(eis_stack), POINTER :: contents => NULL()
@@ -199,11 +199,11 @@ CONTAINS
 
   PURE ELEMENTAL SUBROUTINE ph_destructor(this)
     TYPE(parser_holder), INTENT(INOUT) :: this
-    IF (ASSOCIATED(this%contents) .AND. this%holds) DEALLOCATE(this%contents)
+    IF (ASSOCIATED(this%contents) .AND. this%owns) DEALLOCATE(this%contents)
   END SUBROUTINE ph_destructor
   PURE ELEMENTAL SUBROUTINE sh_destructor(this)
     TYPE(stack_holder), INTENT(INOUT) :: this
-    IF (ASSOCIATED(this%contents) .AND. this%holds_stack) &
+    IF (ASSOCIATED(this%contents) .AND. this%owns_stack) &
         DEALLOCATE(this%contents)
   END SUBROUTINE sh_destructor
   PURE ELEMENTAL SUBROUTINE eip_destructor(this)
@@ -259,12 +259,12 @@ CONTAINS
   !> @brief
   !> Create an interoperable parser reference from a parser
   !> @param[in] parser
-  !> @param[in] holds
+  !> @param[in] owns
   !> @return eis_add_interop_parser
-  FUNCTION eis_add_interop_parser(parser, holds)
+  FUNCTION eis_add_interop_parser(parser, owns)
     !> Parser to make interoperable
     CLASS(eis_parser), POINTER, INTENT(INOUT) :: parser
-    LOGICAL, INTENT(IN), OPTIONAL :: holds
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
     !> Index of parser after storage
     INTEGER :: eis_add_interop_parser
     TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: temp
@@ -288,8 +288,8 @@ CONTAINS
     END IF
     parser%interop_id = interop_parser_count
     interop_parsers(interop_parser_count)%contents => parser
-    interop_parsers(interop_parser_count)%holds = .FALSE.
-    IF (PRESENT(holds)) interop_parsers(interop_parser_count)%holds = holds
+    interop_parsers(interop_parser_count)%owns = .FALSE.
+    IF (PRESENT(owns)) interop_parsers(interop_parser_count)%owns = owns
     eis_add_interop_parser = interop_parser_count
   END FUNCTION eis_add_interop_parser
 
@@ -300,16 +300,16 @@ CONTAINS
   !> Create an interoperable stack
   !> @param[in] index
   !> @param[in] parser_index
-  !> @param[in] holds
+  !> @param[in] owns
   !> @return eis_get_interop_stack
-  FUNCTION eis_add_interop_stack(stack, parser_index, holds)
+  FUNCTION eis_add_interop_stack(stack, parser_index, owns)
     !> Stack to make interoperable
     TYPE(eis_stack), POINTER, INTENT(INOUT) :: stack
     !> Index of the interoperable parser that generated the stack
     INTEGER, INTENT(IN) :: parser_index
-    !> Whether or not the interoperability layer holds the canonical
+    !> Whether or not the interoperability layer owns the canonical
     !> reference to the stack
-    LOGICAL, INTENT(IN), OPTIONAL :: holds
+    LOGICAL, INTENT(IN), OPTIONAL :: owns
     INTEGER :: eis_add_interop_stack
     TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: temp
 
@@ -336,9 +336,9 @@ CONTAINS
     interop_stacks(interop_stack_count)%contents => stack
     interop_stacks(interop_stack_count)%parser => &
         interop_parsers(parser_index)%contents
-    interop_stacks(interop_stack_count)%holds_stack = .FALSE.
-    IF (PRESENT(holds)) &
-        interop_stacks(interop_stack_count)%holds_stack = holds
+    interop_stacks(interop_stack_count)%owns_stack = .FALSE.
+    IF (PRESENT(owns)) &
+        interop_stacks(interop_stack_count)%owns_stack = owns
     eis_add_interop_stack = interop_stack_count
 
   END FUNCTION eis_add_interop_stack
@@ -349,15 +349,22 @@ CONTAINS
   !> @brief
   !> Release an interoperable parser
   !> @param[in] index
-  SUBROUTINE eis_release_interop_parser(index)
+  !> @param[in] gone
+  SUBROUTINE eis_release_interop_parser(index, gone)
     !> Parser index to release
     INTEGER, INTENT(IN) :: index
+    !> Has the parser already been deleted
+    LOGICAL, INTENT(IN), OPTIONAL :: gone
+    LOGICAL :: is_gone
+
+    is_gone = .FALSE.
+    IF (PRESENT(gone)) is_gone = gone
 
     IF (index < 1 .OR. index > interop_parser_count) RETURN
     IF (index == interop_parser_count) &
         interop_parser_count = interop_parser_count - 1
-    interop_parsers(index)%contents%interop_id = -1
-    IF (interop_parsers(index)%holds) DEALLOCATE(interop_parsers(index)&
+    IF (.NOT. gone) interop_parsers(index)%contents%interop_id = -1
+    IF (interop_parsers(index)%owns) DEALLOCATE(interop_parsers(index)&
         %contents)
     interop_parsers(index)%contents => NULL()
 
@@ -369,15 +376,22 @@ CONTAINS
   !> @brief
   !> Release an interoperable stack
   !> @param[in] index
-  SUBROUTINE eis_release_interop_stack(index)
+  !> @param[in] gone
+  SUBROUTINE eis_release_interop_stack(index, gone)
     !> Stack index to release
     INTEGER, INTENT(IN) :: index
+    !Has the stack already been deleted
+    LOGICAL, INTENT(IN), OPTIONAL :: gone
+    LOGICAL :: is_gone
+
+    is_gone = .FALSE.
+    IF (PRESENT(gone)) is_gone = gone
 
     IF (index < 1 .OR. index > interop_stack_count) RETURN
     IF (index == interop_stack_count) &
         interop_stack_count = interop_stack_count - 1
-    interop_stacks(index)%contents%interop_id = -1
-    IF (interop_stacks(index)%holds_stack) THEN
+    IF (.NOT. is_gone) interop_stacks(index)%contents%interop_id = -1
+    IF (interop_stacks(index)%owns_stack) THEN
       CALL deallocate_stack(interop_stacks(index)%contents)
       DEALLOCATE(interop_stacks(index)%contents)
       interop_stacks(index)%contents => NULL()
@@ -402,7 +416,7 @@ CONTAINS
     IF (ASSOCIATED(old)) THEN
       ALLOCATE(new, SOURCE = old)
       eis_copy_interop_stack = eis_add_interop_stack(new, parser%interop_id, &
-          holds = .TRUE.)
+          owns = .TRUE.)
     END IF
 
   END FUNCTION eis_copy_interop_stack
@@ -1809,7 +1823,7 @@ CONTAINS
       DO inode = 1, nparams
         ALLOCATE(inter_stack, SOURCE = stacks(inode))
         interop_param_stack_ids(inode) = &
-            eis_add_interop_stack(inter_stack, this%interop_id, holds = .TRUE.)
+            eis_add_interop_stack(inter_stack, this%interop_id, owns = .TRUE.)
       END DO
       errcode_l = eis_err_none
       CALL stack_late_bind_fn_c(C_LOC(interop_name), nparams, &

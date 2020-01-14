@@ -360,7 +360,7 @@ MODULE eis_deck_from_text_mod
           this%interop_parser = parser%interop_id
         ELSE
           this%interop_parser = eis_add_interop_parser(this%parser, &
-              holds = .FALSE.)
+              owns = .FALSE.)
         END IF
       ELSE
         this%interop_parser = -1
@@ -372,7 +372,7 @@ MODULE eis_deck_from_text_mod
         ALLOCATE(this%parser)
         CALL this%parser%init(err, err_handler = this%err_handler)
         this%interop_parser = eis_add_interop_parser(this%parser, &
-            holds = .FALSE.)
+            owns = .FALSE.)
       END IF
     END IF
 

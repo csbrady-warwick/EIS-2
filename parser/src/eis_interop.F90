@@ -18,7 +18,7 @@ MODULE eis_parser_interop
     INTEGER :: create_new_parser !< Index of returned parser
 
     ALLOCATE(new)
-    create_new_parser = eis_add_interop_parser(new, holds = .TRUE.)
+    create_new_parser = eis_add_interop_parser(new, owns = .TRUE.)
 
   END FUNCTION create_new_parser
 
@@ -35,7 +35,7 @@ MODULE eis_parser_interop
     TYPE(eis_stack), POINTER :: new
 
     ALLOCATE(new)
-    create_new_stack = eis_add_interop_stack(new, parser_id, holds = .TRUE.)
+    create_new_stack = eis_add_interop_stack(new, parser_id, owns = .TRUE.)
 
   END FUNCTION create_new_stack
 
@@ -390,7 +390,7 @@ MODULE eis_parser_interop
 
     interop_stacks(stack_id)%refcount = interop_stacks(stack_id)%refcount - 1
     IF (interop_stacks(stack_id)%refcount == 0 .AND. &
-        interop_stacks(stack_id)%holds_stack) THEN
+        interop_stacks(stack_id)%owns_stack) THEN
       DEALLOCATE(interop_stacks(stack_id)%contents)
       interop_stacks(stack_id)%contents => NULL()
     END IF
@@ -425,7 +425,7 @@ MODULE eis_parser_interop
     IF (ASSOCIATED(old)) THEN
       ALLOCATE(new, SOURCE = old)
       eis_copy_stack = eis_add_interop_stack(new, parser%interop_id, &
-          holds = .TRUE.)
+          owns = .TRUE.)
     END IF
 
   END FUNCTION eis_copy_stack
