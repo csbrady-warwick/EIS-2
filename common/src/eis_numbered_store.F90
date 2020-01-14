@@ -49,6 +49,7 @@ MODULE eis_numbered_store_mod
     PROCEDURE :: init_i8 => ns_init_i8
     PROCEDURE :: init_i4 => ns_init_i4
     GENERIC, PUBLIC :: init => init_i8, init_i4
+    PROCEDURE, PUBLIC :: clear => ns_clear
     FINAL :: ns_destructor
   END TYPE numbered_store
 
@@ -448,6 +449,20 @@ CONTAINS
     CALL this%init(INT(bucket_count,INT64))
 
   END SUBROUTINE ns_init_i4
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Clear the contents of the store, deleting items as appropriate
+  !> @param[in] this
+  SUBROUTINE ns_clear(this)
+
+    CLASS(numbered_store), INTENT(INOUT) :: this
+
+    IF (ALLOCATED(this%buckets)) DEALLOCATE(this%buckets)
+
+  END SUBROUTINE ns_clear
 
 
 
