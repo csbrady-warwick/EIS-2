@@ -297,14 +297,12 @@ MODULE eis_deck_from_text_mod
   !> @param[inout] this
   !> @param[in] err_handler
   !> @param[in] parser
-  !> @param[in] interop_parser_id
   !> @param[in] unknown_block_is_fatal
   !> @param[in] unknown_key_is fatal
   !> @param[in] bad_key_is_fatal
   !> @param[in] non_value_line_is_blank
-  SUBROUTINE tdp_init(this, err_handler, parser, interop_parser_id, &
-      unknown_block_is_fatal, unknown_key_is_fatal, bad_key_is_fatal, &
-      non_value_line_is_blank)
+  SUBROUTINE tdp_init(this, err_handler, parser, unknown_block_is_fatal, &
+      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
@@ -312,9 +310,6 @@ MODULE eis_deck_from_text_mod
     !> Optional maths parser supplied from host code. Default is create own
     !> own maths parser
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
-    !> Optional C maths parser interoperable parser code. Default is create
-    !> own maths parser
-    INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
     !> Should parsing terminate if an unknown block is found
     !> in a deck? Optional, default .TRUE.
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
@@ -331,33 +326,46 @@ MODULE eis_deck_from_text_mod
 
     this%is_init = .TRUE.
 
-    IF (this%owns_handler .AND. ASSOCIATED(this%err_handler)) &
-        DEALLOCATE(this%err_handler)
-
+    !If you specify an error handler then this becomes the error handler
+    !unless you specify a NULL error handler in which case the existing handler
+    !is replaced by an internal handler. If you don't specify an error handler
+    !then one is created for you UNLESS there is already an error handler in
+    !place in which case it is left alone
     IF(PRESENT(err_handler)) THEN
-      this%err_handler => err_handler
-      this%owns_handler = .FALSE.
+      IF (this%owns_handler .AND. ASSOCIATED(this%err_handler)) &
+          DEALLOCATE(this%err_handler)
+      IF (ASSOCIATED(err_handler)) THEN
+        this%err_handler => err_handler
+        this%owns_handler = .FALSE.
+      ELSE
+        ALLOCATE(this%err_handler)
+        this%owns_handler = .TRUE.
+      END IF
     ELSE
-      ALLOCATE(this%err_handler)
-      this%owns_handler = .TRUE.
+      IF (.NOT. ASSOCIATED(this%err_handler)) THEN
+        ALLOCATE(this%err_handler)
+        this%owns_handler = .TRUE.
+      END IF
     END IF
 
-    IF (this%owns_parser .AND. ASSOCIATED(this%parser)) DEALLOCATE(this%parser)
-
+    !If you specify a parser then this becomes the parser. If you specify
+    !a null parser then the code will run without a parser
     IF (PRESENT(parser)) THEN
+      IF (this%owns_parser .AND. ASSOCIATED(this%parser)) &
+          DEALLOCATE(this%parser)
       this%owns_parser = .FALSE.
       this%parser => parser
-      IF (PRESENT(interop_parser_id)) THEN
-        this%interop_parser = interop_parser_id
+      IF (ASSOCIATED(parser)) THEN
+        IF (parser%interop_id > -1) THEN
+          this%interop_parser = parser%interop_id
+        ELSE
+          this%interop_parser = eis_add_interop_parser(this%parser, &
+              holds = .FALSE.)
+        END IF
       ELSE
-        this%owns_interop = .TRUE.
-        this%interop_parser = eis_add_interop_parser(this%parser, &
-            holds = .FALSE.)
+        this%interop_parser = -1
       END IF
     ELSE
-      IF (PRESENT(interop_parser_id)) THEN
-        this%parser => eis_get_interop_parser(interop_parser_id)
-      END IF
       IF (.NOT. ASSOCIATED(this%parser)) THEN
         this%owns_parser = .TRUE.
         this%owns_interop = .TRUE.

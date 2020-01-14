@@ -442,6 +442,11 @@ CONTAINS
     IF (this%owns_err_handler .AND. ASSOCIATED(this%err_handler)) &
         DEALLOCATE(this%err_handler)
 
+    !If you specify a error handler then that error handler is used
+    !If you specify a NULL error handler than an error handler is created
+    !If you specify no error handler then an error handler is created
+    !unless there is already an error handler in place in which case it is left
+    !unchanged
     IF (PRESENT(err_handler)) THEN
       IF (ASSOCIATED(err_handler)) THEN
         this%err_handler => err_handler
