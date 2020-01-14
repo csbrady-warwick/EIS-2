@@ -1289,7 +1289,7 @@ MODULE eis_deck_definition_mod
             parent_kind, this_status, this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
         status = IOR(status, this_status)
-        host_state = IOR(host_state, this_bitmask)
+        IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_no_trigger_fn)) THEN
@@ -1301,7 +1301,7 @@ MODULE eis_deck_definition_mod
             this_bitmask, this_err)
         errcode = IOR(errcode, this_err)
         status = IOR(status, this_status)
-        host_state = IOR(host_state, this_bitmask)
+        IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
         DEALLOCATE(c_this_name)
       END IF
       DEALLOCATE(this_name)
@@ -1315,9 +1315,11 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
     this_err = eis_err_none
+    !If you are starting a block you may also be initialising the block
+    !so try this
     CALL this%initialise_block(pass_number, this_status, this_err, &
         this_bitmask)
-    host_state = IOR(host_state, this_bitmask)
+    IF (PRESENT(host_state)) host_state = IOR(host_state, this_bitmask)
     status = IOR(status, this_status)
     errcode = IOR(errcode, this_err)
 
