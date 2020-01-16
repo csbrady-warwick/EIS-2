@@ -404,7 +404,7 @@ CONTAINS
   !> @brief
   !> Copy an interoperable stack
   !> @param[in] index
-  !> @result eis_copy_interop_stack
+  !> @return eis_copy_interop_stack
   FUNCTION eis_copy_interop_stack(index)
     INTEGER, INTENT(IN) :: index !< Source stack
     INTEGER :: eis_copy_interop_stack !< UID of copied stack
@@ -891,7 +891,7 @@ CONTAINS
   !> @param[out] description
   !> @param[out] is_hidden
   !> @param[out] expected_params
-  !> @result exists
+  !> @return exists
   FUNCTION eip_get_symbol_info(this, symbol, unary, symbol_type, cap_bits, &
       deferred, description, is_hidden, expected_params) RESULT(exists)
 
@@ -962,7 +962,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] namespace
   !> @param[in] in_global
-  !> @result eip_namespace_is_included
+  !> @return eip_namespace_is_included
   FUNCTION eip_namespace_is_included(this, namespace, in_global)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
@@ -993,7 +993,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] symbol
   !> @param[in] in_global
-  !> @result eip_symbol_needs_namespace
+  !> @return eip_symbol_needs_namespace
   FUNCTION eip_symbol_needs_namespace(this, symbol, in_global)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
@@ -1030,7 +1030,7 @@ CONTAINS
   !> Get the number of symbols in a specified registry
   !> @param[in] this
   !> @param[in] registry
-  !> @result symbol_count
+  !> @return symbol_count
   FUNCTION eip_get_registry_symbol_count(this, registry) &
       RESULT(symbol_count)
 
@@ -1053,7 +1053,7 @@ CONTAINS
   !> @param[in] registry
   !> @param[in] index
   !> @param[out] symbol
-  !> @result symbol_count
+  !> @return symbol_count
   SUBROUTINE eip_get_registry_symbol(this, registry, index, symbol)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
@@ -3939,7 +3939,7 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] host_params
   !> @param[in] eval
-  !> @result eis_fast_evaluate
+  !> @return eis_fast_evaluate
   FUNCTION eis_fast_evaluate(stack, result, errcode, host_params, eval)
     TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Allocatable array holding all the results from the evaluation.
@@ -3985,7 +3985,7 @@ CONTAINS
   !> @param[in] iter_fn
   !> @param[in] store_fn
   !> @param[in] eval
-  !> @result eis_fast_evaluate
+  !> @return eis_fast_evaluate
   SUBROUTINE eis_iter_evaluate(stack, host_params, iter_fn, store_fn, eval)
     TYPE(eis_stack), INTENT(INOUT) :: stack !< Stack to evaluate
     !> Host code parameters provided.
@@ -4051,7 +4051,7 @@ CONTAINS
   !> @brief
   !> Get the number of symbols in the global registry
   !> @param[in] this
-  !> @result symbol_count
+  !> @return symbol_count
   FUNCTION eip_get_global_symbol_count(this) &
       RESULT(symbol_count)
 
@@ -4071,7 +4071,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] index
   !> @param[out] symbol
-  !> @result symbol_count
+  !> @return symbol_count
   SUBROUTINE eip_get_global_symbol(this, index, symbol)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
@@ -4090,7 +4090,7 @@ CONTAINS
   !> @brief
   !> Get the number of symbols in the parser local registry
   !> @param[in] this
-  !> @result symbol_count
+  !> @return symbol_count
   FUNCTION eip_get_local_symbol_count(this) &
       RESULT(symbol_count)
 
@@ -4128,7 +4128,7 @@ CONTAINS
   !> @brief
   !> Get the number of symbols in both local and global registries
   !> @param[in] this
-  !> @result symbol_count
+  !> @return symbol_count
   FUNCTION eip_get_symbol_count(this) &
       RESULT(symbol_count)
 

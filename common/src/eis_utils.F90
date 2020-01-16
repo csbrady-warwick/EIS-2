@@ -11,7 +11,7 @@ MODULE eis_utils
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
   PUBLIC :: eis_compare_string, eis_present_and_alloc
-  PUBLIC :: eis_integer_as_string
+  PUBLIC :: eis_integer_as_string, eis_uid_generator
 
   INTERFACE eis_copy_string
     MODULE PROCEDURE eis_copy_string_aa
@@ -63,6 +63,14 @@ MODULE eis_utils
   INTERFACE eis_integer_as_string
     MODULE PROCEDURE integer4_as_string, integer8_as_string
   END INTERFACE eis_integer_as_string
+
+  TYPE :: eis_uid_generator
+    INTEGER(uid_kind) :: new_uid = 0_uid_kind
+
+  CONTAINS
+    PROCEDURE :: get_next_uid => eug_get_next_uid
+    PROCEDURE :: reset => eug_reset_next_uid
+  END TYPE eis_uid_generator    
 
   CONTAINS
 
@@ -554,11 +562,10 @@ MODULE eis_utils
 #endif
 
 
-  !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Produces the upper case equivalent of a single character
   !> @param[in] c
-  !> @result uppercase
+  !> @return uppercase
   FUNCTION eis_uppercase_character_ascii(c) RESULT(uppercase)
     CHARACTER(LEN=1, KIND=ASCII), INTENT(IN) :: c
     CHARACTER(LEN=1, KIND=ASCII) :: uppercase
@@ -581,7 +588,7 @@ MODULE eis_utils
   !> @param[in] str1
   !> @param[in] str2
   !> @param[in] case_sensitive
-  !> @result same
+  !> @return same
   FUNCTION eis_compare_string_aa(str1, str2, case_sensitive) RESULT(same)
     !> First string to compare
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str1
@@ -816,7 +823,7 @@ MODULE eis_utils
   !> @brief
   !> Tests if an optional string parameters is both present and allocated
   !> @param[in] string
-  !> @result eis_present_and_alloc
+  !> @return eis_present_and_alloc
   FUNCTION eis_present_and_alloc(string)
     !> Allocatable optional string to test
     CHARACTER(LEN=:), ALLOCATABLE, OPTIONAL, INTENT(IN) :: string
@@ -883,5 +890,42 @@ MODULE eis_utils
     WRITE(string, numfmt) int_in
 
   END SUBROUTINE integer8_as_string
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Gets the next uid from this UID generator
+  !> @param[inout] this
+  !> @return eug_get_next_uid
+  FUNCTION eug_get_next_uid(this)
+    CLASS(eis_uid_generator), INTENT(INOUT) :: this
+    INTEGER(uid_kind) :: new_uid
+    INTEGER(uid_kind) :: eug_get_next_uid
+
+    eug_get_next_uid = INT(this%new_uid)
+    this%new_uid = this%new_uid + 1
+
+  END FUNCTION eug_get_next_uid
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Resets the UID generator
+  !> @param[inout] this
+  !> @param[in]
+  !> @return eug_get_next_uid
+  SUBROUTINE eug_reset_next_uid(this, value)
+    CLASS(eis_uid_generator), INTENT(INOUT) :: this
+    INTEGER(uid_kind), INTENT(IN), OPTIONAL :: value
+    INTEGER(uid_kind) :: eug_get_next_uid
+    INTEGER(uid_kind) :: val
+
+    val = 0
+    IF (PRESENT(value)) val = value
+    this%new_uid = val
+
+  END SUBROUTINE eug_reset_next_uid
 
 END MODULE eis_utils

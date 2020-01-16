@@ -30,6 +30,9 @@ DEFINES := $(DEFINE)
 ifeq (f2008,$(findstring f2008,$(STANDARD)))
   DEFINES += $(D)F2008
 endif
+ifeq (f2018,$(findstring f2018,$(STANDARD)))
+  DEFINES += $(D)F2008 $(D)F2018
+endif
 
 # PGI
 # ===
@@ -78,6 +81,8 @@ endif
 ifeq ($(strip $(COMPILER)),gfortran)
   ifeq (f2008,$(findstring f2008,$(STANDARD)))
     FFLAGS = -O3 -g -std=f2008
+  else ifeq (f2018,$(findstring f2018,$(STANDARD)))
+    FFLAGS = -O3 -g -std=f2018
   else
     FFLAGS = -O3 -g -std=f2003
   endif
@@ -139,6 +144,8 @@ ifeq ($(strip $(COMPILER)),ibm)
   MODULEFLAG := $(MODFLAG) -qmoddir=$(MODDIR)
   ifeq (f2008,$(findstring f2008,$(STANDARD)))
     FC = xlf2008
+  else ifeq (f2018,$(findstring f2018,$(STANDARD)))
+    FC = xlf2018
   else
     FC = xlf2003
   endif

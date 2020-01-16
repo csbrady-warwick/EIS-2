@@ -656,7 +656,7 @@ CONTAINS
   !> @param[in] slc_start
   !> @param[in] mlc_start
   !> @param[in] mlc_end
-  !> @result index_range
+  !> @return index_range
   FUNCTION ess_populate_from_ascii(this, str, errcode, index_start, filename) &
       RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
@@ -720,7 +720,7 @@ CONTAINS
   !> @param[in] this
   !> @param[in] str_in
   !> @param[inout] errcode
-  !> @result index_range
+  !> @return index_range
   FUNCTION ess_populate_from_ucs4(this, str, errcode, index_start) &
       RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
@@ -842,7 +842,7 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] index_start
   !> @param[out] raw_text
-  !> @result index_range
+  !> @return index_range
   FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start, &
       raw_text, filename_processor, file_text_processor) RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
@@ -1137,7 +1137,7 @@ CONTAINS
   !> @param[out] str
   !> @param[out] errcode
   !> @param[in] store_index
-  !> @result index_range
+  !> @return index_range
   FUNCTION ess_deserialise(this, str, errcode, store_index) RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String holding the portable representation

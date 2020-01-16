@@ -160,7 +160,7 @@ MODULE eis_tree_mod
   !> @param[inout] errcode - Error code returned by simplify operation
   !> @param[inout] err_handler - Error handler object. Optional, default no
   !> error reporting
-  !> @result can_simplify - Whether simplification is possible when this node
+  !> @return can_simplify - Whether simplification is possible when this node
   !> is considered
   RECURSIVE FUNCTION eis_simplify_tree(tree, params, errcode, err_handler, &
       filename, line_number, full_line) RESULT(can_simplify)

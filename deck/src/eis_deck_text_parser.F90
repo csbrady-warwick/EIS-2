@@ -92,7 +92,7 @@ MODULE eis_string_deck_mod
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Get the parent of this block
-  !> @result parent
+  !> @return parent
   FUNCTION esdb_get_parent(this) RESULT(parent)
     CLASS(eis_string_deck_block), INTENT(IN) :: this
     !>The block that is the parent of the current block
@@ -111,7 +111,7 @@ MODULE eis_string_deck_mod
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Get the number of children for this block
-  !> @result child_count
+  !> @return child_count
   FUNCTION esdb_get_child_count(this) RESULT(child_count)
     CLASS(eis_string_deck_block), INTENT(IN) :: this
     !> Number of child blocks of this block
@@ -156,7 +156,7 @@ MODULE eis_string_deck_mod
   !> @brief
   !> Get a child block of this block
   !> @param[in] index
-  !> @result child
+  !> @return child
   FUNCTION esdb_get_child(this, index) RESULT(child)
     CLASS(eis_string_deck_block), INTENT(IN) :: this
     !> Index number of child to return. Must be between 0 and
@@ -180,7 +180,7 @@ MODULE eis_string_deck_mod
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Get the number of lines for this block
-  !> @result count
+  !> @return count
   FUNCTION esdb_get_line_count(this) RESULT(count)
     CLASS(eis_string_deck_block), INTENT(IN) :: this
     !> Number of lines in this block
@@ -944,7 +944,7 @@ MODULE eis_string_deck_mod
   !> but no blocks were found but -1 if no file has been parsed.
   !> The actual block indices run from 0 to the value of this function,
   !> @param[in] this
-  !> @result block_count
+  !> @return block_count
   FUNCTION esd_get_block_count(this) RESULT(block_count)
     CLASS(eis_string_deck), INTENT(IN) :: this
     !> The number of blocks not including the 0 root block
@@ -971,7 +971,7 @@ MODULE eis_string_deck_mod
   !> parsed by getting item 0 and then using the get_child functions
   !> @param[in] this
   !> @param[in] index
-  !> @result block
+  !> @return block
   FUNCTION esd_get_block(this, index) RESULT(block)
     CLASS(eis_string_deck), INTENT(IN) :: this
     !> Index of block to get. Optional, default 0 (root item)

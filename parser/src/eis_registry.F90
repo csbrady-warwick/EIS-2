@@ -233,7 +233,7 @@ CONTAINS
   !> Check if a given namespace is included
   !> @param[inout] this
   !> @param[in] namespace
-  !> @result ern_is_included
+  !> @return ern_is_included
   RECURSIVE FUNCTION ern_is_included(this, namespace)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: namespace !< Namespace to test
@@ -372,7 +372,7 @@ CONTAINS
   !> Optionally return the number of names in only this namespace
   !> @param[inout] this
   !> @param[out] only_me_count
-  !> @result ern_get_name_count
+  !> @return ern_get_name_count
   RECURSIVE FUNCTION ern_get_name_count(this, only_me_count)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     !> Optional. If provided specifies number of names in just this namespace
@@ -473,7 +473,7 @@ CONTAINS
   !> Check if the registry's namespace includes cover a given namespace
   !> @param[inout] this
   !> @param[in] namespace
-  !> @result eir_is_included
+  !> @return eir_is_included
   FUNCTION eir_is_included(this, namespace)
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: namespace !< namespace to test
@@ -1337,7 +1337,7 @@ CONTAINS
   !> @brief
   !> Get the number of names in this registry
   !> @param[inout] this
-  !> @result eir_get_name_count
+  !> @return eir_get_name_count
   FUNCTION eir_get_name_count(this)
     CLASS(eis_registry), INTENT(INOUT) :: this
     !> Number of names in this registry

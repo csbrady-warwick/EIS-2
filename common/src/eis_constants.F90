@@ -1,6 +1,9 @@
 MODULE eis_constants
 
   USE, INTRINSIC :: ISO_C_BINDING
+#ifdef F2018
+  USE, INTRINSIC :: ISO_FORTRAN_ENV, ONLY : ATOMIC_INT_KIND
+#endif
   IMPLICIT NONE
 
   INTEGER, PRIVATE, PARAMETER :: eis_v1 = 1
@@ -17,6 +20,9 @@ MODULE eis_constants
   INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
   !> Fortran >64 bit real (nominal 128 bit, 80bit on x86)
   INTEGER, PARAMETER :: REAL128 = SELECTED_REAL_KIND(33, 4931)
+
+  !> Kind for UIDs from the UID generator
+  INTEGER, PARAMETER :: uid_kind = INT32
 
 #ifdef UNICODE
   !> Unicode UCS4 string kind

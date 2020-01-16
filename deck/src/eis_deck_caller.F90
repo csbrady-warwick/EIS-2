@@ -1,0 +1,922 @@
+MODULE eis_deck_caller_mod
+
+  USE eis_parser_constants
+  USE eis_deck_definition_mod
+  USE eis_ordered_store_mod
+  USE eis_numbered_store_mod
+  USE eis_parser_mod
+  USE eis_error_mod
+  USE eis_utils
+  IMPLICIT NONE
+
+  PRIVATE
+
+  TYPE :: eis_deck_caller_key
+    INTEGER(uid_kind) :: uid = -1
+    CHARACTER(LEN=:), ALLOCATABLE :: filename
+    INTEGER :: line_number = -1
+    CHARACTER(LEN=:), ALLOCATABLE :: key_text
+    PROCEDURE(parser_result_function), POINTER, NOPASS :: func_res => NULL()
+    CHARACTER(LEN=:), ALLOCATABLE :: function_text
+    TYPE(eis_parser), POINTER :: parser => NULL()
+    INTEGER(eis_bitmask) :: host_state = 0_eis_bitmask
+    INTEGER :: interop_parser = -1
+    INTEGER :: white_space_length = 0
+  END TYPE eis_deck_caller_key
+
+  TYPE :: eis_deck_caller_block
+    CHARACTER(LEN=:), ALLOCATABLE :: block_text
+    INTEGER :: line_number = -1
+    INTEGER(uid_kind) :: uid
+    CLASS(eis_deck_caller_block), POINTER :: parent => NULL()
+    CLASS(eis_deck_block_definition), POINTER :: definition => NULL()
+    TYPE(ordered_store) :: children
+    TYPE(ordered_store) :: keys
+  END TYPE eis_deck_caller_block
+
+  !Type constants for events
+  INTEGER, PARAMETER :: edce_null = 0
+  INTEGER, PARAMETER :: edce_init = 1
+  INTEGER, PARAMETER :: edce_start = 2
+  INTEGER, PARAMETER :: edce_call = 3
+  INTEGER, PARAMETER :: edce_end = 4
+  INTEGER, PARAMETER :: edce_final = 5
+
+  TYPE :: eis_deck_caller_event
+    INTEGER :: type = edce_null
+    CHARACTER(LEN=:), ALLOCATABLE :: filename
+    INTEGER :: line_number = -1
+    INTEGER :: pass_number
+    CLASS(eis_deck_caller_block), POINTER :: block => NULL()
+    CLASS(eis_deck_caller_key), POINTER :: key => NULL()
+  END TYPE eis_deck_caller_event
+
+  TYPE :: eis_deck_caller
+    PRIVATE
+    LOGICAL :: owns_parser = .FALSE.
+    CLASS(eis_parser), POINTER :: parser => NULL()
+    LOGICAL :: owns_interop = .TRUE.
+    INTEGER :: interop_parser = -1
+    LOGICAL :: owns_err_handler = .FALSE.
+    CLASS(eis_error_handler), POINTER :: err_handler => NULL()
+    TYPE(eis_uid_generator) :: uid_generator, key_uid_generator
+
+    CLASS(eis_deck_definition), POINTER :: definition => NULL()
+    INTEGER :: pass_number = 1
+    CHARACTER(LEN=:), ALLOCATABLE :: code_name, filename
+    INTEGER :: current_level = 1
+    INTEGER, DIMENSION(:), ALLOCATABLE :: current_parents
+    TYPE(numbered_store) :: blocks
+    TYPE(numbered_store) :: keys
+    TYPE(ordered_store) :: events
+    TYPE(eis_deck_caller_block), POINTER :: root => NULL()
+    TYPE(eis_deck_caller_block), POINTER :: current_block => NULL()
+    CONTAINS
+    PROCEDURE :: add_parent => edc_add_parent
+    PROCEDURE :: remove_parent => edc_remove_parent
+    PROCEDURE, PUBLIC :: init => edc_init
+    PROCEDURE, PUBLIC :: reset => edc_reset
+    PROCEDURE, PUBLIC :: set_pass => edc_set_pass
+    PROCEDURE, PUBLIC :: initialise_all_blocks => edc_initialise_all_blocks
+    PROCEDURE, PUBLIC :: initialize_all_blocks => edc_initialise_all_blocks
+    PROCEDURE, PUBLIC :: start_block => edc_start_block
+    PROCEDURE, PUBLIC :: call_key => edc_call_key
+    PROCEDURE, PUBLIC :: end_block => edc_end_block
+    PROCEDURE, PUBLIC :: end_and_finalise_block => edc_end_and_final_block
+    PROCEDURE, PUBLIC :: end_and_finalize_block => edc_end_and_final_block
+    PROCEDURE, PUBLIC :: finalise_all_blocks => edc_finalise_all_blocks
+    PROCEDURE, PUBLIC :: finalize_all_blocks => edc_finalise_all_blocks
+
+    PROCEDURE, PUBLIC :: get_error_count => edc_get_error_count
+    PROCEDURE, PUBLIC :: get_error_report => edc_get_error_report
+    PROCEDURE, PUBLIC :: flush_errors => edc_flush_errors
+
+    !PROCEDURE, PUBLIC :: get_block_name => edc_get_block_name
+    !PROCEDURE :: get_block_children => edc_get_block_children
+    !PROCEDURE :: get_block_parent => edc_get_block_parent
+
+    FINAL :: edc_destructor
+  END TYPE eis_deck_caller
+
+  PUBLIC :: eis_deck_caller
+
+  CONTAINS
+
+  SUBROUTINE edc_destructor(this)
+    TYPE(eis_deck_caller), INTENT(INOUT) :: this
+
+    IF (this%owns_parser .AND. ASSOCIATED(this%parser)) DEALLOCATE(this%parser)
+    IF (this%owns_interop .AND. this%interop_parser > -1) &
+        CALL eis_release_interop_parser(this%interop_parser)
+    IF (this%owns_err_handler .AND. ASSOCIATED(this%err_handler)) &
+        DEALLOCATE(this%err_handler)
+  END SUBROUTINE edc_destructor
+
+
+
+  SUBROUTINE edc_add_parent(this, parent_id)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: parent_id
+    INTEGER, DIMENSION(:), ALLOCATABLE :: new_parents
+
+    IF (.NOT. ALLOCATED(this%current_parents)) RETURN
+    IF (this%current_level == SIZE(this%current_parents)) THEN
+      ALLOCATE(new_parents(SIZE(this%current_parents)*2))
+      new_parents(1:SIZE(this%current_parents)) = this%current_parents
+      DEALLOCATE(this%current_parents)
+      CALL MOVE_ALLOC(FROM = new_parents, TO = this%current_parents)
+    END IF
+    this%current_level = this%current_level + 1
+    this%current_parents(this%current_level) = parent_id
+
+  END SUBROUTINE edc_add_parent
+
+
+
+  SUBROUTINE edc_remove_parent(this)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+
+    this%current_level = this%current_level - 1
+
+  END SUBROUTINE edc_remove_parent
+
+
+  !> @brief
+  !> Set up the caller object and attach a definition
+  !> @param[inout] this
+  !> @param[in] definition
+  !> @param[in] errcode
+  !> @param[in] parser
+  !> @param[in] err_handler
+  !> @param[in] pass_number
+  !> @param[in] code_name
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] interop_parser
+  SUBROUTINE edc_init(this, definition, errcode, parser, err_handler, &
+      pass_number, code_name, filename, line_number, interop_parser)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    !> Deck definition to use when calling blocks and keys
+    CLASS(eis_deck_definition), POINTER, INTENT(IN) :: definition
+    !> Error code from starting the caller
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Specify a maths parser to use. Optional, default is create a default
+    !> eis_parser object. If explicitly passed a null pointer
+    CLASS(eis_parser), INTENT(INOUT), POINTER, OPTIONAL :: parser
+    !> Specify an error handler to use. Optional, default is to create a 
+    !. default error handler
+    CLASS(eis_error_handler), INTENT(IN), POINTER, OPTIONAL :: err_handler
+    !> Default pass number when calling definition items. Can be overriden 
+    !> when calling individual elements. Optional, default 1
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    !>Name of the code that is calling the deck. Not currently used but intended
+    !>for future error reporting
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: code_name
+    !> Filename of the file that is calling the init function. Used for error
+    !> reporting. Optional, default do not use when reporting errors
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Line number in the file that is calling the init function. Used for error
+    !> reporting. Optional, default do not use when reporting errors
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> The ID number of an interoperable parser to use
+    INTEGER, INTENT(IN), OPTIONAL :: interop_parser
+
+    TYPE(eis_deck_caller_block), POINTER :: root_block
+    CLASS(*), POINTER :: gptr
+
+    errcode = eis_err_none
+
+    this%pass_number = 1
+    IF (PRESENT(pass_number)) this%pass_number = pass_number
+    this%definition => definition
+
+    IF (PRESENT(code_name)) THEN
+      IF (ALLOCATED(this%code_name)) DEALLOCATE(this%code_name)
+      ALLOCATE(this%code_name, SOURCE = code_name)
+    END IF
+    IF (.NOT. ALLOCATED(this%code_name)) ALLOCATE(this%code_name, &
+        SOURCE = 'unknown_source')
+
+    IF (PRESENT(filename)) THEN
+      IF (ALLOCATED(this%filename)) DEALLOCATE(this%filename)
+      ALLOCATE(this%filename, SOURCE =filename)
+    END IF
+    IF (.NOT. ALLOCATED(this%filename)) ALLOCATE(this%filename, &
+        SOURCE = 'unknown file')
+
+    !IF specifying a new error_handler deallocate the old one if needed
+    IF (PRESENT(err_handler)) THEN
+      IF (ASSOCIATED(this%err_handler) .AND. this%owns_err_handler) &
+          DEALLOCATE(this%err_handler)
+      this%err_handler => NULL()
+    END IF
+
+    !If there is no error handler already allocated at this point then
+    !either use the one that the user provided, or create one if they user
+    !didn't specify one or specified a NULL handler
+    IF (.NOT. ASSOCIATED(this%err_handler)) THEN
+      IF (PRESENT(err_handler)) THEN
+        IF (ASSOCIATED(err_handler)) THEN
+          this%err_handler => err_handler
+          this%owns_err_handler = .FALSE.
+        ELSE
+          ALLOCATE(this%err_handler)
+          this%owns_err_handler = .TRUE.
+        END IF
+      ELSE
+        ALLOCATE(this%err_handler)
+        this%owns_err_handler = .TRUE.
+      END IF
+    END IF
+
+    !IF specifying a new parser deallocate the old one if needed
+    IF (PRESENT(parser) .OR. PRESENT(interop_parser)) THEN
+      IF (ASSOCIATED(this%parser) .AND. this%owns_parser) &
+          DEALLOCATE(this%parser)
+      this%parser => NULL()
+      IF (this%owns_interop) &
+          CALL eis_release_interop_parser(this%interop_parser)
+      this%interop_parser = -1
+    END IF
+
+    IF (PRESENT(parser) .AND. PRESENT(interop_parser)) THEN
+      this%parser => parser
+      this%interop_parser = interop_parser
+      this%owns_parser = .FALSE.
+      this%owns_interop = .FALSE.
+    ELSE IF (PRESENT(parser)) THEN
+      this%parser => parser
+      this%owns_parser = .FALSE.
+      IF (ASSOCIATED(this%parser)) THEN
+        IF (this%parser%interop_id > -1) THEN
+          this%interop_parser = this%parser%interop_id
+          this%owns_interop = .FALSE.
+        ELSE
+          this%interop_parser = eis_add_interop_parser(parser, owns = .FALSE.)
+          this%owns_interop = .TRUE.
+        END IF
+      ELSE
+        this%interop_parser = -1
+      END IF
+    ELSE IF (PRESENT(interop_parser)) THEN
+      this%interop_parser = interop_parser
+      this%owns_interop = .FALSE.
+      this%parser => eis_get_interop_parser(interop_parser)
+      this%owns_parser = .FALSE.
+    END IF
+
+    this%definition => definition
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_parser, errcode, &
+          filename = filename, line_number = line_number)
+      RETURN
+    END IF
+
+    IF (.NOT. this%definition%is_init) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_parser, errcode, &
+          filename = filename, line_number = line_number)
+      RETURN
+    END IF
+
+    IF (.NOT. ALLOCATED(this%current_parents)) &
+        ALLOCATE(this%current_parents(10))
+    ALLOCATE(root_block)
+    ALLOCATE(root_block%block_text, SOURCE = '{ROOT}')
+    this%root => root_block
+    this%current_block => root_block
+    root_block%definition => this%definition%get_root()
+    gptr => root_block
+    !Root block must have ID 0
+    root_block%uid = 0
+    CALL this%blocks%hold(0, gptr, owns = .TRUE.)
+    CALL this%uid_generator%reset(1)
+    CALL this%key_uid_generator%reset(1)
+    this%current_level = 1
+    this%current_parents(1) = root_block%uid
+
+  END SUBROUTINE edc_init
+
+
+  !> @brief
+  !> Reset the caller so that you can work with a new definition
+  !> @param[inout] this
+  SUBROUTINE edc_reset(this, errcode)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    LOGICAL :: success
+
+    errcode = eis_err_none
+    this%definition => NULL()
+    CALL this%blocks%clear()
+    success = this%events%clear()
+
+  END SUBROUTINE edc_reset
+
+
+
+  !> @brief
+  !> Set a general pass number to use for all future calls
+  !> @param[inout] this
+  !> @param[in] pass_number
+  SUBROUTINE edc_set_pass(this, pass_number)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: pass_number
+
+    this%pass_number = pass_number
+
+  END SUBROUTINE edc_set_pass
+
+
+
+  !> @brief
+  !> Initialise all of the blocks in the deck
+  !> @param[inout] this
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  SUBROUTINE edc_initialise_all_blocks(this, errcode, pass_number, &
+      host_state, line_number, filename)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    !> Error code from the initialise operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Pass number through the deck. Optional, default 1
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    !> Optional host state parameter
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    !> Line number for error reporting
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Filename for error reporting
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+
+    TYPE(eis_deck_block_definition), POINTER :: defn
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    TYPE(eis_deck_caller_event), POINTER :: event
+    CLASS(*), POINTER :: gptr
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    errcode = eis_err_none
+    CALL this%definition%initialise_blocks(host_state, errcode, &
+        pass_number = pass_l)
+
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_init
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+  END SUBROUTINE edc_initialise_all_blocks
+
+
+  !> @brief
+  !> Start a new block in the currently started block.
+  !> @detail
+  !> This routine starts a block by name in the currently started block
+  !> By default you start in the root block when you initialise the caller
+  !> If the block name is not found then an error will be returned and
+  !> the current block is not changed. If the block is found you enter the
+  !> context for this block even if starting the block returns an error.
+  !> You will have to end the block to return to the parent block context
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  !> @return uid
+  FUNCTION edc_start_block(this, name, errcode, pass_number, host_state, &
+      line_number, filename) RESULT(uid)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    !> Name of the block to start
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Error code from the start operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Pass number through the deck. Optional, default 1
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    !> Optional host state parameter
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    !> Line number for error reporting
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Filename for error reporting
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> UID of started block
+    INTEGER(uid_kind) :: uid
+
+    TYPE(eis_deck_block_definition), POINTER :: defn
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    TYPE(eis_deck_caller_block), POINTER :: new_block
+    TYPE(eis_deck_caller_event), POINTER :: event
+    CLASS(*), POINTER :: gptr
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    errcode = eis_err_none
+    defn => this%current_block%definition%get_child(name, &
+        pass_number = pass_l, errcode = errcode)
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    !Create the new block and link it in to the list of blocks
+    ALLOCATE(new_block)
+    new_block%parent => this%current_block
+    gptr => new_block
+    new_block%uid = this%uid_generator%get_next_uid()
+    uid = new_block%uid
+    CALL this%blocks%hold(new_block%uid, gptr, owns = .TRUE.)
+    CALL this%add_parent(new_block%uid)
+    new_block%definition => defn
+    !Now call the start block functions
+    errcode = eis_err_none
+    CALL defn%start_block(this%current_parents(1:this%current_level), pass_l, &
+        status, errcode, host_state, display_name = name)
+    IF (errcode /= eis_err_none) THEN
+      !Error starting block but block exists. Report it but you *have* still
+      !started the block. You will have to end it to go back up
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+    END IF
+
+    dummy = this%current_block%children%hold(gptr, owns = .FALSE.)
+    this%current_block => new_block
+
+    ALLOCATE(new_block%block_text, SOURCE = name)
+
+    !Create the event
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_init
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    event%block => new_block
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+  END FUNCTION edc_start_block
+
+
+
+  !> @brief
+  !> End the currently started block
+  !> @param[inout] this
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  SUBROUTINE edc_end_block(this, errcode, pass_number, host_state, &
+      line_number, filename)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    TYPE(eis_deck_caller_event), POINTER :: event
+    CLASS(*), POINTER :: gptr
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    errcode = eis_err_none
+
+    !Call the end block function
+    CALL this%current_block%definition%end_block(&
+        this%current_parents(1:this%current_level), pass_l, status, errcode, &
+        host_state, display_name = this%current_block%block_text)
+
+    !Create the event
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_end
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    event%block => this%current_block
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    CALL this%remove_parent()
+    this%current_block => this%current_block%parent
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+  END SUBROUTINE edc_end_block
+
+
+
+  !> Call a key on the currently selected block
+  !> @param[inout] this
+  !> @param[in] key_text
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  !> @param[in] white_space_length
+  !> @param[in] value_function
+  !> @param[in] value_function_text
+  !> @param[in] parser
+  !> @param[in] interop_parser
+  !> @return uid
+  FUNCTION edc_call_key(this, key_text, errcode, pass_number, host_state, &
+      line_number, filename, white_space_length, value_function, &
+      value_function_text, parser, interop_parser) RESULT(uid)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    !> Text of the key to be called
+    CHARACTER(LEN=*), INTENT(IN) :: key_text
+    !> Error code from the function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Pass through the deck to call the key on. Optional, default use object
+    !> pass number, set with "set_pass"
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    !> Optional host_state parameter, used to pass a single eis_bitmask in or
+    !> out of the deck parser code. Optional and set to zero if not used.
+    !> Typical use cases would be reporting errors that are not related to EIS
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    !> Optional line number to be used when reporting errors.
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Optional filename to be used when reporting errors
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Optional parameter for the length of white space present before the
+    !> string in key_text occurs. If not set assumed zero
+    INTEGER, INTENT(IN), OPTIONAL :: white_space_length
+    !> Optional callback function for the value of a stack.If not present
+    !> then "key_text" must evaluate to a valid parser expression
+    PROCEDURE(parser_result_function), OPTIONAL :: value_function
+    !> Optional string of the source of the function specified in 
+    !> "value_function". Used when reporting the state of the deck
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: value_function_text
+    !> Optional eis_parser object to use to evaluate the stack.
+    !> If not present then the parser object specified when the
+    !> eis_deck_caller object was initialised
+    CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
+    !> Optional interop_parser code. Used to evaluate the stack as needed
+    INTEGER, INTENT(IN), OPTIONAL :: interop_parser
+    !> Unique ID of the key
+    INTEGER(uid_kind) :: uid
+
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    CLASS(eis_parser), POINTER :: parser_l
+    INTEGER :: interop_parser_l
+    TYPE(eis_deck_caller_key), POINTER :: key_info
+    LOGICAL :: release_interop
+    CLASS(*), POINTER :: gptr
+    INTEGER(eis_bitmask) :: host_state_l
+    TYPE(eis_deck_caller_event), POINTER :: event
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    host_state_l = 0_eis_bitmask
+    IF (PRESENT(host_state)) host_state_l = host_state
+
+    release_interop = .FALSE.
+    parser_l => this%parser
+    IF (PRESENT(parser)) parser_l => parser
+    interop_parser_l = this%interop_parser
+    IF (PRESENT(interop_parser)) interop_parser_l = interop_parser
+
+    IF (.NOT. ASSOCIATED(parser_l) .AND. interop_parser_l > -1) THEN
+      parser_l => eis_get_interop_parser(interop_parser_l)
+    END IF
+
+    IF (interop_parser_l < 0) THEN
+      IF (ASSOCIATED(parser_l)) THEN
+        IF (parser_l%interop_id > -1) THEN
+          interop_parser_l = parser_l%interop_id
+        ELSE
+          interop_parser_l = eis_add_interop_parser(parser_l, owns = .FALSE.)
+          release_interop = .TRUE.
+        END IF
+      END IF
+    END IF
+
+    errcode = eis_err_none
+
+    ALLOCATE(key_info)
+    key_info%uid = this%key_uid_generator%get_next_uid()
+    uid = key_info%uid
+    ALLOCATE(key_info%key_text, SOURCE = key_text)
+    ALLOCATE(key_info%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) key_info%line_number = line_number
+    IF (PRESENT(value_function)) key_info%func_res => value_function
+    IF (PRESENT(value_function_text)) ALLOCATE(key_info%function_text, &
+        SOURCE =  value_function_text)
+    IF (PRESENT(white_space_length)) key_info%white_space_length &
+        = white_space_length
+    key_info%host_state = host_state_l
+
+    gptr => key_info
+    dummy = this%current_block%keys%hold(gptr, owns = .FALSE.)
+    CALL this%keys%hold(uid, gptr, owns = .TRUE.)
+
+    CALL this%current_block%definition%call_key(key_text, &
+        this%current_parents(1:this%current_level), pass_l, host_state_l, &
+        errcode, filename = fname_l, line_number = line_number, &
+        white_space_length = white_space_length, &
+        value_function = value_function, parser = parser_l, &
+        interop_parser_id = interop_parser_l)
+
+    IF (release_interop) CALL eis_release_interop_parser(interop_parser_l)
+
+    !Create the event
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_call
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    event%key => key_info
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+  
+  END FUNCTION edc_call_key
+
+
+
+  !> @brief
+  !> End and finalise the currently started block
+  !> @param[inout] this
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  SUBROUTINE edc_end_and_final_block(this, errcode, pass_number, host_state, &
+      line_number, filename)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    INTEGER(eis_error) :: errcode_l
+    TYPE(eis_deck_caller_event), POINTER :: event
+    CLASS(*), POINTER :: gptr
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    errcode_l = eis_err_none
+
+    !Call the end block function
+    CALL this%current_block%definition%end_block(&
+        this%current_parents(1:this%current_level), pass_l, status, errcode_l, &
+        host_state, display_name = this%current_block%block_text)
+    IF (errcode_l /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode_l, &
+          filename = fname_l, line_number = line_number)
+    END IF
+    !Create the event
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_end
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    event%block => this%current_block
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    errcode = IOR(errcode, errcode_l)
+    errcode_l = eis_err_none
+    CALL this%current_block%definition%finalise_block(pass_l, .TRUE., status, &
+        errcode_l, host_state)
+
+    !Create the event
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_final
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    event%block => this%current_block
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    CALL this%remove_parent()
+    this%current_block => this%current_block%parent
+
+    IF (errcode_l /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode_l, &
+          filename = fname_l, line_number = line_number)
+    END IF
+    errcode = IOR(errcode, errcode_l)
+
+  END SUBROUTINE edc_end_and_final_block
+
+
+
+  !> @brief
+  !> Finalise all of the blocks in the deck
+  !> @param[inout] this
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  !> @param[inout] host_state
+  !> @param[in] line_number
+  !> @param[in] filename
+  SUBROUTINE edc_finalise_all_blocks(this, errcode, pass_number, &
+      host_state, line_number, filename)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    !> Error code from the finalise operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Pass number through the deck. Optional, default 1
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    !> Optional host state parameter
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    !> Line number for error reporting
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> Filename for error reporting
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+
+    TYPE(eis_deck_block_definition), POINTER :: defn
+    INTEGER :: pass_l, dummy
+    CHARACTER(LEN=:), ALLOCATABLE :: fname_l
+    INTEGER(eis_status) :: status
+    TYPE(eis_deck_caller_event), POINTER :: event
+    CLASS(*), POINTER :: gptr
+
+    IF (PRESENT(filename)) THEN
+      ALLOCATE(fname_l, SOURCE = filename)
+    ELSE
+      ALLOCATE(fname_l, SOURCE = this%filename)
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+    pass_l = this%pass_number
+    IF (PRESENT(pass_number)) pass_l = pass_number
+
+    errcode = eis_err_none
+    CALL this%definition%finalise_blocks(host_state, errcode, &
+        pass_number = pass_l)
+
+    ALLOCATE(event)
+    gptr => event
+    event%type = edce_final
+    ALLOCATE(event%filename, SOURCE = fname_l)
+    IF (PRESENT(line_number)) event%line_number = line_number
+    event%pass_number = pass_l
+    dummy = this%events%hold(gptr, owns = .TRUE.)
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+          filename = fname_l, line_number = line_number)
+      RETURN
+    END IF
+
+  END SUBROUTINE edc_finalise_all_blocks
+
+
+
+  !> Get the number of errors reported on this deck parse
+  !> @param[inout] this
+  !> @return count
+  FUNCTION edc_get_error_count(this) RESULT(count)
+    CLASS(eis_deck_caller), INTENT(IN) :: this
+    INTEGER :: count !< Number of errors reported
+
+    count = this%err_handler%get_error_count()
+
+  END FUNCTION edc_get_error_count
+
+
+
+  !> @brief
+  !> Get the error report on a specified error
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] report
+  SUBROUTINE edc_get_error_report(this, index, report)
+    CLASS(eis_deck_caller), INTENT(IN) :: this
+    !> Index of error to get report on. Must be between 1 and
+    !> the result of eip_get_error_count
+    INTEGER, INTENT(IN) :: index
+    !> Allocatable string variable containing the error report
+    !> will be reallocated to be exactly long enough to store
+    !> the error report whether allocated or not
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: report
+
+    CALL this%err_handler%get_error_report(index, report)
+  END SUBROUTINE edc_get_error_report
+
+
+  !> @brief
+  !> Print all of the errors to stdout
+  !> @param[inout] this
+  SUBROUTINE edc_flush_errors(this)
+    CLASS(eis_deck_caller) :: this
+
+    CALL this%err_handler%flush_errors()
+
+  END SUBROUTINE edc_flush_errors
+
+END MODULE eis_deck_caller_mod

@@ -408,7 +408,7 @@ MODULE eis_parser_interop
   !> code and given to the interoperable interface then it will not be 
   !> deallocated even when the reference count reaches zero
   !> @param[in] stack_id - ID of stored stack to decrement the reference of
-  !> @result eis_copy_stack - ID of copy of stack
+  !> @return eis_copy_stack - ID of copy of stack
   FUNCTION eis_copy_stack(stack_id) BIND(C)
 
     INTEGER(C_INT), VALUE, INTENT(IN) :: stack_id

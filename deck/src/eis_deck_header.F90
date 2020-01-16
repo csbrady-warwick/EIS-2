@@ -7,5 +7,6 @@ MODULE eis_deck_header
       eis_physics_cgs_gauss
   USE eis_deck_definition_mod
   USE eis_deck_from_text_mod
+  USE eis_deck_caller_mod
 
 END MODULE eis_deck_header

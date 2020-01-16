@@ -182,7 +182,7 @@ CONTAINS
   !> @param[in] name
   !> @param[in] item
   !> @param[in] owns
-  !> @result nsil_store
+  !> @return nsil_store
   FUNCTION nsil_store(this, name, item, owns)
 
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
@@ -524,7 +524,7 @@ CONTAINS
   !> @brief
   !> Get the count of names
   !> @param[in] this
-  !> @result ns_get_name_count
+  !> @return ns_get_name_count
   FUNCTION ns_get_name_count(this)
 
     CLASS(named_store), INTENT(INOUT) :: this
