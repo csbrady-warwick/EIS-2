@@ -1192,6 +1192,10 @@ CONTAINS
     !> Capability bits for the expression
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
 
+    err = eis_err_none
+
+    IF (.NOT. this%is_init) CALL this%init(err)
+
     CALL initialise_stack(output)
     output%eval_fn => function_in
     IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
@@ -1714,7 +1718,7 @@ CONTAINS
     TYPE(eis_tree_item), POINTER :: new_node
     INTEGER(eis_error) :: errcode_l
     INTEGER :: inode, nparams, sp
-    TYPE(eis_stack), TARGET :: temp_stack
+    TYPE(eis_stack), TARGET :: temp_stack, functor_stack
     TYPE(eis_stack), POINTER :: emplace_stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: results, params
     REAL(eis_num_c), DIMENSION(:), ALLOCATABLE :: params_interop
@@ -1788,6 +1792,10 @@ CONTAINS
         CALL initialise_stack(stacks(inode))
         CALL eis_tree_to_stack(tree_node%nodes(nparams - inode + 1), &
             stacks(inode))
+        IF (ASSOCIATED(stacks(inode)%eval_fn)) THEN
+           CALL this%registry%result_function_to_functor_stack(stacks(inode), &
+              errcode)
+        END IF
       END DO
     ELSE
       ALLOCATE(stacks(nparams))
@@ -1924,12 +1932,18 @@ CONTAINS
     remaining_functions = .TRUE.
     IF (.NOT. ASSOCIATED(emplace_stack)) RETURN
     IF (.NOT. emplace_stack%init) RETURN
-    IF (emplace_stack%stack_point == 0) RETURN
 
     IF (emplace_stack%has_emplaced) THEN
       CALL this%emplace(emplace_stack, errcode_l, host_params = host_params)
       errcode = IOR(errcode, errcode_l)
     END IF
+
+    IF (ASSOCIATED(emplace_stack%eval_fn)) THEN
+      CALL this%registry%result_function_to_functor_stack(emplace_stack, &
+          errcode, output_stack = functor_stack)
+      emplace_stack => functor_stack
+    END IF
+    IF (emplace_stack%stack_point == 0) RETURN
 
     capbits = IOR(capbits, emplace_stack%cap_bits)
     !If emplacement is not forbidden by status then build new node
@@ -3727,7 +3741,7 @@ CONTAINS
       function_str)
     CLASS(eis_parser), INTENT(INOUT) :: this
     !> Array of stacks to combine
-    TYPE(eis_stack), DIMENSION(:), INTENT(IN) :: stacks
+    TYPE(eis_stack), DIMENSION(:), INTENT(INOUT) :: stacks
     !> Stack to hold the combined stack
     TYPE(eis_stack), INTENT(INOUT) :: output
     !> Error code
@@ -3740,6 +3754,7 @@ CONTAINS
     INTEGER :: iel, expected_params
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
+    TYPE(eis_stack) :: functor_stack
 
     errcode = eis_err_none
 
@@ -3763,7 +3778,13 @@ CONTAINS
         errcode = eis_err_bad_stack
         RETURN
       END IF
-      CALL append_stack(output, stacks(iel))
+      IF (ASSOCIATED(stacks(iel)%eval_fn)) THEN
+        CALL this%registry%result_function_to_functor_stack(stacks(iel), &
+            errcode, output_stack = functor_stack)
+        CALL append_stack(output, functor_stack)
+      ELSE
+        CALL append_stack(output, stacks(iel))
+      END IF
     END DO
 
     IF (PRESENT(function_str)) THEN

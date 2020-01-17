@@ -171,6 +171,9 @@ MODULE eis_error_mod
           &interoperability function but the parser is not interoperable')
       CALL this%strings%store('err_out_of_range', 'The specified value is &
           &outwith the range of acceptable values for this function')
+      CALL this%strings%store('err_stack_params', 'A stack variable that &
+          &returns more than one parameter was used in a mathematical &
+          &expression')
 
       CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
           &{errline} : ')
@@ -459,6 +462,9 @@ MODULE eis_error_mod
     IF (IAND(errcode, eis_err_out_of_range) /=0) THEN
       ok = this%strings%append('err_out_of_range', err_string)
     END IF
+    IF (IAND(errcode, eis_err_stack_params) /= 0) THEN
+      ok = this%strings%append('err_stack_params', err_string)
+    END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
         'No error text found')
@@ -547,7 +553,8 @@ MODULE eis_error_mod
       CALL eis_append_string(report, TRIM(predots) &
            // this%errors(index)%full_line(spos:epos) // TRIM(postdots))
       CALL eis_append_string(report, REPEAT(" ", &
-          this%errors(index)%full_line_pos - spos + LEN(TRIM(predots))) // "^")
+          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)),0)) &
+          // "^")
     END IF
 
     CALL eis_append_string(report, "")

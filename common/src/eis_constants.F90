@@ -135,6 +135,10 @@ MODULE eis_constants
   !> Parameter was valid mathematically but was out of range in some other sense
   INTEGER(eis_error), PARAMETER :: eis_err_out_of_range &
       = 2_eis_error**33_eis_error
+  !> Stack variable that returns more than one parameter was used in a maths
+  !> expression
+  INTEGER(eis_error), PARAMETER :: eis_err_stack_params &
+      = 2_eis_error**34_eis_error
 
   !> No status specified
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0

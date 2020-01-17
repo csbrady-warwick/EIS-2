@@ -13,6 +13,12 @@ MODULE eis_registry_mod
   INTEGER, PARAMETER :: eis_reg_index_stack    = 1
   INTEGER, PARAMETER :: eis_reg_index_emplaced = 2
 
+  TYPE, EXTENDS(eis_functor) :: parser_result_functor
+    PROCEDURE(parser_result_function), POINTER, NOPASS :: result_fn
+  CONTAINS
+    PROCEDURE :: operate => prf_operate
+  END TYPE parser_result_functor
+
   !>@class
   !> Type holding pointer to the two kinds of functions used for emplaced
   !> variables and functions
@@ -113,6 +119,7 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: optimize => eir_optimise
     PROCEDURE, PUBLIC :: get_name_count => eir_get_name_count
     PROCEDURE, PUBLIC :: get_name => eir_get_name
+    PROCEDURE, PUBLIC :: result_function_to_functor_stack => eir_rf_to_fs
     
   END TYPE eis_registry
 
@@ -120,6 +127,31 @@ MODULE eis_registry_mod
   PUBLIC :: eis_registry
 
 CONTAINS
+
+
+  FUNCTION prf_operate(this, nparams, params, host_params, status_code, &
+      errcode)
+    CLASS(parser_result_functor), INTENT(INOUT) :: this
+    INTEGER(eis_i4), INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: prf_operate
+    REAL(eis_num), DIMENSION(1) :: results
+    INTEGER :: result_count
+
+    result_count = 1
+    CALL this%result_fn(result_count, results, host_params, status_code, &
+        errcode)
+    IF (result_count /=1) THEN
+      errcode = eis_err_wrong_parameters
+      prf_operate = 0.0_eis_num
+      RETURN
+    END IF
+    prf_operate = results(1)
+  END FUNCTION prf_operate
+
 
   !>Note that the following terms will be used in this file
   !> item - A function, variable, constant, operator etc.
@@ -1251,6 +1283,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: insert_point
     CLASS(*), POINTER :: gptr
     TYPE(eis_stack), POINTER :: temp
+    TYPE(eis_stack), TARGET :: filled
+    INTEGER(eis_error) :: err
 
     temp => NULL()
     gptr => this%stack_variable_registry%get(index)
@@ -1259,6 +1293,14 @@ CONTAINS
         CLASS IS (eis_stack)
           temp => co
       END SELECT
+      IF (ASSOCIATED(temp)) THEN
+        IF (ASSOCIATED(temp%eval_fn)) THEN
+          CALL this%result_function_to_functor_stack(temp, err, &
+              output_stack = filled)
+          IF (err /= eis_err_none) RETURN
+          temp => filled
+        END IF
+      END IF
       IF (ASSOCIATED(temp)) THEN
         IF (PRESENT(insert_point)) THEN
           CALL replace_element(output, temp, insert_point)
@@ -1271,6 +1313,71 @@ CONTAINS
     END IF
 
   END SUBROUTINE eir_copy_in
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Routine to take a stack that has a result function bound to it
+  !> and then convert it to a functor that calls the same function
+  !> @param[inout] this
+  !> @param[in] stack_in
+  !> @param[inout] errcode
+  !> @param[inout] stack_out
+  SUBROUTINE eir_rf_to_fs(this, stack_in, errcode, output_stack)
+    CLASS(eis_registry) :: this
+    !> Stack containing
+    TYPE(eis_stack), INTENT(INOUT), TARGET :: stack_in
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: output_stack
+    INTEGER :: i, dummy
+    CLASS(*), POINTER :: gptr
+    CLASS(parser_result_functor), POINTER :: eval_functor
+    TYPE(eis_stack_element) :: iblock
+    TYPE(eis_stack_co_element) :: icoblock
+    TYPE(eis_stack), POINTER :: res_stack
+
+    errcode = eis_err_none
+
+    !Shouldn't happen but fall back gracefully
+    IF (.NOT. ASSOCIATED(stack_in%eval_fn)) THEN
+      IF (PRESENT(output_stack)) output_stack = stack_in
+      RETURN
+    END IF
+
+    IF (PRESENT(output_stack)) THEN
+      res_stack => output_stack
+    ELSE
+      res_stack => stack_in
+    END IF
+
+    eval_functor => NULL()
+    DO i = 1, this%functor_registry%get_size()
+      gptr => this%functor_registry%get(i)
+      SELECT TYPE (gptr)
+        TYPE IS (parser_result_functor)
+          IF (ASSOCIATED(gptr%result_fn, TARGET = stack_in%eval_fn)) THEN
+            eval_functor => gptr
+            EXIT
+          END IF
+      END SELECT
+    END DO
+
+    IF (.NOT. ASSOCIATED(eval_functor)) THEN
+      ALLOCATE(eval_functor)
+      eval_functor%result_fn => stack_in%eval_fn
+      gptr => eval_functor
+      dummy = this%functor_registry%hold(gptr, owns = .TRUE.)
+    END IF
+    iblock%ptype = eis_pt_function
+    iblock%functor => eval_functor
+    iblock%actual_params = 0
+    ALLOCATE(icoblock%text, SOURCE = stack_in%full_line)
+
+    CALL initialise_stack(res_stack)
+    CALL push_to_stack(res_stack, iblock, icoblock)
+
+  END SUBROUTINE eir_rf_to_fs
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
