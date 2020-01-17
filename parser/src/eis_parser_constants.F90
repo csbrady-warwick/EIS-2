@@ -142,6 +142,7 @@ MODULE eis_parser_constants
     INTEGER :: interop_id = -1
     INTEGER :: line_number = 0
     INTEGER :: char_offset = 0
+    INTEGER :: params = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     INTEGER :: stack_point = 0, stack_size = 0
     LOGICAL :: init = .FALSE.

@@ -103,6 +103,7 @@ MODULE eis_tree_mod
     simplified%has_emplaced = stack%has_emplaced
     IF (ALLOCATED(stack%full_line)) ALLOCATE(simplified%full_line, &
         SOURCE = stack%full_line)
+    simplified%params = stack%params
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)

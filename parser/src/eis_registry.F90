@@ -145,7 +145,7 @@ CONTAINS
     CALL this%result_fn(result_count, results, host_params, status_code, &
         errcode)
     IF (result_count /=1) THEN
-      errcode = eis_err_wrong_parameters
+      errcode = eis_err_stack_params
       prf_operate = 0.0_eis_num
       RETURN
     END IF
@@ -1269,22 +1269,34 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] index
   !> @param[inout] output
-  !> @param[inout] err_handler
+  !> @param[inout] errcode
   !> @param[in] insert_point
-  SUBROUTINE eir_copy_in(this, index, output, err_handler, insert_point)
+  !> @param[out] item_count
+  !> @param[in] allow_multiple
+  SUBROUTINE eir_copy_in(this, index, output, errcode, insert_point, &
+      item_count, allow_multiple)
     CLASS(eis_registry) :: this
     INTEGER(eis_i4), INTENT(IN) :: index !< Index number of stack to retrieve
     TYPE(eis_stack), INTENT(INOUT) :: output !< Stack into which to insert
-    !> Error handler, optional default no error handling
-    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    !> Error code for this operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
     !> Insertion point. Item at the location is replaced with the content of
     !> the requested stack. Optional. Default is insert at end of stack with
     !> no replacement
     INTEGER, INTENT(IN), OPTIONAL :: insert_point
+    !> Number of items to be inserted. This is not the same as the number 
+    !> of entries in the stack but is the number of items that the stack
+    !> evaluates to
+    INTEGER, INTENT(OUT), OPTIONAL :: item_count
+    !> Should an error be returned if you are filling with a stack
+    !> that unpacks to multiple items
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_multiple
     CLASS(*), POINTER :: gptr
     TYPE(eis_stack), POINTER :: temp
     TYPE(eis_stack), TARGET :: filled
     INTEGER(eis_error) :: err
+
+    errcode = eis_err_none
 
     temp => NULL()
     gptr => this%stack_variable_registry%get(index)
@@ -1301,6 +1313,13 @@ CONTAINS
           temp => filled
         END IF
       END IF
+      IF (PRESENT(allow_multiple)) THEN
+        IF (.NOT. allow_multiple .AND. temp%params > 1) THEN
+          errcode = eis_err_stack_params
+          RETURN
+        END IF
+      END IF
+      IF (PRESENT(item_count)) item_count = temp%params
       IF (ASSOCIATED(temp)) THEN
         IF (PRESENT(insert_point)) THEN
           CALL replace_element(output, temp, insert_point)
@@ -1371,6 +1390,7 @@ CONTAINS
     iblock%ptype = eis_pt_function
     iblock%functor => eval_functor
     iblock%actual_params = 0
+    iblock%can_simplify = .FALSE.
     ALLOCATE(icoblock%text, SOURCE = stack_in%full_line)
 
     CALL initialise_stack(res_stack)

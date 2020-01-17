@@ -93,8 +93,12 @@ MODULE eis_parser_mod
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
     LOGICAL :: owns_err_handler = .FALSE.
     INTEGER, PUBLIC :: interop_id = -1
+
+    !State information used during tokenization
     INTEGER :: last_block_type, last_block_value, last_charindex
     CHARACTER(LEN=:), ALLOCATABLE :: last_block_text
+    INTEGER :: last_block_item_count = 1
+
     LOGICAL :: is_init = .FALSE.
     LOGICAL :: should_simplify = .TRUE.
     LOGICAL :: should_minify = .FALSE.
@@ -1306,6 +1310,9 @@ CONTAINS
 
     CALL initialise_stack(this%stack)
     CALL initialise_stack(this%brackets)
+    CALL push_to_stack(this%brackets, iblock, icoblock)
+    this%brackets%entries(1)%actual_params = 1
+    this%last_block_item_count = 1
 
     ALLOCATE(CHARACTER(LEN=LEN(expression))::current)
     IF (ALLOCATED(output%full_line)) DEALLOCATE(output%full_line)
@@ -1383,6 +1390,7 @@ CONTAINS
       err = IOR(err, eis_err_parser)
     END IF
     CALL deallocate_stack(this%stack)
+    output%params = this%brackets%entries(1)%actual_params
     CALL deallocate_stack(this%brackets)
     DEALLOCATE(current)
     DEALLOCATE(expression)
@@ -1616,10 +1624,16 @@ CONTAINS
           errcode = IOR(errcode, eis_err_has_deferred)
           CALL this%err_handler%add_error(eis_err_parser, errcode, &
               str, stack%co_entries(ipt)%charindex)
+          RETURN
         END IF
         IF (stack%entries(ipt)%ptype == eis_pt_stored_variable) THEN
           CALL this%registry%copy_in_stored(stack%entries(ipt)%value, &
-              stack, this%err_handler, ipt)
+              stack, errcode, ipt, allow_multiple = .FALSE.)
+          IF (errcode /= eis_err_none) THEN
+            CALL this%err_handler%add_error(eis_err_parser, errcode, &
+                str, stack%co_entries(ipt)%charindex)
+            RETURN
+          END IF
         END IF
         DEALLOCATE(str)
         stack%cap_bits = IOR(stack%cap_bits, stack%co_entries(ipt)%cap_bits)
@@ -3444,6 +3458,17 @@ CONTAINS
       END IF
     END IF
 
+    !If you have previously put in two items from a stack then you can't do
+    !anything else
+    IF (this%last_block_item_count > 1) THEN
+      err = IOR(err, eis_err_stack_params)
+      CALL this%err_handler%add_error(eis_err_parser, err, &
+          this%last_block_text, this%last_charindex, filename = filename, &
+          line_number = line_number, full_line = full_line, &
+          full_line_pos = trim_charindex)
+      RETURN
+    END IF
+
     !Character variables must be followed by either a comma or a close bracket
     IF (this%last_block_type == eis_pt_character .AND. &
           .NOT. (iblock%ptype == eis_pt_separator &
@@ -3533,6 +3558,8 @@ CONTAINS
       END IF
     END IF
 
+    !This will be replaced if needed
+    this%last_block_item_count = 1
     output%has_deferred = output%has_deferred .OR. icoblock%defer
 
     IF (iblock%ptype == eis_pt_variable &
@@ -3542,8 +3569,18 @@ CONTAINS
 
     ELSE IF (iblock%ptype == eis_pt_stored_variable) THEN
       IF (.NOT. icoblock%defer) THEN
-        CALL this%registry%copy_in_stored(iblock%value, output, &
-            this%err_handler)
+        CALL this%registry%copy_in_stored(iblock%value, output, err, &
+            item_count = this%last_block_item_count)
+        IF (err /= eis_err_none .OR. (this%last_block_item_count > 1 &
+            .AND. this%stack%stack_point > 0)) THEN
+          IF (this%last_block_item_count > 1 &
+            .AND. this%stack%stack_point > 0) &
+            err = IOR(err, eis_err_stack_params)
+          CALL this%err_handler%add_error(eis_err_parser, err, &
+              current, charindex, filename = filename, &
+              line_number = line_number, full_line = full_line, &
+              full_line_pos = trim_charindex)
+        END IF
       ELSE
         CALL push_to_stack(this%stack, iblock, icoblock)
       END IF
@@ -3647,7 +3684,10 @@ CONTAINS
     ELSE IF (iblock%ptype == eis_pt_separator) THEN
       DO
         IF (this%stack%stack_point == 0) THEN
-          !This is a separator in creating a vector, so nothing to do
+          !This is a separator in creating a vector, so nothing to do except
+          !count parameters
+          this%brackets%entries(1)%actual_params &
+              = this%brackets%entries(1)%actual_params + 1
           EXIT
         ELSE
           CALL stack_snoop(this%stack, block2, 0)
