@@ -170,6 +170,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: get_tokens => eip_get_tokens
     PROCEDURE, PUBLIC :: visualize_stack => eip_visualize_stack
     PROCEDURE, PUBLIC :: visualise_stack => eip_visualize_stack
+    PROCEDURE, PUBLIC :: get_infix => eip_get_infix
     PROCEDURE, PUBLIC :: get_symbol_info => eip_get_symbol_info
     PROCEDURE, PUBLIC :: optimise => eip_optimise
     PROCEDURE, PUBLIC :: optimize => eip_optimise
@@ -3965,7 +3966,7 @@ CONTAINS
     CLASS(eis_parser), INTENT(IN) :: this
     CLASS(eis_stack), INTENT(IN) :: stack_in !< Stack input
     !> String equivalent of the stack (RPN notation)
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_out
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str_out
 
     CALL get_tokens(stack_in, str_out)
 
@@ -3983,13 +3984,33 @@ CONTAINS
     CLASS(eis_parser), INTENT(IN) :: this
     CLASS(eis_stack), INTENT(IN) :: stack_in !< Stack input
     !> String to hold the output of the stack as a dot file
-    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str_out
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str_out
     !> Optional character string to format numerical literals
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
 
     CALL eis_visualise_stack(stack_in, str_out, nformat)
 
   END SUBROUTINE eip_visualize_stack
+
+
+
+  !> @brief
+  !> Get a string version of a stack in infix form
+  !> @param[in] this
+  !> @param[in] stack_in
+  !> @param[out] str_out
+  !> @param[in] nformat
+  SUBROUTINE eip_get_infix(this, stack_in, str_out, nformat)
+    CLASS(eis_parser), INTENT(IN) :: this
+    CLASS(eis_stack), INTENT(IN) :: stack_in !< Stack input
+    !> String to hold the output of the stack as a dot file
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: str_out
+    !> Optional character string to format numerical literals
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
+
+    CALL eis_infix_stack(stack_in, str_out, nformat)
+
+  END SUBROUTINE eip_get_infix
 
 
 

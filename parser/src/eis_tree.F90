@@ -178,7 +178,7 @@ MODULE eis_tree_mod
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err
     INTEGER(eis_status) :: status
-    CHARACTER(LEN=22) :: rstring
+    CHARACTER(LEN=30) :: rstring
 
     status = eis_status_none
 
@@ -211,7 +211,7 @@ MODULE eis_tree_mod
           tree%value%numerical_data = res
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
-            WRITE(rstring,'(G22.17)') res
+            WRITE(rstring,'(E30.17)') res
             ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
           END IF
           IF (has_nodes) DEALLOCATE(tree%nodes)
@@ -303,6 +303,33 @@ MODULE eis_tree_mod
 
 
 
+  !> @brief
+  !> Convert a stack into a string the infix version of the stack
+  !> of the stack
+  !> @param[in] stack - Stack to visualise
+  !> @param[inout] str - String to hold the infix representation
+  !> @param[in] nformat - Format string for literal numbers
+  SUBROUTINE eis_infix_stack(stack, str, nformat)
+
+    TYPE(eis_stack), INTENT(IN) :: stack
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
+    TYPE(eis_tree_item), POINTER :: root
+    INTEGER :: sp
+
+    IF (.NOT. stack%init) RETURN
+
+    sp = stack%stack_point + 1
+    DO WHILE (sp > 1)
+      ALLOCATE(root)
+      CALL eis_build_node(stack, sp, root)
+      CALL infix_output(root, str, nformat)
+      DEALLOCATE(root)
+    END DO
+
+  END SUBROUTINE eis_infix_stack
+
+
   RECURSIVE SUBROUTINE dot_output(node, str, id_in, nformat)
 
     TYPE(eis_tree_item), INTENT(IN) :: node
@@ -311,10 +338,14 @@ MODULE eis_tree_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
     INTEGER :: inode, my_id, ios
     CHARACTER(LEN=100) :: rstring
-    CHARACTER(LEN=10) :: ds
+    CHARACTER(LEN=12) :: ds
     CHARACTER(LEN=5) ::  val1, val2
+    LOGICAL :: is_string
 
     my_id = id_in
+
+    is_string = (node%value%ptype == eis_pt_constant &
+        .AND. node%value%value == eis_pt_character)
 
     SELECT CASE (node%value%ptype)
       CASE(eis_pt_function)
@@ -322,11 +353,16 @@ MODULE eis_tree_mod
       CASE(eis_pt_operator)
         ds = "diamond"
       CASE DEFAULT
-        ds = "circle"
+        IF (is_string) THEN
+          ds = "doublecircle"
+        ELSE
+          ds = "circle"
+        END IF
     END SELECT
 
     WRITE(val1, '(I5.5)') id_in
-    IF (node%value%ptype /= eis_pt_constant .OR. .NOT. PRESENT(nformat)) THEN
+    IF (node%value%ptype /= eis_pt_constant .OR. .NOT. PRESENT(nformat) .OR. &
+        is_string) THEN
       CALL eis_append_string(str, TRIM(val1) // '[label="' // &
           node%co_value%text // '"] [shape=' // TRIM(ds) //'];')
     ELSE
@@ -347,5 +383,85 @@ MODULE eis_tree_mod
     END IF
 
   END SUBROUTINE dot_output
+
+
+
+  RECURSIVE SUBROUTINE infix_output(node, str, nformat)
+
+    TYPE(eis_tree_item), INTENT(IN) :: node
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
+    INTEGER :: inode
+    CHARACTER(LEN=:), ALLOCATABLE :: param1, param2
+    CHARACTER(LEN=1) :: bb1, ab1, bb2, ab2
+    CHARACTER(LEN=100) :: rstring
+    INTEGER :: ios
+
+    bb1 = ''
+    ab1 = ''
+    bb2 = ''
+    ab2 = ''
+
+    SELECT CASE (node%value%ptype)
+      CASE(eis_pt_function, eis_pt_emplaced_function)
+        CALL eis_append_string(str, TRIM(node%co_value%text), newline = .FALSE.)
+        IF (ASSOCIATED(node%nodes)) THEN
+        CALL eis_append_string(str, '(', newline = .FALSE.)
+          DO inode = SIZE(node%nodes), 1, -1
+            CALL infix_output(node%nodes(inode), param1, nformat)
+            CALL eis_append_string(str, TRIM(param1), newline = .FALSE.)
+            IF (inode /= 1) CALL eis_append_string(str,',', newline = .FALSE.)
+            DEALLOCATE(param1)
+          END DO
+          CALL eis_append_string(str,')', newline = .FALSE.)
+        END IF
+      CASE(eis_pt_operator)
+        IF (SIZE(node%nodes) == 1) THEN
+          IF (node%nodes(1)%value%ptype == eis_pt_operator) THEN
+            IF (node%nodes(1)%co_value%precedence <= node%co_value%precedence) &
+                THEN
+              bb1 = '('
+              ab1 = ')'
+            END IF
+          END IF
+          CALL infix_output(node%nodes(1), param1, nformat)
+          CALL eis_append_string(str, ' ' // TRIM(node%co_value%text) &
+              // TRIM(bb1) // TRIM(param1) // TRIM(ab1), newline = .FALSE.)
+        ELSE
+          CALL infix_output(node%nodes(2), param1, nformat)
+          CALL infix_output(node%nodes(1), param2, nformat)
+          IF (node%nodes(2)%value%ptype == eis_pt_operator) THEN
+            IF (node%nodes(2)%co_value%precedence <= node%co_value%precedence) &
+                THEN
+              bb1 = '('
+              ab1 = ')'
+            END IF
+          END IF
+          IF (node%nodes(1)%value%ptype == eis_pt_operator) THEN
+            IF (node%nodes(1)%co_value%precedence <= node%co_value%precedence) &
+                THEN
+              bb2 = '('
+              ab2 = ')'
+            END IF
+          END IF
+          CALL eis_append_string(str,TRIM(bb1) // TRIM(param1) // TRIM(ab1) &
+              // TRIM(node%co_value%text) // TRIM(bb2) // TRIM(param2) &
+              // TRIM(ab2), newline = .FALSE.)
+        END IF
+      CASE (eis_pt_constant)
+        IF (node%value%value == eis_pt_character .OR. &
+            .NOT. PRESENT(nformat)) THEN
+          CALL eis_append_string(str, TRIM(node%co_value%text), &
+              newline = .FALSE.)
+        ELSE
+          WRITE(rstring, nformat, iostat = ios) node%value%numerical_data
+          IF (ios /= 0) rstring = 'FORMAT ERROR!'
+          CALL eis_append_string(str, TRIM(rstring), newline = .FALSE.)
+        END IF
+      CASE DEFAULT
+        CALL eis_append_string(str, TRIM(node%co_value%text))
+    END SELECT
+
+  END SUBROUTINE infix_output
 
 END MODULE eis_tree_mod

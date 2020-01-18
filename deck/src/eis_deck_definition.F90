@@ -207,6 +207,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: optimise => dbd_optimise
     PROCEDURE :: visualise => dbd_visualise
     PROCEDURE :: markdown => dbd_markdown
+    PROCEDURE :: get_description => dbd_get_description
 
     PROCEDURE :: add_key => dbd_add_key
     PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
@@ -1622,6 +1623,17 @@ MODULE eis_deck_definition_mod
     END DO
 
   END SUBROUTINE dbd_markdown
+
+
+
+  SUBROUTINE dbd_get_description(this, description)
+    CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: description
+
+    IF (ALLOCATED(this%description)) &
+        ALLOCATE(description, SOURCE = this%description)
+
+  END SUBROUTINE dbd_get_description
 
 
 
