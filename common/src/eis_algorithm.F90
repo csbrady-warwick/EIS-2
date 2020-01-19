@@ -22,6 +22,7 @@ MODULE eis_algorithm
     ELSE IF (point >= axis(SIZE(axis, KIND = eis_i8))) THEN
       cell = SIZE(axis, KIND = eis_i8) - 1
       frac = 1.0_eis_num
+      RETURN
     END IF
 
     lower = 1_eis_i8
