@@ -85,7 +85,7 @@ MODULE eis_string_store_mod
     PROCEDURE, PUBLIC :: remove_whitespace => ess_remove_whitespace
     PROCEDURE, PUBLIC :: serialise => ess_serialise
     PROCEDURE, PUBLIC :: deserialise => ess_deserialise
-    
+
   END TYPE eis_string_store
 
   PRIVATE
@@ -295,10 +295,11 @@ CONTAINS
   !> @param[in] line_number_max
   !> @param[in] trimmed_white_space_length
   !> @param[in] default_line_info
+  !> @param[in] extra_trimmed_white_space_length
   !> @return index_out
   FUNCTION ess_store_string_ascii(this, text, store_index, filename, &
       line_number, line_number_max, trimmed_white_space_length, &
-      default_line_info) RESULT(index_out)
+      default_line_info, extra_trimmed_white_space_length) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: text
@@ -324,6 +325,7 @@ CONTAINS
     !> Optional. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: default_line_info
     !> Index of stored string
+    INTEGER, INTENT(IN), OPTIONAL :: extra_trimmed_white_space_length
     INTEGER(eis_i4) :: index_out
     TYPE(string_holder) :: temp
     LOGICAL :: ok, recover
@@ -360,6 +362,8 @@ CONTAINS
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
     IF (PRESENT(trimmed_white_space_length)) temp%whitespace_len = &
         trimmed_white_space_length
+    IF (PRESENT(extra_trimmed_white_space_length)) temp%whitespace_len = &
+        temp%whitespace_len + extra_trimmed_white_space_length
     index_out = this%strings%store(temp, store_index)
 
   END FUNCTION ess_store_string_ascii
@@ -842,9 +846,11 @@ CONTAINS
   !> @param[inout] errcode
   !> @param[in] index_start
   !> @param[out] raw_text
+  !> @param[out] final_filename
   !> @return index_range
   FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start, &
-      raw_text, filename_processor, file_text_processor) RESULT(index_range)
+      raw_text, filename_processor, file_text_processor, final_filename) &
+      RESULT(index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -853,6 +859,7 @@ CONTAINS
     PROCEDURE(filename_processor_proto), POINTER, OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), POINTER, OPTIONAL :: &
         file_text_processor
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT), OPTIONAL :: final_filename
     INTEGER, DIMENSION(2) :: index_range
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
 
@@ -862,6 +869,11 @@ CONTAINS
     IF (PRESENT(filename_processor)) THEN
       IF (ASSOCIATED(filename_processor)) &
           CALL filename_processor(fname, errcode)
+    END IF
+
+    IF (PRESENT(final_filename)) THEN
+      IF (ALLOCATED(final_filename)) DEALLOCATE(final_filename)
+      ALLOCATE(final_filename, SOURCE = fname)
     END IF
      
     CALL eis_load_file_to_string(fname, str)
@@ -1083,7 +1095,7 @@ CONTAINS
     DO istr = 1, this%get_size()
       ok = this%get(istr, str)
       sindex = this%store(TRIM(ADJUSTL(str)), istr, &
-          trimmed_white_space_length = LEN(TRIM(str)) &
+          extra_trimmed_white_space_length = LEN(TRIM(str)) &
           - LEN(TRIM(ADJUSTL(str))))
     END DO
     CALL this%strings%disable_disorder()
@@ -1104,7 +1116,7 @@ CONTAINS
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(OUT) :: str
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str_rec
     CHARACTER(LEN=:, KIND=UCS4 ), ALLOCATABLE :: filename
-    INTEGER :: ln, lnm, istr
+    INTEGER :: ln, lnm, istr, wsl
     CHARACTER(LEN=20, KIND=ASCII) :: ln_str
     LOGICAL :: ok
 
@@ -1112,7 +1124,7 @@ CONTAINS
     CALL eis_append_string(str,serial_header,newline=.FALSE.)
     DO istr = 1, this%get_size()
       ok = this%get(istr, str_rec, line_number = ln, line_number_max = lnm, &
-          filename = filename)
+          filename = filename, trimmed_white_space_length = wsl)
       CALL eis_append_string(str, str_rec // ACHAR(0), newline = .FALSE.)
       IF (ALLOCATED(filename)) THEN
         CALL eis_append_string(str, filename // ACHAR(0), newline = .FALSE.)
@@ -1122,6 +1134,8 @@ CONTAINS
       WRITE(ln_str,'(I20)') ln
       CALL eis_append_string(str, ln_str // ACHAR(0), newline = .FALSE.)
       WRITE(ln_str,'(I20)') lnm
+      CALL eis_append_string(str, ln_str // ACHAR(0), newline = .FALSE.)
+      WRITE(ln_str,'(I20)') wsl
       CALL eis_append_string(str, ln_str // ACHAR(0), newline = .FALSE.)
     END DO
 
@@ -1149,8 +1163,8 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: store_index
     !> Range of indices to which the strings have been stored
     INTEGER, DIMENSION(2) :: index_range
-    INTEGER :: ln, lnm, lastpos, tpos, fpos, lpos, lmpos
-    INTEGER :: sindex, imn, imx, ind
+    INTEGER :: ln, lnm, lastpos, tpos, fpos, lpos, lmpos, wspos
+    INTEGER :: sindex, imn, imx, ind, wsl
 
     errcode = eis_err_none
     IF (str(1:LEN(serial_header)) /= serial_header) THEN
@@ -1168,21 +1182,25 @@ CONTAINS
       fpos  = INDEX(str(tpos+1:), ACHAR(0)) + tpos
       lpos  = INDEX(str(fpos+1:), ACHAR(0)) + fpos
       lmpos = INDEX(str(lpos+1:), ACHAR(0)) + lpos
+      wspos = INDEX(str(lmpos+1:), ACHAR(0)) + lmpos
       READ(str(fpos+1:lpos-1 ),'(I20)') ln
       READ(str(lpos+1:lmpos-1),'(I20)') lnm
+      READ(str(lmpos+1:wspos-1),'(I20)') wsl
       IF (PRESENT(store_index)) THEN
         ind = this%store(str(lastpos+1:tpos-1), sindex, line_number = ln, &
-            line_number_max = lnm, filename = str(tpos+1:fpos-1))
+            line_number_max = lnm, filename = str(tpos+1:fpos-1), &
+            trimmed_white_space_length = wsl)
         imn = MIN(ind, imn)
         imx = MAX(ind, imx)
         sindex = sindex + 1
       ELSE
         ind = this%store(str(lastpos+1:tpos-1), line_number = ln, &
-            line_number_max = lnm, filename = str(tpos+1:fpos-1))
+            line_number_max = lnm, filename = str(tpos+1:fpos-1), &
+            trimmed_white_space_length = wsl)
         imn = MIN(ind, imn)
         imx = MAX(ind, imx)
       END IF
-      lastpos = lmpos
+      lastpos = wspos
     END DO
     index_range = [imn, imx]
 

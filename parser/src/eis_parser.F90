@@ -1203,7 +1203,7 @@ CONTAINS
 
     CALL initialise_stack(output)
     output%eval_fn => function_in
-    IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
+    CALL eis_allocate_string(output%filename, filename)
     IF (PRESENT(line_number)) THEN
       output%line_number = line_number
     ELSE
@@ -1289,9 +1289,7 @@ CONTAINS
     IF (.NOT. this%is_init) CALL this%init(err)
     should_dealloc = .TRUE.
     IF (PRESENT(append)) should_dealloc = .NOT. append
-    IF (ALLOCATED(output%filename)) DEALLOCATE(output%filename)
-
-    IF (PRESENT(filename)) ALLOCATE(output%filename, SOURCE = filename)
+    CALL eis_allocate_string(output%filename, filename)
     IF (PRESENT(line_number)) THEN
       output%line_number = line_number
     ELSE
@@ -1316,8 +1314,7 @@ CONTAINS
     this%last_block_item_count = 1
 
     ALLOCATE(CHARACTER(LEN=LEN(expression))::current)
-    IF (ALLOCATED(output%full_line)) DEALLOCATE(output%full_line)
-    ALLOCATE(output%full_line, SOURCE = expression)
+    CALL eis_allocate_string(output%full_line, expression)
 
     current(:) = ' '
     current(1:1) = expression(1:1)
@@ -1380,7 +1377,9 @@ CONTAINS
             CALL this%err_handler%add_error(eis_err_parser, err, &
                 this%stack%co_entries(i)%text, &
                 this%stack%co_entries(i)%charindex, &
-                filename = filename, line_number = line_number)
+                filename = this%stack%co_entries(i)%filename, &
+                line_number = this%stack%co_entries(i)%line_number, &
+                context_filename = filename, context_line_number = line_number)
           ELSE
             this%stack%entries(i)%actual_params = 0
           END IF
@@ -1394,9 +1393,19 @@ CONTAINS
     output%params = this%brackets%entries(1)%actual_params
     CALL deallocate_stack(this%brackets)
     DEALLOCATE(current)
-    DEALLOCATE(expression)
 
     IF (err /= eis_err_none) RETURN
+
+    DO i = 1, output%stack_point
+      IF (.NOT. ALLOCATED(output%co_entries(i)%full_line)) &
+          ALLOCATE(output%co_entries(i)%full_line, SOURCE = expression)
+      IF (.NOT. ALLOCATED(output%co_entries(i)%filename)) &
+          CALL eis_allocate_string(output%co_entries(i)%filename, &
+          filename)
+      IF (PRESENT(line_number) .AND. output%co_entries(i)%line_number == -1) &
+          output%co_entries(i)%line_number = line_number
+    END DO
+    DEALLOCATE(expression)
 
     IF (should_simplify) CALL this%simplify(output, err, &
         host_params = C_NULL_PTR)
@@ -1603,6 +1612,11 @@ CONTAINS
     CHARACTER(LEN=:), ALLOCATABLE :: str
     TYPE(C_PTR) :: params
 
+    IF (.NOT. ALLOCATED(stack%co_entries)) THEN
+      errcode = eis_err_invalid_minify
+      RETURN
+    END IF
+
     IF (PRESENT(host_params)) THEN
       params = host_params
     ELSE
@@ -1624,7 +1638,9 @@ CONTAINS
         IF (stack%co_entries(ipt)%defer) THEN
           errcode = IOR(errcode, eis_err_has_deferred)
           CALL this%err_handler%add_error(eis_err_parser, errcode, &
-              str, stack%co_entries(ipt)%charindex)
+              str, stack%co_entries(ipt)%charindex, &
+              line_number = stack%co_entries(ipt)%line_number, &
+              filename = stack%co_entries(ipt)%filename)
           RETURN
         END IF
         IF (stack%entries(ipt)%ptype == eis_pt_stored_variable) THEN
@@ -1632,7 +1648,9 @@ CONTAINS
               stack, errcode, ipt, allow_multiple = .FALSE.)
           IF (errcode /= eis_err_none) THEN
             CALL this%err_handler%add_error(eis_err_parser, errcode, &
-                str, stack%co_entries(ipt)%charindex)
+                str, stack%co_entries(ipt)%charindex, &
+                line_number = stack%co_entries(ipt)%line_number, &
+                filename = stack%co_entries(ipt)%filename)
             RETURN
           END IF
         END IF
@@ -3141,7 +3159,7 @@ CONTAINS
     IF (PRESENT(global)) is_global = global
 
     CALL initialise_stack(stack)
-    CALL this%tokenize(string, stack, errcode, simplify = .FALSE.)
+    CALL this%tokenize(string, stack, errcode)
     IF (is_global) THEN
       CALL global_registry%add_stack_variable(name, stack, errcode, &
           err_handler = this%err_handler, description = description, &

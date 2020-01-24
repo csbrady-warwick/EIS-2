@@ -535,6 +535,8 @@ MODULE eis_string_deck_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
     INTEGER, DIMENSION(2) :: ranges
     INTEGER(eis_error) :: ierr
+    CHARACTER(LEN=:), ALLOCATABLE :: ext
+    LOGICAL :: got
 
     errcode = eis_err_none
     ierr = eis_err_none
@@ -542,10 +544,21 @@ MODULE eis_string_deck_mod
     errcode = IOR(errcode, ierr)
     ranges = this%data%strings%load_from_ascii_file(filename, errcode, &
         raw_text = raw_text, filename_processor = this%filename_processor, &
-        file_text_processor = this%file_text_processor)
+        file_text_processor = this%file_text_processor, final_filename = ext)
+    got = ALLOCATED(ext)
+    IF (got) got = got .AND. LEN(ext) > 0
+    IF (.NOT. got) THEN
+      IF (ALLOCATED(ext)) DEALLOCATE(ext)
+      ALLOCATE(ext, SOURCE = filename)
+      IF (ASSOCIATED(this%filename_processor)) THEN
+        CALL this%filename_processor(ext, ierr)
+        errcode = IOR(errcode, ierr)
+      END IF
+    END IF
+      
     IF (errcode /= eis_err_none) THEN
       CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
-          filename = filename)
+          filename = ext)
       RETURN
     END IF
 

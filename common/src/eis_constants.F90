@@ -139,6 +139,9 @@ MODULE eis_constants
   !> expression
   INTEGER(eis_error), PARAMETER :: eis_err_stack_params &
       = 2_eis_error**34_eis_error
+  !> Trying to perform an operation that is invalid after minification
+  INTEGER(eis_error), PARAMETER :: eis_err_invalid_minify &
+      = 2_eis_error**35_eis_error
 
   !> No status specified
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0

@@ -23,6 +23,8 @@ MODULE eis_deck_from_text_mod
     LOGICAL :: unknown_key_is_fatal = .TRUE.
     LOGICAL :: bad_key_is_fatal = .TRUE.
     LOGICAL :: non_value_line_is_blank = .FALSE.
+    LOGICAL :: end_pass_on_error = .TRUE.
+    LOGICAL :: finalize_on_error = .TRUE.
 
     CONTAINS
     PROCEDURE :: init => tdp_init
@@ -102,6 +104,7 @@ MODULE eis_deck_from_text_mod
     INTEGER, DIMENSION(:), ALLOCATABLE :: block_parents
     CHARACTER(LEN=:), ALLOCATABLE :: fn
     INTEGER :: line_number, wsl
+    LOGICAL :: npe
 
     CALL eis_default_status(this_errcode, this_status, this_host)
     CALL block%get_parents(block_parents)
@@ -126,21 +129,15 @@ MODULE eis_deck_from_text_mod
           this_errcode, host_state = this_host, filename = fn, &
           line_number = line_number, white_space_length = wsl, &
           parser = this%parser, interop_parser_id = this%interop_parser, &
-          non_value_line_is_blank = non_value_line_is_blank)
-      status = IOR(status, this_status)
-      IF (this_errcode /= eis_err_none) THEN
-        IF (ALLOCATED(fn)) THEN
-          CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode, &
-              filename = fn, line_number = line_number)
-        ELSE
-          CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode)
-        END IF
-        IF (bad_key_is_fatal) this_status = IOR(this_status, &
-            eis_status_terminate)
-      END IF
+          non_value_line_is_blank = non_value_line_is_blank, &
+          err_handler = this%err_handler)
+
       errcode = IOR(errcode, this_errcode)
       status = IOR(status, this_status)
       host_state = IOR(host_state, this_host)
+      IF (errcode /= eis_err_none .AND. errcode /= eis_err_unknown_key) THEN
+        status = IOR(status, eis_status_terminate)
+      END IF
       IF (IAND(errcode, eis_err_unknown_key) /= 0 &
           .AND. unknown_key_is_fatal) RETURN
       IF (IAND(this_status, eis_status_terminate) /= 0) RETURN
@@ -301,8 +298,11 @@ MODULE eis_deck_from_text_mod
   !> @param[in] unknown_key_is fatal
   !> @param[in] bad_key_is_fatal
   !> @param[in] non_value_line_is_blank
+  !> @param[in] end_pass_on_error
+  !> @param[in] finalize_on_error
   SUBROUTINE tdp_init(this, err_handler, parser, unknown_block_is_fatal, &
-      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank)
+      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
+      end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
@@ -322,6 +322,10 @@ MODULE eis_deck_from_text_mod
     !> Is a line that does not have the form of key=value or key:value a blank 
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
     INTEGER(eis_error) :: err
 
     this%is_init = .TRUE.
@@ -386,6 +390,10 @@ MODULE eis_deck_from_text_mod
 
     IF (PRESENT(non_value_line_is_blank)) this%non_value_line_is_blank &
         = non_value_line_is_blank
+
+    IF (PRESENT(end_pass_on_error)) this%end_pass_on_error = end_pass_on_error
+    IF (PRESENT(finalize_on_error)) this%finalize_on_error &
+        = finalize_on_error
 
   END SUBROUTINE tdp_init
 
@@ -466,7 +474,7 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_parse_deck_object(this, string_deck, definition, errcode, &
       pass_number, max_passes, state, initialise_all_blocks, &
       unknown_block_is_fatal, unknown_key_is_fatal, bad_key_is_fatal, &
-      non_value_line_is_blank)
+      non_value_line_is_blank, end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> String deck object holding a loaded deck
     CLASS(eis_string_deck), INTENT(IN) :: string_deck
@@ -498,13 +506,19 @@ MODULE eis_deck_from_text_mod
     !> Is a line that does not have the form of key=value or key:value a blank 
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
+    
 
     TYPE(eis_string_deck_block), POINTER :: block
-    INTEGER(eis_error) :: err
+    INTEGER(eis_error) :: err, strip_err
     INTEGER(eis_status) :: status
     INTEGER(eis_bitmask) :: host_state
     TYPE(eis_deck_block_definition), POINTER :: bdef
     LOGICAL :: parse_over, first_pass, ubf, ukf, bkf, should_init, nvlib
+    LOGICAL :: epoe, foe
     INTEGER :: gpass
 
     first_pass = .TRUE.
@@ -513,6 +527,8 @@ MODULE eis_deck_from_text_mod
     ukf = this%unknown_key_is_fatal
     bkf = this%bad_key_is_fatal
     nvlib = this%non_value_line_is_blank
+    epoe = this%end_pass_on_error
+    foe = this%finalize_on_error
     gpass = 1
     CALL eis_default_status(errcode = errcode)
     IF (PRESENT(initialise_all_blocks)) should_init = initialise_all_blocks
@@ -524,6 +540,8 @@ MODULE eis_deck_from_text_mod
     IF (PRESENT(unknown_key_is_fatal)) ukf = unknown_key_is_fatal
     IF (PRESENT(bad_key_is_fatal)) bkf = bad_key_is_fatal
     IF (PRESENT(non_value_line_is_blank)) nvlib = non_value_line_is_blank
+    IF (PRESENT(end_pass_on_error)) epoe = end_pass_on_error
+    IF (PRESENT(finalize_on_error)) foe = finalize_on_error
 
     IF (.NOT. this%is_init) CALL this%init()
     IF (first_pass) CALL definition%reset()
@@ -552,16 +570,26 @@ MODULE eis_deck_from_text_mod
       parse_over = (max_passes == pass_number)
     END IF
 
-    CALL eis_default_status(errcode = err, bitmask = host_state)
-    CALL definition%end_pass(host_state, err, pass_number = pass_number)
-    IF (PRESENT(state)) state = IOR(state, host_state)
-    errcode = IOR(errcode, err)
+    strip_err = errcode
+    IF (.NOT. ubf) strip_err = IAND(errcode, NOT(eis_err_unknown_block))
+    IF (.NOT. ukf) strip_err = IAND(errcode, NOT(eis_err_unknown_key))
+    IF (.NOT. bkf) strip_err = IAND(errcode, NOT(eis_err_bad_key))
 
-    CALL eis_default_status(errcode = err, bitmask = host_state)
-    CALL this%finalise_deck(definition, err, state = host_state, &
-        pass_number = pass_number, last_pass = parse_over)
-    IF (PRESENT(state)) state = IOR(state, host_state)
-    errcode = IOR(errcode, err)
+    IF (strip_err == eis_err_none) THEN
+      CALL eis_default_status(errcode = err, bitmask = host_state)
+      CALL definition%end_pass(host_state, err, pass_number = pass_number)
+      IF (PRESENT(state)) state = IOR(state, host_state)
+      errcode = IOR(errcode, err)
+    END IF
+
+    IF (strip_err == eis_err_none .OR. foe) THEN
+      CALL eis_default_status(errcode = err, bitmask = host_state)
+      CALL this%finalise_deck(definition, err, state = host_state, &
+          pass_number = pass_number, last_pass = parse_over)
+      IF (PRESENT(state)) state = IOR(state, host_state)
+
+      errcode = IOR(errcode, err)
+    END IF
 
   END SUBROUTINE tdp_parse_deck_object
 
@@ -570,7 +598,8 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_parse_generate(this, sdeck, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
-      unknown_key_is_fatal, non_value_line_is_blank)
+      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
+      end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CLASS(eis_string_deck), INTENT(INOUT) :: sdeck
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -582,9 +611,14 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
+    LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
     !> Is a line that does not have the form of key=value or key:value a blank 
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) RETURN
@@ -601,7 +635,9 @@ MODULE eis_deck_from_text_mod
         = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, non_value_line_is_blank &
-        = non_value_line_is_blank)
+        = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
+        finalize_on_error = finalize_on_error, &
+        bad_key_is_fatal = bad_key_is_fatal)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_generate
@@ -612,7 +648,7 @@ MODULE eis_deck_from_text_mod
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
       unknown_key_is_fatal, non_value_line_is_blank, filename_processor, &
-      file_text_processor)
+      file_text_processor, end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -629,6 +665,10 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
 
     INTEGER(eis_error) :: err
 
@@ -655,7 +695,8 @@ MODULE eis_deck_from_text_mod
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
         allow_root_keys = allow_root_keys, non_value_line_is_blank &
-        = non_value_line_is_blank)
+        = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
+        finalize_on_error = finalize_on_error)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_file
@@ -665,7 +706,8 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_parse_deck_string(this, text, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
-      unknown_key_is_fatal, non_value_line_is_blank, filename)
+      unknown_key_is_fatal, non_value_line_is_blank, filename, &
+      end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: text
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -681,6 +723,10 @@ MODULE eis_deck_from_text_mod
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
 
     INTEGER(eis_error) :: err
 
@@ -705,7 +751,8 @@ MODULE eis_deck_from_text_mod
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
         allow_root_keys = allow_root_keys, non_value_line_is_blank &
-        = non_value_line_is_blank)
+        = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
+        finalize_on_error = finalize_on_error)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_string
@@ -715,7 +762,8 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_reparse_deck(this, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
-      unknown_key_is_fatal, non_value_line_is_blank)
+      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
+      end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
     INTEGER(eis_error), INTENT(OUT) :: errcode
@@ -726,9 +774,14 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
+    LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
     !> Is a line that does not have the form of key=value or key:value a blank 
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
 
     INTEGER(eis_error) :: err
 
@@ -745,7 +798,9 @@ MODULE eis_deck_from_text_mod
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
         allow_root_keys = allow_root_keys, non_value_line_is_blank &
-        = non_value_line_is_blank)
+        = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
+        finalize_on_error = finalize_on_error, &
+        bad_key_is_fatal = bad_key_is_fatal)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_reparse_deck
@@ -797,7 +852,8 @@ MODULE eis_deck_from_text_mod
   SUBROUTINE tdp_parse_deck_serialised(this, serial_text, definition, errcode, &
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
-      unknown_key_is_fatal, non_value_line_is_blank)
+      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
+      end_pass_on_error, finalize_on_error)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: serial_text
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -809,9 +865,14 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: initialise_all_blocks
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_block_is_fatal
     LOGICAL, INTENT(IN), OPTIONAL :: unknown_key_is_fatal
+    LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
     !> Is a line that does not have the form of key=value or key:value a blank 
     !> line. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
+    !> Should pass end events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
+    !> Should finalize events occur if an error was encountered
+    LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
 
     INTEGER(eis_error) :: err
 
@@ -836,7 +897,9 @@ MODULE eis_deck_from_text_mod
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_root_keys = allow_root_keys, &
         allow_empty_blocks = allow_empty_blocks, non_value_line_is_blank &
-        = non_value_line_is_blank)
+        = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
+        finalize_on_error = finalize_on_error, &
+        bad_key_is_fatal = bad_key_is_fatal)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_serialised

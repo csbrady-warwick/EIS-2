@@ -9,7 +9,9 @@ MODULE eis_error_mod
   TYPE :: eis_error_item
     !> String representation of the source of the error
     CHARACTER(LEN=:), ALLOCATABLE :: errstring
+    !> Filename for the source of the error
     CHARACTER(LEN=:), ALLOCATABLE :: filename
+    !> Full line that contains the source of the error
     CHARACTER(LEN=:), ALLOCATABLE :: full_line
     !> Numerical representation of the type of the error
     INTEGER(eis_error) :: errcode = eis_err_none
@@ -17,6 +19,11 @@ MODULE eis_error_mod
     INTEGER :: charindex = -1
     !> Line number for an error on a specific line of a file
     INTEGER :: line_number = -1
+    !> Context line number. Used if the error is caused by a
+    !> different line than defines the text
+    INTEGER :: context_line_number
+    !> Context filename
+    CHARACTER(LEN=:), ALLOCATABLE :: context_filename
     INTEGER :: full_line_pos = -1
   END TYPE eis_error_item
 
@@ -51,7 +58,23 @@ MODULE eis_error_mod
     PROCEDURE, PUBLIC :: init => eeh_init
   END TYPE eis_error_handler
 
+  PRIVATE
+  PUBLIC :: eis_error_handler
+
   CONTAINS
+
+  !>@brief
+  !>Is an optional string both present and not empty
+  FUNCTION filled(str)
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: str
+    LOGICAL :: filled
+    filled = .FALSE.
+    IF (PRESENT(str)) THEN
+      IF (LEN(TRIM(str)) /= 0) filled = .TRUE.
+    END IF
+  END FUNCTION filled
+
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -106,21 +129,19 @@ MODULE eis_error_mod
     END IF
 
     IF (.NOT. PRESENT(language_pack) .OR. lang_default) THEN
-      CALL this%strings%store('err_src_parse','Error when parsing text to &
+      CALL this%strings%store('err_src_parse','parsing text to &
           &stack')
-      CALL this%strings%store('err_src_simplify','Error when simplifying stack')
-      CALL this%strings%store('err_src_emplace','Error during emplacement of &
-          &function')
-      CALL this%strings%store('err_src_evaluate','Error when evaluating stack')
-      CALL this%strings%store('err_src_file','Error when handling a text file')
-      CALL this%strings%store('err_src_deck','Error when handling an &
+      CALL this%strings%store('err_src_simplify','simplifying a stack')
+      CALL this%strings%store('err_src_emplace','emplacing a function')
+      CALL this%strings%store('err_src_evaluate','evaluating stack')
+      CALL this%strings%store('err_src_file','handling text file')
+      CALL this%strings%store('err_src_deck','loading input deck file')
+      CALL this%strings%store('err_src_deck_definition','handling &
+          &input deck definition')
+      CALL this%strings%store('err_src_deck_parser', 'parsing &
           &input deck file')
-      CALL this%strings%store('err_src_deck_definition','Error when handling &
-          &an input deck definition')
-      CALL this%strings%store('err_src_deck_parser', 'Error when parsing an &
-          &input deck file')
-      CALL this%strings%store('err_src_undefined', 'Error in unspecified part &
-          &of the parser. (This is probably a bug in the parser code)')
+      CALL this%strings%store('err_src_undefined', 'in unspecified part &
+          &of EIS. (This is probably a bug in EIS)')
 
       CALL this%strings%store('err_bad_value', 'There was a bad value in the &
           &expression')
@@ -168,25 +189,24 @@ MODULE eis_error_mod
       CALL this%strings%store('err_text', 'This function should not take text &
           &parameters')
       CALL this%strings%store('err_interop', 'You are using a Fortran/C &
-          &interoperability function but the parser is not interoperable')
+          &interoperability function but the item you are using is not &
+          &interoperable')
       CALL this%strings%store('err_out_of_range', 'The specified value is &
           &outwith the range of acceptable values for this function')
       CALL this%strings%store('err_stack_params', 'A stack variable that &
           &returns more than one parameter was used in a mathematical &
           &expression')
 
-      CALL this%strings%store('err_report_file', 'In file "{errfile}" on line &
-          &{errline} : ')
-      CALL this%strings%store('err_report_file_only', 'In file "{errfile}": ')
-      CALL this%strings%store('err_report_text_place', 'In block with text &
-          &"{errtext}:')
-      CALL this%strings%store('err_report_place', 'In block with text &
-          &"{errtext}" starting at character position {charpos}: ')
-      CALL this%strings%store('err_report_file_text_place',' In file &
-          &"{errfile}" the block with text "{errtext}" at character &
-          &position {charpos} :')
+      CALL this%strings%store('err_is_error', '{error} at {errfile}, &
+          &line {errline}')
+      CALL this%strings%store('err_is_error_file', '{error} at {errfile}')
+      CALL this%strings%store('err_is_error_none', '{error}')
+      CALL this%strings%store('err_report_place','{charpos}:"{errtext}" &
+          &- {error}')
+      CALL this%strings%store('err_proximate_source', 'Error reported from &
+          &{context_errfile}:{context_errline}')
       CALL this%strings%store('err_report_fail', 'Unable to report source of &
-          &error. Errors are :')
+          &error')
     END IF
 
   END SUBROUTINE eeh_init
@@ -203,8 +223,11 @@ MODULE eis_error_mod
   !> @param[in] line_number
   !> @param[in] full_line
   !> @param[in] full_line_pos
+  !> @param[in] context_line_number
+  !> @param[in] context_filename
   SUBROUTINE eeh_add_error(this, err_source, errcode, errstring, &
-      charindex, filename, line_number, full_line, full_line_pos)
+      charindex, filename, line_number, full_line, full_line_pos, &
+      context_line_number, context_filename)
 
     CLASS(eis_error_handler), INTENT(INOUT) :: this !< Self pointer
     !> Type code for source of error (tokenize, evalaute etc.)
@@ -223,6 +246,10 @@ MODULE eis_error_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     !> Position of the error in the full line
     INTEGER, INTENT(IN), OPTIONAL :: full_line_pos
+    !> Line number for context information
+    INTEGER, INTENT(IN), OPTIONAL :: context_line_number
+    !> Filename for context information
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: context_filename
     TYPE(eis_error_item), DIMENSION(:), ALLOCATABLE :: temp
     INTEGER :: sz
     INTEGER(eis_error) :: err
@@ -242,18 +269,20 @@ MODULE eis_error_mod
       ALLOCATE(temp(sz))
     END IF
 
-
     temp(sz)%errcode = IOR(err_source, errcode)
     IF (PRESENT(errstring)) THEN
       ALLOCATE(temp(sz)%errstring, SOURCE = errstring)
-    ELSE
-      ALLOCATE(temp(sz)%errstring, SOURCE = '{UNKNOWN}')
     END IF
-    IF (PRESENT(filename)) ALLOCATE(temp(sz)%filename, SOURCE = filename)
+    IF (FILLED(filename)) ALLOCATE(temp(sz)%filename, SOURCE = filename)
     IF (PRESENT(charindex)) temp(sz)%charindex = charindex
     IF (PRESENT(line_number)) temp(sz)%line_number = line_number
-    IF (PRESENT(full_line)) ALLOCATE(temp(sz)%full_line, SOURCE = full_line)
+    IF (FILLED(full_line)) ALLOCATE(temp(sz)%full_line, SOURCE = full_line)
     IF (PRESENT(full_line_pos)) temp(sz)%full_line_pos = full_line_pos
+    IF (PRESENT(context_line_number)) temp(sz)%context_line_number &
+        = context_line_number
+    IF (FILLED(context_filename)) ALLOCATE(temp(sz)%context_filename, &
+        SOURCE = context_filename)
+
     CALL MOVE_ALLOC(temp, this%errors)
 
     IF (ASSOCIATED(this%on_error_fn)) CALL this%on_error_fn(errcode)
@@ -300,37 +329,57 @@ MODULE eis_error_mod
   !> @param[out] cloc_out
   !> @param[out] filename
   !> @param[out] line_number
+  !> @param[out] context_filename
+  !> @param[out] context_line_number
+  !> @param[out] full_line_pos
   SUBROUTINE eeh_get_error_cause(this, index, err_text, cloc_out, filename, &
-      line_number)
+      line_number, context_filename, context_line_number, full_line_pos)
     CLASS(eis_error_handler), INTENT(INOUT) :: this
     INTEGER, INTENT(IN) :: index !< Error index code
     !>Error text for the returned error text
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: err_text 
     !>Character location for the returned error (in the original string)
-    INTEGER, INTENT(OUT) :: cloc_out
+    INTEGER, INTENT(OUT), OPTIONAL :: cloc_out
     !>Filename for the error source
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: filename
     !> Line number of the cause of the error
     INTEGER, INTENT(OUT), OPTIONAL :: line_number
+    !> Filename for the error context source
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: context_filename
+    !> Line number for the error context
+    INTEGER, INTENT(OUT), OPTIONAL :: context_line_number
+    !> Position of the error text in the full line that encompasses it
+    INTEGER, INTENT(OUT), OPTIONAL :: full_line_pos
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init(err)
 
     cloc_out = -1
     IF (PRESENT(line_number)) line_number = -1
+    IF (PRESENT(context_line_number)) context_line_number = -1
     IF (.NOT. ALLOCATED(this%errors)) RETURN
     IF (index < 1 .OR. index > SIZE(this%errors)) RETURN
     cloc_out = this%errors(index)%charindex
 
     IF (PRESENT(line_number)) line_number = this%errors(index)%line_number
+    IF (PRESENT(context_line_number)) context_line_number = &
+        this%errors(index)%context_line_number
 
     IF (ALLOCATED(this%errors(index)%errstring)) THEN
-      ALLOCATE(err_text, SOURCE = this%errors(index)%errstring)
+      ALLOCATE(err_text, SOURCE = TRIM(this%errors(index)%errstring))
     END IF
 
     IF (ALLOCATED(this%errors(index)%filename) .AND. PRESENT(filename)) THEN
-      ALLOCATE(filename, SOURCE = this%errors(index)%filename)
+      ALLOCATE(filename, SOURCE = TRIM(this%errors(index)%filename))
     END IF
+
+    IF (ALLOCATED(this%errors(index)%context_filename) &
+        .AND. PRESENT(context_filename)) THEN
+      ALLOCATE(context_filename, SOURCE = &
+          TRIM(this%errors(index)%context_filename))
+    END IF
+
+    IF (PRESENT(full_line_pos)) full_line_pos = this%errors(index)%full_line_pos
 
   END SUBROUTINE eeh_get_error_cause
 
@@ -516,13 +565,14 @@ MODULE eis_error_mod
     !> Error report string
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: report
     CHARACTER(LEN=:), ALLOCATABLE :: errstring, errname, err_source, temp, &
-        filename
+        filename, context_filename
     CHARACTER(LEN=3) :: predots, postdots
     CHARACTER(LEN=9) :: posstr, linestr
     CHARACTER(LEN=19) :: format_str
-    INTEGER :: charpos, nchar, line_number, spos, epos
+    INTEGER :: charpos, nchar, line_number, spos, epos, context_line_number
+    INTEGER :: full_line_pos, nspace, nline
     TYPE(eis_key_value_store) :: errstr_store
-    LOGICAL :: ok
+    LOGICAL :: ok, has_context, different_context, different_file
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init(err)
@@ -537,64 +587,131 @@ MODULE eis_error_mod
       RETURN
     END IF
 
-    CALL this%get_error_cause(index, errname, charpos, filename, line_number)
+    CALL this%get_error_cause(index, errname, charpos, filename, line_number, &
+        context_filename, context_line_number, full_line_pos)
     CALL this%get_error_string(index, errstring, err_source)
 
+    !Set up the replacement strings
+    IF (ALLOCATED(errstring)) THEN
+      CALL errstr_store%store('error', errstring)
+    ELSE
+      CALL errstr_store%store('error', '{unknown}')
+    END IF
+
+    IF (ALLOCATED(err_source)) THEN
+      CALL errstr_store%store('errpart', err_source)
+    ELSE
+      CALL errstr_store%store('errpart', '{unknown}')
+    END IF
+
+    IF (line_number > 0) THEN
+      nchar = FLOOR(LOG10(REAL(line_number, eis_num)))
+      WRITE(format_str, '(A,I3,A)') '(I',nchar+1,')'
+      WRITE(linestr, format_str) line_number
+      CALL errstr_store%store('errline', TRIM(linestr))
+    ELSE
+      CALL errstr_store%store('errline', '{unknown}')
+    END IF
+    IF (context_line_number > 0) THEN
+      nchar = FLOOR(LOG10(REAL(context_line_number, eis_num)))
+      WRITE(format_str, '(A,I3,A)') '(I',nchar+1,')'
+      WRITE(linestr, format_str) context_line_number
+      CALL errstr_store%store('context_errline', TRIM(linestr))
+    ELSE
+      CALL errstr_store%store('context_errline', '{unknown}')
+    END IF
+
+    IF (ALLOCATED(filename)) THEN
+      CALL errstr_store%store('errfile',filename)
+    ELSE
+      CALL errstr_store%store('errfile','{unknown}')
+    END IF
+
+    IF (ALLOCATED(context_filename)) THEN
+      CALL errstr_store%store('context_errfile', context_filename)
+    ELSE
+      CALL errstr_store%store('context_errfile', '{unknown}')
+    END IF
+
+    IF (charpos > 0) THEN
+      nchar = FLOOR(LOG10(REAL(charpos, eis_num)))
+      WRITE(format_str, '(A,I3,A)') '(I',nchar+1,')'
+      WRITE(posstr, format_str) charpos
+      CALL errstr_store%store('charpos', TRIM(posstr))
+    ELSE
+      CALL errstr_store%store('charpos','{unknown}')
+    END IF
+
+    IF (ALLOCATED(errname)) THEN
+      CALL errstr_store%store('errtext', TRIM(errname))
+    ELSE
+      CALL errstr_store%store('errtext', '{unknown}')
+    END IF
+
+    !Now start building the actual error report
+
     CALL eis_append_string(report, REPEAT("=", 80))
-    CALL eis_append_string(report, err_source)
+    !Report that there is an error
+    IF (ALLOCATED(err_source) .AND. line_number > 0) THEN
+      ok = this%strings%get('err_is_error', temp)
+    ELSE IF (ALLOCATED(err_source)) THEN
+      ok = this%strings%get('err_is_error_file', temp)
+    ELSE
+      ok = this%strings%get('err_is_error_only', temp)
+    END IF
+    CALL errstr_store%format_fill(temp)
+    CALL eis_append_string(report, temp)
+
+    !Print the context and location information
     IF (ALLOCATED(this%errors(index)%full_line)) THEN
+      nchar = FLOOR(LOG10(REAL(charpos, eis_num)))+1
+      nline = FLOOR(LOG10(REAL(line_number, eis_num)))+1
+      nspace = MAX(nchar, nline)
+      WRITE(format_str, '(A,I3,A)') '(I',nspace,')'
+      WRITE(linestr, format_str) line_number
+      WRITE(posstr, format_str) charpos
       CALL eis_append_string(report, "")
       spos = MAX(1, this%errors(index)%full_line_pos-10)
       epos = MIN(LEN(this%errors(index)%full_line), &
-          this%errors(index)%full_line_pos+10)
+          this%errors(index)%full_line_pos+MAX(10, LEN(errname)))
       predots = "" ; postdots = ""
       IF (spos /= 1) predots = "..."
       IF (epos /= LEN(this%errors(index)%full_line)) postdots = "..."
-      CALL eis_append_string(report, TRIM(predots) &
+      CALL eis_append_string(report, TRIM(linestr) // " : " // TRIM(predots) &
            // this%errors(index)%full_line(spos:epos) // TRIM(postdots))
       CALL eis_append_string(report, REPEAT(" ", &
-          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)),0)) &
-          // "^")
-    END IF
-
-    CALL eis_append_string(report, "")
-
-    IF (charpos > 0 .OR. line_number > 0) THEN
-
-      IF (ALLOCATED(filename)) THEN
-        IF (line_number > 0) THEN
-          nchar = FLOOR(LOG10(REAL(line_number, eis_num)))+1
-          WRITE(format_str, '(A,I3,A)') '(I',nchar+1,')'
-          WRITE(linestr, format_str) line_number
-          CALL errstr_store%store('errline', TRIM(linestr))
-          CALL errstr_store%store('errfile', TRIM(filename))
-          ok = this%strings%get('err_report_file', temp)
-          CALL errstr_store%format_fill(temp)
-          CALL eis_append_string(report, temp)
-      ELSE
-          CALL errstr_store%store('errfile', TRIM(filename))
-          ok = this%strings%get('err_report_file_only', temp)
-          CALL errstr_store%format_fill(temp)
-          CALL eis_append_string(report, temp)
-      END IF
-    END IF
-
-      IF (charpos > 0) THEN
-        nchar = FLOOR(LOG10(REAL(charpos, eis_num)))+1
-        WRITE(format_str, '(A,I3,A)') '(I',nchar,')'
-        WRITE(posstr, format_str) charpos
-        CALL errstr_store%store('charpos', TRIM(posstr))
-        CALL errstr_store%store('errtext', TRIM(errname))
-
+          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)) &
+          + nspace + 3,0)) // "^")
+      CALL eis_append_string(report, REPEAT(" ", &
+          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)) &
+          + nspace + 3,0)) // TRIM(posstr))
+    ELSE
+      IF (charpos > 0 .OR. ALLOCATED(errname)) THEN
+        !Report the error location
         ok = this%strings%get('err_report_place', temp)
         CALL errstr_store%format_fill(temp)
-        CALL eis_append_string(report, temp, newline = (line_number <=0))
+        CALL eis_append_string(report, temp)
       END IF
-
-    ELSE
-      ok = this%strings%append('err_report_fail', report)
     END IF
-    CALL eis_append_string(report, errstring, newline = .FALSE.)
+
+    IF (ALLOCATED(context_filename) .OR. context_line_number > 0) THEN
+      has_context = .FALSE.
+      IF (ALLOCATED(filename)) THEN
+        has_context = TRIM(filename) /= TRIM(context_filename)
+      ELSE
+        has_context = .TRUE.
+      END IF
+      has_context = has_context .OR. line_number /= context_line_number
+    ELSE
+      has_context = .FALSE.
+    END IF
+
+    IF (has_context) THEN
+      ok = this%strings%get('err_proximate_source', temp)
+      CALL errstr_store%format_fill(temp)
+      CALL eis_append_string(report, temp)
+    END IF
+
     CALL eis_append_string(report, REPEAT("=", 80))
     CALL eis_append_string(report,"")
 

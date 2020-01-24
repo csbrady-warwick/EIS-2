@@ -111,7 +111,9 @@ MODULE eis_parser_constants
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
-    CHARACTER(LEN=:), ALLOCATABLE :: text
+    CHARACTER(LEN=:), ALLOCATABLE :: text, full_line, filename
+    INTEGER :: line_number = -1
+    TYPE(eis_stack), POINTER :: origin => NULL()
   END TYPE eis_stack_co_element
 
   !> Information about a stack element that is always needed for the entire
@@ -140,7 +142,7 @@ MODULE eis_parser_constants
     CHARACTER(LEN=:), ALLOCATABLE :: eval_string, full_line
     CHARACTER(LEN=:), ALLOCATABLE :: filename
     INTEGER :: interop_id = -1
-    INTEGER :: line_number = 0
+    INTEGER :: line_number = -1
     INTEGER :: char_offset = 0
     INTEGER :: params = 0
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask

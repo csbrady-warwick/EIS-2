@@ -254,14 +254,26 @@ MODULE eis_eval_stack_mod
       status = IOR(status, stat_in)
       IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
         IF (ALLOCATED(stack%co_entries)) THEN
-          IF (ALLOCATED(stack%full_line)) THEN
-            CALL err_handler%add_error(eis_err_evaluator, err, &
-                stack%co_entries(istack)%text, &
-                stack%co_entries(istack)%charindex, &
-                filename = stack%filename, &
-                line_number = stack%line_number, &
-                full_line = stack%full_line, &
-                full_line_pos = stack%co_entries(istack)%full_line_pos)
+          IF (ALLOCATED(stack%co_entries(istack)%full_line)) THEN
+            IF (.NOT. ALLOCATED(stack%filename)) THEN
+              CALL err_handler%add_error(eis_err_evaluator, err, &
+                  stack%co_entries(istack)%text, &
+                  stack%co_entries(istack)%charindex, &
+                  filename = stack%co_entries(istack)%filename, &
+                  line_number = stack%co_entries(istack)%line_number, &
+                  full_line = stack%co_entries(istack)%full_line, &
+                  full_line_pos = stack%co_entries(istack)%full_line_pos)
+            ELSE
+              CALL err_handler%add_error(eis_err_evaluator, err, &
+                  stack%co_entries(istack)%text, &
+                  stack%co_entries(istack)%charindex, &
+                  filename = stack%co_entries(istack)%filename, &
+                  line_number = stack%co_entries(istack)%line_number, &
+                  full_line = stack%co_entries(istack)%full_line, &
+                  full_line_pos = stack%co_entries(istack)%full_line_pos, &
+                  context_filename = stack%filename, &
+                  context_line_number = stack%line_number)
+            END IF
           ELSE
             CALL err_handler%add_error(eis_err_evaluator, err, &
                 stack%co_entries(istack)%text, &

@@ -3,6 +3,7 @@ MODULE eis_header
   USE eis_constants
   USE eis_utils
   USE eis_algorithm
+  USE eis_error_mod
   IMPLICIT NONE
 
   CONTAINS

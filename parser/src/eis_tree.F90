@@ -101,9 +101,19 @@ MODULE eis_tree_mod
     simplified%cap_bits = stack%cap_bits
     simplified%has_deferred = stack%has_deferred
     simplified%has_emplaced = stack%has_emplaced
-    IF (ALLOCATED(stack%full_line)) ALLOCATE(simplified%full_line, &
-        SOURCE = stack%full_line)
+    IF (ALLOCATED(stack%full_line)) THEN
+      ALLOCATE(simplified%full_line, SOURCE = stack%full_line)
+    ELSE
+      ALLOCATE(simplified%full_line, SOURCE = "")
+    END IF
     simplified%params = stack%params
+    IF (ALLOCATED(stack%filename)) THEN
+      ALLOCATE(simplified%filename, SOURCE = stack%filename)
+    ELSE
+      ALLOCATE(simplified%filename, SOURCE = "")
+    END IF
+
+    simplified%line_number = stack%line_number
 
     IF (.NOT. PRESENT(stack_out)) THEN
       CALL deallocate_stack(stack)
@@ -224,7 +234,10 @@ MODULE eis_tree_mod
           IF (ALLOCATED(tree%co_value%text)) THEN
             CALL err_handler%add_error(eis_err_simplifier, err, &
                 tree%co_value%text, tree%co_value%charindex, &
-                filename = filename, line_number = line_number, &
+                filename = tree%co_value%filename, &
+                line_number = tree%co_value%line_number, &
+                context_filename = filename, &
+                context_line_number = line_number, &
                 full_line = full_line, full_line_pos = &
                 tree%co_value%full_line_pos)
           ELSE

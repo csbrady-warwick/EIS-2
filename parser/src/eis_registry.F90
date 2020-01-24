@@ -1295,6 +1295,7 @@ CONTAINS
     TYPE(eis_stack), POINTER :: temp
     TYPE(eis_stack), TARGET :: filled
     INTEGER(eis_error) :: err
+    INTEGER :: i
 
     errcode = eis_err_none
 

@@ -12,6 +12,7 @@ MODULE eis_utils
   PUBLIC :: eis_remove_string_section, eis_copy_string
   PUBLIC :: eis_compare_string, eis_present_and_alloc
   PUBLIC :: eis_integer_as_string, eis_uid_generator
+  PUBLIC :: eis_allocate_string
 
   INTERFACE eis_copy_string
     MODULE PROCEDURE eis_copy_string_aa
@@ -927,5 +928,22 @@ MODULE eis_utils
     this%new_uid = val
 
   END SUBROUTINE eug_reset_next_uid
+
+
+
+  !>@brief
+  !>Routine to allocate a string to either a zero length string
+  !>or an optionally supplied string. If string is allocated
+  !>then it is deallocated on entry
+  SUBROUTINE eis_allocate_string(dest, src)
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: dest
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: src
+
+    IF (PRESENT(src)) THEN
+      ALLOCATE(dest, SOURCE = src)
+    ELSE
+      ALLOCATE(dest, SOURCE = "")
+    END IF
+  END SUBROUTINE eis_allocate_string
 
 END MODULE eis_utils
