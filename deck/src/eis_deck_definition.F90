@@ -759,6 +759,7 @@ MODULE eis_deck_definition_mod
     CLASS(eis_deck_block_definition), POINTER :: p
     INTEGER :: npass
     LOGICAL :: lpass
+    INTEGER(eis_status) :: status
 
     npass = npass_global
     IF (PRESENT(pass_number)) npass = pass_number
@@ -770,7 +771,7 @@ MODULE eis_deck_definition_mod
     DO iblock = 0, nblocks
       p => this%info%get_block(iblock)
       IF (p%lastinit /= 0 .OR. this%finalise_absent) THEN
-        CALL p%finalise_block(npass, lpass, errcode, host_state)
+        CALL p%finalise_block(npass, lpass, status, errcode, host_state)
       END IF
     END DO
 
@@ -1462,7 +1463,8 @@ MODULE eis_deck_definition_mod
         this%info%c_on_generic_final_fn, &
         this%info%on_generic_failure_fn, &
         this%info%c_on_generic_failure_fn, &
-        this%name, pass_number, parent_kind, status, errcode, host_state)
+        this%name, pass_number, parent_kind, status, errcode, &
+        host_state = host_state)
 
     DEALLOCATE(parent_kind)
 

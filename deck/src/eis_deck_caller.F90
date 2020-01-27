@@ -16,10 +16,10 @@ MODULE eis_deck_caller_mod
     CHARACTER(LEN=:), ALLOCATABLE :: filename
     INTEGER :: line_number = -1
     CHARACTER(LEN=:), ALLOCATABLE :: key_text
-    PROCEDURE(parser_result_function), POINTER, NOPASS :: func_res => NULL()
+    PROCEDURE(parser_result_function), POINTER, NOPASS :: value_function &
+        => NULL()
     CHARACTER(LEN=:), ALLOCATABLE :: function_text
     TYPE(eis_parser), POINTER :: parser => NULL()
-    INTEGER(eis_bitmask) :: host_state = 0_eis_bitmask
     INTEGER :: interop_parser = -1
     INTEGER :: white_space_length = 0
   END TYPE eis_deck_caller_key
@@ -47,6 +47,7 @@ MODULE eis_deck_caller_mod
     CHARACTER(LEN=:), ALLOCATABLE :: filename
     INTEGER :: line_number = -1
     INTEGER :: pass_number
+    INTEGER(eis_bitmask) :: host_state = 0_eis_bitmask
     CLASS(eis_deck_caller_block), POINTER :: block => NULL()
     CLASS(eis_deck_caller_key), POINTER :: key => NULL()
   END TYPE eis_deck_caller_event
@@ -87,13 +88,13 @@ MODULE eis_deck_caller_mod
     PROCEDURE, PUBLIC :: finalise_all_blocks => edc_finalise_all_blocks
     PROCEDURE, PUBLIC :: finalize_all_blocks => edc_finalise_all_blocks
 
+    PROCEDURE, PUBLIC :: replay_deck => edc_replay_deck
+
     PROCEDURE, PUBLIC :: get_error_count => edc_get_error_count
     PROCEDURE, PUBLIC :: get_error_report => edc_get_error_report
     PROCEDURE, PUBLIC :: flush_errors => edc_flush_errors
 
-    !PROCEDURE, PUBLIC :: get_block_name => edc_get_block_name
-    !PROCEDURE :: get_block_children => edc_get_block_children
-    !PROCEDURE :: get_block_parent => edc_get_block_parent
+    PROCEDURE, PUBLIC :: generate_deck => edc_generate_deck
 
     FINAL :: edc_destructor
   END TYPE eis_deck_caller
@@ -382,6 +383,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_init
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -492,7 +494,8 @@ MODULE eis_deck_caller_mod
     !Create the event
     ALLOCATE(event)
     gptr => event
-    event%type = edce_init
+    event%type = edce_start
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -553,6 +556,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_end
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -682,12 +686,13 @@ MODULE eis_deck_caller_mod
     ALLOCATE(key_info%key_text, SOURCE = key_text)
     ALLOCATE(key_info%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) key_info%line_number = line_number
-    IF (PRESENT(value_function)) key_info%func_res => value_function
+    IF (PRESENT(value_function)) key_info%value_function => value_function
     IF (PRESENT(value_function_text)) ALLOCATE(key_info%function_text, &
         SOURCE =  value_function_text)
     IF (PRESENT(white_space_length)) key_info%white_space_length &
         = white_space_length
-    key_info%host_state = host_state_l
+    key_info%parser => parser_l
+    IF (.NOT. release_interop) key_info%interop_parser = interop_parser_l
 
     gptr => key_info
     dummy = this%current_block%keys%hold(gptr, owns = .FALSE.)
@@ -706,6 +711,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_call
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -776,6 +782,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_end
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -791,6 +798,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_final
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -862,6 +870,7 @@ MODULE eis_deck_caller_mod
     ALLOCATE(event)
     gptr => event
     event%type = edce_final
+    IF (PRESENT(host_state)) event%host_state = host_state
     ALLOCATE(event%filename, SOURCE = fname_l)
     IF (PRESENT(line_number)) event%line_number = line_number
     event%pass_number = pass_l
@@ -909,6 +918,7 @@ MODULE eis_deck_caller_mod
   END SUBROUTINE edc_get_error_report
 
 
+
   !> @brief
   !> Print all of the errors to stdout
   !> @param[inout] this
@@ -918,5 +928,193 @@ MODULE eis_deck_caller_mod
     CALL this%err_handler%flush_errors()
 
   END SUBROUTINE edc_flush_errors
+
+
+  !> @brief
+  !> Replay a deck again with a different pass number
+  !> @param[inout] this
+  !> @param[inout] errcode
+  !> @param[in] pass_number
+  SUBROUTINE edc_replay_deck(this, errcode, pass_number, host_state)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER, INTENT(IN), OPTIONAL :: pass_number
+    INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
+    INTEGER :: ievent, pass_l, interop_parser_l
+    INTEGER(eis_status) :: status
+    CLASS(*), POINTER :: gptr
+    CLASS(eis_deck_caller_event), POINTER :: sptr
+    TYPE(eis_deck_block_definition), POINTER :: defn
+    CLASS(eis_parser), POINTER :: parser_l
+    LOGICAL :: release_interop
+    INTEGER(eis_bitmask) :: host_state_l
+
+    errcode = eis_err_none
+
+    IF (.NOT. ASSOCIATED(this%definition)) THEN
+      errcode = eis_err_bad_deck_definition
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode)
+      RETURN
+    END IF
+
+    this%current_level = 1
+    this%current_block => this%root
+
+    DO ievent = 1, this%events%get_size()
+      gptr => this%events%get(ievent)
+      SELECT TYPE (gptr)
+        CLASS IS (eis_deck_caller_event)
+          sptr => gptr
+        CLASS DEFAULT
+          sptr => NULL()
+      END SELECT
+      IF (.NOT. ASSOCIATED(sptr)) CYCLE
+      pass_l = sptr%pass_number
+      IF (PRESENT(pass_number)) pass_l = pass_number
+      host_state_l = sptr%host_state
+      IF (PRESENT(host_state)) host_state_l = host_state
+
+      errcode = eis_err_none
+
+      SELECT CASE (sptr%type)
+        CASE (edce_init)
+          IF (.NOT. ASSOCIATED(sptr%block)) THEN
+            CALL this%definition%initialise_blocks(host_state_l, errcode, &
+              pass_number = pass_l)
+          ELSE
+            !Currently no initialise for single blocks
+          END IF
+        CASE (edce_start)
+          defn => this%current_block%definition%get_child(&
+            sptr%block%block_text, pass_number = pass_l, errcode = errcode)
+          CALL this%add_parent(sptr%block%uid)
+          CALL defn%start_block(this%current_parents(1:this%current_level), &
+              pass_l, status, errcode, host_state_l, &
+              display_name = sptr%block%block_text)
+          this%current_block => sptr%block
+        CASE (edce_call)
+
+          release_interop = .FALSE.
+          IF (sptr%key%interop_parser > -1) THEN
+            interop_parser_l = sptr%key%interop_parser
+          ELSE
+            IF (ASSOCIATED(sptr%key%parser)) THEN
+              IF (sptr%key%parser%interop_id > -1) THEN
+                interop_parser_l = sptr%key%parser%interop_id
+              ELSE
+                interop_parser_l = eis_add_interop_parser(parser_l, &
+                    owns = .FALSE.)
+                release_interop = .TRUE.
+              END IF
+            ELSE
+              interop_parser_l = -1
+            END IF
+          END IF
+
+          IF (ASSOCIATED(sptr%key%parser)) THEN
+            parser_l => sptr%key%parser
+          ELSE IF (interop_parser_l > -1) THEN
+            parser_l => eis_get_interop_parser(interop_parser_l)
+          ELSE
+            parser_l => NULL()
+          END IF
+
+          CALL this%current_block%definition%call_key(sptr%key%key_text, &
+              this%current_parents(1:this%current_level), pass_l, &
+              host_state_l, errcode, filename = sptr%filename, &
+              line_number = sptr%line_number, &
+              white_space_length = sptr%key%white_space_length, &
+              value_function = sptr%key%value_function, &
+              parser = parser_l, &
+              interop_parser_id = interop_parser_l)
+
+          IF (release_interop) CALL eis_release_interop_parser(interop_parser_l)
+        CASE (edce_end)
+
+          CALL defn%end_block(this%current_parents(1:this%current_level), &
+              pass_l, status, errcode, host_state_l, &
+              display_name = sptr%block%block_text)
+          CALL this%remove_parent()
+          this%current_block => this%current_block%parent
+
+        CASE (edce_final)
+          IF (ASSOCIATED(sptr%block)) THEN
+            CALL this%current_block%definition%finalise_block(pass_l, .TRUE., &
+                status, errcode, host_state_l)
+          ELSE
+            CALL this%definition%finalise_blocks(host_state_l, errcode, &
+                pass_number = pass_l)
+          END IF
+      END SELECT
+
+      IF (errcode /= eis_err_none) THEN
+        CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
+            filename = sptr%filename, line_number = sptr%line_number)
+        RETURN
+      END IF
+
+    END DO
+
+  END SUBROUTINE edc_replay_deck
+
+
+
+  SUBROUTINE edc_generate_deck(this, deck_string, errcode)
+    CLASS(eis_deck_caller), INTENT(INOUT) :: this
+    CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: deck_string
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: ievent
+    CLASS(*), POINTER :: gptr
+    CLASS(eis_deck_caller_event), POINTER :: sptr
+
+    errcode = eis_err_none
+
+    CALL eis_append_string(deck_string, '/*Generated by EIS-2 from a deck &
+        &caller sequence */')
+
+    this%current_level = 1
+    this%current_block => this%root
+
+    DO ievent = 1, this%events%get_size()
+      gptr => this%events%get(ievent)
+      SELECT TYPE (gptr)
+        CLASS IS (eis_deck_caller_event)
+          sptr => gptr
+        CLASS DEFAULT
+          sptr => NULL()
+      END SELECT
+      SELECT CASE (sptr%type)
+        CASE (edce_start)
+          CALL eis_append_string(deck_string, &
+              REPEAT(" ", 2 * this%current_level) // "begin : " &
+              // sptr%block%block_text)
+          CALL this%add_parent(sptr%block%uid)
+          this%current_block => sptr%block
+        CASE (edce_call)
+          IF (.NOT. ASSOCIATED(sptr%key%value_function)) THEN
+            CALL eis_append_string(deck_string, &
+                REPEAT(" ", 2 * this%current_level + 1) // sptr%key%key_text)
+          ELSE
+            CALL eis_append_string(deck_string, '#External function')
+            IF (ALLOCATED(sptr%key%function_text)) THEN
+              CALL eis_append_string(deck_string, '/*' &
+                  // sptr%key%function_text // '*/')
+            END IF
+            CALL eis_append_string(deck_string, &
+                REPEAT(" ", 2 * this%current_level + 1) // sptr%key%key_text)
+          END IF
+        CASE (edce_end)
+          CALL this%remove_parent()
+          this%current_block => this%current_block%parent
+          CALL eis_append_string(deck_string, &
+              REPEAT(" ", 2 * this%current_level) // "end : " &
+              // sptr%block%block_text)
+          IF (ievent /= this%events%get_size()) &
+              CALL eis_append_string(deck_string, "")
+      END SELECT
+    END DO
+  
+
+  END SUBROUTINE edc_generate_deck
 
 END MODULE eis_deck_caller_mod

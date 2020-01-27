@@ -47,6 +47,9 @@ ifeq ($(strip $(COMPILER)),pgi)
   MODFLAG := -I/usr/include -I$(OBJDIR) -I$(MODDIR)
   MODULEFLAG := $(MODFLAG) -module $(MODDIR)
   FC = pgf90
+ ifeq ($(strip $(TYPE)), library)
+   FFLAGS += -fPIC
+ endif
 endif
 
 # Intel
@@ -73,6 +76,9 @@ ifeq ($(strip $(COMPILER)),intel)
   MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
   MODULEFLAG := $(MODFLAG) -module $(MODDIR)
   FC = ifort
+ ifeq ($(strip $(TYPE)), library)
+   FFLAGS += -fPIC
+ endif
 endif
 
 # gfortran
@@ -119,6 +125,9 @@ ifeq ($(strip $(COMPILER)),gfortran)
   ifeq (prof,$(findstring prof,$(MODE)))
     FFLAGS += -p
   endif
+  ifeq ($(strip $(TYPE)), library)
+    FFLAGS += -fPIC
+  endif
   FFLAGS += -frecord-marker=4
   MODFLAG := -I$(MODDIR) -I$(OBJDIR)
   ifneq ($(wildcard /usr/include/.),)
@@ -149,6 +158,10 @@ ifeq ($(strip $(COMPILER)),ibm)
     FC = xlf2003
   endif
 
+ ifeq ($(strip $(TYPE)), library)
+   FFLAGS += -qPIC
+ endif
+
   # IBM compiler needs a -WF to recognise preprocessor directives
   D = -WF,-D
 endif
@@ -163,6 +176,9 @@ ifeq ($(strip $(COMPILER)),cray)
   MODFLAG := -em -I/usr/include -I$(MODDIR) -I$(OBJDIR)
   MODULEFLAG := $(MODFLAG) -J$(MODDIR)
   FC = ftn
+ ifeq ($(strip $(TYPE)), library)
+   FFLAGS += -fPIC
+ endif
 endif
 
 PREPROFLAGS = $(DEFINES)

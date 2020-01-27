@@ -4432,7 +4432,8 @@ CONTAINS
     DO ct = 1, this%get_symbol_count()
       CALL this%get_symbol(ct, sname)
       exists = this%get_symbol_info(sname, description = desc, &
-          symbol_type = stype, is_hidden = is_hidden)
+          symbol_type = stype, is_hidden = is_hidden, &
+          expected_params = expected_params)
       IF (is_hidden) CYCLE
       IF (stype == eis_pt_variable .OR. stype == eis_pt_stored_variable &
           .OR. stype == eis_pt_emplaced_variable &

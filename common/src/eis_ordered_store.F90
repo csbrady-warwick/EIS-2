@@ -269,7 +269,7 @@ CONTAINS
     CLASS(ordered_store), INTENT(INOUT) :: this
     LOGICAL :: success
 
-    DEALLOCATE(this%items)
+    IF (ALLOCATED(this%items)) DEALLOCATE(this%items)
     success = .TRUE.
 
   END FUNCTION os_clear
