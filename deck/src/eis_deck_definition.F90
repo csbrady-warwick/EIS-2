@@ -734,6 +734,7 @@ MODULE eis_deck_definition_mod
     INTEGER :: nblocks, iblock
     CLASS(eis_deck_block_definition), POINTER :: p
     INTEGER :: npass
+    INTEGER(eis_status) :: status
 
     npass = npass_global
     IF (PRESENT(pass_number)) npass = pass_number
@@ -741,7 +742,7 @@ MODULE eis_deck_definition_mod
     nblocks = this%info%get_block_count()
     DO iblock = 0, nblocks
       p => this%info%get_block(iblock)
-      CALL p%initialise_block(npass, errcode, host_state)
+      CALL p%initialise_block(npass, errcode, status, host_state)
     END DO
 
   END SUBROUTINE dd_init_blocks
