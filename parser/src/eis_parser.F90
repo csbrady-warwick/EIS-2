@@ -1302,7 +1302,20 @@ CONTAINS
     END IF
 
     IF (ASSOCIATED(output%eval_fn)) NULLIFY(output%eval_fn)
-    IF (should_dealloc) CALL deallocate_stack(output)
+    IF (should_dealloc) THEN
+      CALL deallocate_stack(output)
+    ELSE
+      IF (ASSOCIATED(output%eval_fn)) THEN
+        err = eis_err_none
+        CALL this%registry%result_function_to_functor_stack(output, err)
+        IF (err /= eis_err_none) THEN
+          CALL this%err_handler%add_error(eis_err_parser, err, &
+              filename = filename, &
+              line_number = line_number)
+          RETURN
+        END IF
+      END IF
+    END IF
     IF (.NOT. output%init) CALL initialise_stack(output)
 
     ALLOCATE(expression, SOURCE = TRIM(expression_in))
