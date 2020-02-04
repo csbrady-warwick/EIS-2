@@ -3823,7 +3823,7 @@ CONTAINS
     !> Optional string for function to use to combine the stacks
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: function_str
     LOGICAL :: should_append
-    INTEGER :: iel, expected_params
+    INTEGER :: iel
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
     TYPE(eis_stack) :: functor_stack

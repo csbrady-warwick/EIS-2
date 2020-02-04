@@ -417,6 +417,7 @@ MODULE eis_parser_interop
     TYPE(eis_stack), POINTER :: old, new
 
     IF (stack_id < 1 .OR. stack_id > interop_stack_count) THEN
+      eis_copy_stack = -1
       RETURN
     END IF
 

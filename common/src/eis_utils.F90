@@ -901,7 +901,6 @@ MODULE eis_utils
   !> @return eug_get_next_uid
   FUNCTION eug_get_next_uid(this)
     CLASS(eis_uid_generator), INTENT(INOUT) :: this
-    INTEGER(uid_kind) :: new_uid
     INTEGER(uid_kind) :: eug_get_next_uid
 
     eug_get_next_uid = INT(this%new_uid)
@@ -920,7 +919,6 @@ MODULE eis_utils
   SUBROUTINE eug_reset_next_uid(this, value)
     CLASS(eis_uid_generator), INTENT(INOUT) :: this
     INTEGER(uid_kind), INTENT(IN), OPTIONAL :: value
-    INTEGER(uid_kind) :: eug_get_next_uid
     INTEGER(uid_kind) :: val
 
     val = 0

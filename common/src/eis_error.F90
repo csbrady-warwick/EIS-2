@@ -572,7 +572,7 @@ MODULE eis_error_mod
     INTEGER :: charpos, nchar, line_number, spos, epos, context_line_number
     INTEGER :: full_line_pos, nspace, nline
     TYPE(eis_key_value_store) :: errstr_store
-    LOGICAL :: ok, has_context, different_context, different_file
+    LOGICAL :: ok, has_context
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init(err)

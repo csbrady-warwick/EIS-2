@@ -211,7 +211,7 @@ MODULE eis_deck_definition_mod
     PROCEDURE :: get_description => dbd_get_description
 
     PROCEDURE :: add_key => dbd_add_key
-    PROCEDURE, PRIVATE :: call_key_text => dbd_call_key_text
+    PROCEDURE :: call_key_text => dbd_call_key_text
     GENERIC, PUBLIC :: call_key => call_key_text
     GENERIC :: add_block => add_new_block
   END TYPE eis_deck_block_definition
@@ -1742,24 +1742,32 @@ MODULE eis_deck_definition_mod
 
 
   SUBROUTINE dbd_call_key_text(this, key_text, parents, pass_number, status, &
-      errcode, host_state, filename, line_number, white_space_length, &
-      value_function, parser, interop_parser_id, non_value_line_is_blank, &
-      err_handler)
+      errcode, key_value, host_state, key_filename, key_line_number, &
+      value_filename, value_line_number, value_function, key_offset, &
+      value_offset, parser, interop_parser_id, non_value_line_is_blank, &
+      err_handler, host_params, directive, trimmed_line_text)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_text
     INTEGER, DIMENSION(:), INTENT(IN) :: parents
     INTEGER, INTENT(IN) :: pass_number
     INTEGER(eis_status), INTENT(INOUT) :: status
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: key_value
     INTEGER(eis_bitmask), INTENT(INOUT), OPTIONAL :: host_state
-    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
-    INTEGER, INTENT(IN), OPTIONAL :: line_number
-    INTEGER, INTENT(IN), OPTIONAL :: white_space_length
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: key_filename
+    INTEGER, INTENT(IN), OPTIONAL :: key_line_number
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: value_filename
+    INTEGER, INTENT(IN), OPTIONAL :: value_line_number
     PROCEDURE(parser_result_function), OPTIONAL :: value_function
+    INTEGER, INTENT(IN), OPTIONAL :: key_offset
+    INTEGER, INTENT(IN), OPTIONAL :: value_offset
     CLASS(eis_parser), INTENT(IN), POINTER, OPTIONAL :: parser
     INTEGER, INTENT(IN), OPTIONAL :: interop_parser_id
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
     CLASS(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
+    LOGICAL, INTENT(IN), OPTIONAL :: directive
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: trimmed_line_text
 
     CLASS(*), POINTER :: ptr
     CLASS(deck_key_definition), POINTER :: dkd
@@ -1767,26 +1775,30 @@ MODULE eis_deck_definition_mod
     INTEGER(eis_status) :: base_stat, this_stat
     INTEGER(eis_error) :: this_err, stack_err
     INTEGER(eis_bitmask) :: this_bitmask
-    INTEGER :: eindex, cindex, sindex, ct, stack_id
+    INTEGER :: ct, stack_id
     LOGICAL :: handled, is_key_value, is_directive, is_key_stack
-    CHARACTER(LEN=:), ALLOCATABLE :: key, value
+    CHARACTER(LEN=:), ALLOCATABLE :: key, value, line_text
     TYPE(eis_stack), TARGET :: stack
     TYPE(eis_stack), POINTER :: stack_ptr
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: value_array
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_key_text, c_key, &
-        c_value
+        c_value, c_line_text
     TYPE(eis_parser), POINTER :: ps
-    INTEGER :: interop_parser, wsl, char_offset
+    INTEGER :: interop_parser, i_key_offset, i_value_offset
     LOGICAL :: run, any_candidates, isscalarvar, isarrayvar, non_value_blank
     INTEGER(INT32), DIMENSION(:), POINTER :: c_i32
     INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
     REAL(REAL32), DIMENSION(:), POINTER :: c_r32
     REAL(REAL64), DIMENSION(:), POINTER :: c_r64
     INTEGER(eis_bitmask) :: cbits
-    LOGICAL :: parser_error
+    LOGICAL :: parser_error, line_text_present
+    TYPE(C_PTR) :: host_params_l
 
     !Is this error triggered by the parser? If not then I should report it here
     parser_error = .FALSE.
+
+    host_params_l = C_NULL_PTR
+    IF (PRESENT(host_params)) host_params_l = host_params
 
     IF (PRESENT(parser)) THEN
       IF (ASSOCIATED(this%info%parser)) THEN
@@ -1808,10 +1820,16 @@ MODULE eis_deck_definition_mod
       interop_parser = this%info%interop_parser
     END IF
 
-    IF (PRESENT(white_space_length)) THEN
-      wsl = white_space_length
+    IF (PRESENT(key_offset)) THEN
+      i_key_offset = key_offset
     ELSE
-      wsl = 0
+      i_key_offset = 0
+    END IF
+
+    IF (PRESENT(value_offset)) THEN
+      i_value_offset = value_offset
+    ELSE
+      i_value_offset = 0
     END IF
 
     IF (PRESENT(non_value_line_is_blank)) THEN
@@ -1832,41 +1850,39 @@ MODULE eis_deck_definition_mod
       this_bitmask = 0_eis_bitmask
     END IF
 
-    ALLOCATE(c_key_text(LEN(TRIM(ADJUSTL(key_text)))))
-    CALL eis_f_c_string(TRIM(ADJUSTL(key_text)), LEN(TRIM(ADJUSTL(key_text))), &
-        c_key_text)
-    eindex = INDEX(key_text, '=')
-    cindex = INDEX(key_text, ':')
-    sindex = 0
-    is_directive = .FALSE.
-    IF (eindex > 0 .OR. cindex > 0) THEN
-      IF (cindex == 0) THEN
-        sindex = eindex
-      ELSE IF (eindex == 0) THEN
-        sindex = cindex
-        is_directive = .TRUE.
-      ELSE IF (eindex > cindex) THEN
-        sindex = cindex
-        is_directive = .TRUE.
-      ELSE
-        sindex = eindex
-      END IF
-    END IF
+    line_text_present = PRESENT(trimmed_line_text)
+    IF (line_text_present) line_text_present = line_text_present &
+        .AND. LEN(trimmed_line_text) > 0
 
-    char_offset = 0
-
-    is_key_value = (sindex > 1 .AND. sindex < LEN(key_text))
-    is_key_stack = is_key_value .OR. PRESENT(value_function)
-    IF (is_key_value) THEN
-      ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text(1:sindex-1))))
-      ALLOCATE(value, SOURCE = TRIM(ADJUSTL(key_text(sindex+1:))))
-      char_offset = sindex + wsl + LEN(key_text(sindex+1:)) - LEN(value)
+    IF (line_text_present) THEN
+      ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(trimmed_line_text)))
+      ALLOCATE(c_line_text(LEN(line_text)))
+      CALL eis_f_c_string(line_text, LEN(line_text), c_line_text)
     ELSE
-      ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text)))
-      ALLOCATE(value, SOURCE = "{Unknown value}")
-      is_key_value = PRESENT(value_function)
+      IF (PRESENT(key_value)) THEN
+        ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(key_text)) // ' = ' &
+            // TRIM(ADJUSTL(key_value)))
+      ELSE
+        ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(key_text)))
+      END IF
+      ALLOCATE(c_line_text(LEN(line_text)))
+      CALL eis_f_c_string(line_text, LEN(line_text), c_line_text)
     END IF
-    IF (.NOT. is_key_value .AND. non_value_blank) RETURN
+
+    is_key_value = PRESENT(key_value)
+    IF (PRESENT(directive)) THEN
+      is_directive = directive
+    ELSE
+      is_directive = .FALSE.
+    END IF
+    is_key_stack = is_key_value .OR. PRESENT(value_function)
+
+    ALLOCATE(key, SOURCE = TRIM(ADJUSTL(key_text)))
+    IF (is_key_value) THEN
+      ALLOCATE(value, SOURCE = TRIM(ADJUSTL(key_value)))
+    ELSE
+      ALLOCATE(value, SOURCE = "{Unknown value}")
+    END IF
 
     ALLOCATE(c_key(LEN(key)))
     CALL eis_f_c_string(key, LEN(key), c_key)
@@ -1962,7 +1978,7 @@ MODULE eis_deck_definition_mod
         END IF
         IF (errcode /= eis_err_none .AND. PRESENT(err_handler)) THEN
           CALL err_handler%add_error(eis_err_deck_parser, errcode, &
-              filename = filename, line_number = line_number)
+              filename = key_filename, line_number = key_line_number)
         END IF
         RETURN
       END IF
@@ -1977,7 +1993,7 @@ MODULE eis_deck_definition_mod
         IF (ASSOCIATED(dkd%key_text_fn)) THEN
           this_err = eis_err_none
           this_stat = base_stat
-          CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
+          CALL dkd%key_text_fn(line_text, pass_number, parents, &
               parent_kind, this_stat, this_bitmask, this_err)
           !If the block is flagged handled then you care about the error code
           !value
@@ -1990,7 +2006,7 @@ MODULE eis_deck_definition_mod
         IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
           this_err = eis_err_none
           this_stat = base_stat
-          CALL dkd%c_key_text_fn(C_LOC(c_key_text), INT(pass_number, C_INT), &
+          CALL dkd%c_key_text_fn(C_LOC(c_line_text), INT(pass_number, C_INT), &
               SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
               INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
           !If the block is flagged handled then you care about the error code
@@ -2041,8 +2057,9 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             ct = ps%evaluate(value, value_array, this_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset, cap_bits = cbits)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset, cap_bits = cbits, &
+                host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
             this_err = eis_err_bad_value
@@ -2051,7 +2068,8 @@ MODULE eis_deck_definition_mod
           CALL ps%set_result_function(value_function, stack, &
               this_err)
           cbits = 0_eis_bitmask
-          ct = ps%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err, &
+              host_params = host_params_l)
         END IF
         IF (this_err == eis_err_none) THEN
           IF (ct == dkd%expected_params .OR. dkd%expected_params < 1) THEN
@@ -2080,8 +2098,9 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             ct = ps%evaluate(value, value_array, this_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset, cap_bits = cbits)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset, cap_bits = cbits, &
+                host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
             errcode = eis_err_bad_value
@@ -2090,7 +2109,9 @@ MODULE eis_deck_definition_mod
           CALL ps%set_result_function(value_function, stack, &
               this_err)
           cbits = 0_eis_bitmask
-          ct = ps%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err, &
+              host_params = host_params_l)
+
         END IF
         IF (this_err == eis_err_none) THEN
           CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
@@ -2115,8 +2136,8 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             CALL ps%tokenize(value, stack, stack_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset)
             parser_error = stack_err /= eis_err_none
           ELSE
             stack_err = eis_err_bad_value
@@ -2174,8 +2195,9 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             ct = ps%evaluate(value, value_array, this_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset, &
+                host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
             this_err = eis_err_bad_value
@@ -2183,7 +2205,8 @@ MODULE eis_deck_definition_mod
         ELSE 
           CALL ps%set_result_function(value_function, stack, &
               this_err)
-          ct = ps%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err, &
+                host_params = host_params_l)
         END IF
         IF (this_err == eis_err_none) THEN
           IF (ct == 1 .AND. isscalarvar) THEN
@@ -2321,7 +2344,7 @@ MODULE eis_deck_definition_mod
         IF (ASSOCIATED(dkd%key_text_fn)) THEN
           this_err = eis_err_none
           this_stat = base_stat
-          CALL dkd%key_text_fn(TRIM(key_text), pass_number, parents, &
+          CALL dkd%key_text_fn(line_text, pass_number, parents, &
               parent_kind, this_stat, this_bitmask, this_err)
           handled = (handled &
               .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
@@ -2330,7 +2353,7 @@ MODULE eis_deck_definition_mod
         IF (ASSOCIATED(dkd%c_key_text_fn) .AND. .NOT. handled) THEN
           this_err = eis_err_none
           this_stat = base_stat
-          CALL dkd%c_key_text_fn(C_LOC(c_key_text), INT(pass_number, C_INT), &
+          CALL dkd%c_key_text_fn(C_LOC(c_line_text), INT(pass_number, C_INT), &
               SIZE(parents, KIND=C_INT), INT(parents, C_INT), &
               INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
           handled = (handled &
@@ -2439,8 +2462,9 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             ct = ps%evaluate(value, value_array, this_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset, cap_bits = cbits)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset, cap_bits = cbits, &
+                host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
             this_err = eis_err_bad_value
@@ -2449,7 +2473,8 @@ MODULE eis_deck_definition_mod
           CALL ps%set_result_function(value_function, stack, &
               this_err)
           cbits = 0_eis_bitmask
-          ct = ps%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err, &
+                host_params = host_params_l)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL this%any_key_numeric_value_fn(key, value_array, pass_number, &
@@ -2473,8 +2498,9 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             ct = ps%evaluate(value, value_array, this_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset, cap_bits = cbits)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset, cap_bits = cbits, &
+                host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
             this_err = eis_err_bad_value
@@ -2483,7 +2509,8 @@ MODULE eis_deck_definition_mod
           CALL ps%set_result_function(value_function, stack, &
               this_err)
           cbits = 0_eis_bitmask
-          ct = ps%evaluate(stack, value_array, this_err)
+          ct = ps%evaluate(stack, value_array, this_err, &
+                host_params = host_params_l)
         END IF
         IF (this_err == eis_err_none) THEN
           CALL this%c_any_key_numeric_value_fn(C_LOC(c_key), &
@@ -2511,8 +2538,8 @@ MODULE eis_deck_definition_mod
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             CALL ps%tokenize(value, stack, stack_err, &
-                filename = filename, line_number = line_number, &
-                char_offset = char_offset)
+                filename = value_filename, line_number = value_line_number, &
+                char_offset = value_offset)
             parser_error = stack_err /= eis_err_none
           ELSE
             stack_err = eis_err_bad_value
@@ -2619,7 +2646,9 @@ MODULE eis_deck_definition_mod
         errcode = IOR(errcode, eis_err_bad_value)
         status = IOR(status, this_stat)
       ELSE
-        errcode = IOR(errcode, eis_err_unknown_key)
+        IF (.NOT. (.NOT. is_key_stack .AND. non_value_blank)) THEN
+          errcode = IOR(errcode, eis_err_unknown_key)
+        END IF
         status = IOR(status, this_stat)
       END IF
     END IF
@@ -2660,7 +2689,7 @@ MODULE eis_deck_definition_mod
     IF (errcode /= eis_err_none .AND. PRESENT(err_handler) &
         .AND. .NOT. parser_error) THEN
       CALL err_handler%add_error(eis_err_deck_parser, errcode, &
-          filename = filename, line_number = line_number)
+          filename = key_filename, line_number = key_line_number)
     END IF
 
     DEALLOCATE(parent_kind)

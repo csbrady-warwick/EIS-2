@@ -18,6 +18,7 @@ MODULE eis_deck_from_text_mod
     INTEGER :: interop_parser = -1
     LOGICAL :: owns_interop = .TRUE.
     TYPE(eis_string_deck), ALLOCATABLE :: sdeck
+    TYPE(C_PTR) :: host_params
 
     LOGICAL :: unknown_block_is_fatal = .TRUE.
     LOGICAL :: unknown_key_is_fatal = .TRUE.
@@ -52,6 +53,21 @@ MODULE eis_deck_from_text_mod
     FINAL :: tdp_destructor
 
   END TYPE eis_text_deck_parser
+
+  TYPE, ABSTRACT :: eis_tdp_result_function_mapper
+  CONTAINS
+    PROCEDURE(result_function_name_mapper), DEFERRED :: operate
+  END TYPE eis_tdp_result_function_mapper
+
+  ABSTRACT INTERFACE
+    SUBROUTINE result_function_name_mapper(this, name, result_fn)
+      USE eis_parser_constants
+      IMPORT eis_tdp_result_function_mapper
+      CLASS(eis_tdp_result_function_mapper), INTENT(INOUT) :: this
+      CHARACTER(LEN=*), INTENT(IN) :: name
+      PROCEDURE(parser_result_function), POINTER :: result_fn
+    END SUBROUTINE result_function_name_mapper
+  END INTERFACE
 
   CONTAINS
 
@@ -103,8 +119,8 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_error) :: this_errcode
     INTEGER, DIMENSION(:), ALLOCATABLE :: block_parents
     CHARACTER(LEN=:), ALLOCATABLE :: fn
-    INTEGER :: line_number, wsl
-    LOGICAL :: npe
+    INTEGER :: line_number, wsl, eindex, cindex, sindex
+    LOGICAL :: is_directive
 
     CALL eis_default_status(this_errcode, this_status, this_host)
     CALL block%get_parents(block_parents)
@@ -125,12 +141,46 @@ MODULE eis_deck_from_text_mod
       CALL block%get_line(i, line, filename = fn, line_number = line_number, &
           trimmed_white_space_length = wsl)
       CALL eis_default_status(this_errcode, this_status, this_host)
-      CALL definition%call_key(line, block_parents, pass_number, this_status, &
-          this_errcode, host_state = this_host, filename = fn, &
-          line_number = line_number, white_space_length = wsl, &
-          parser = this%parser, interop_parser_id = this%interop_parser, &
-          non_value_line_is_blank = non_value_line_is_blank, &
-          err_handler = this%err_handler)
+
+      eindex = INDEX(line, '=')
+      cindex = INDEX(line, ':')
+      sindex = 0
+      is_directive = .FALSE.
+      IF (eindex > 0 .OR. cindex > 0) THEN
+        IF (cindex == 0) THEN
+          sindex = eindex
+        ELSE IF (eindex == 0) THEN
+          sindex = cindex
+          is_directive = .TRUE.
+        ELSE IF (eindex > cindex) THEN
+          sindex = cindex
+          is_directive = .TRUE.
+        ELSE
+          sindex = eindex
+        END IF
+      END IF
+
+      IF (sindex == 0) THEN
+        CALL definition%call_key(line, block_parents, pass_number, &
+            this_status, this_errcode, host_state = this_host, &
+            key_filename = fn, key_line_number = line_number, &
+            key_offset = wsl, parser = this%parser, &
+            interop_parser_id = this%interop_parser, &
+            non_value_line_is_blank = non_value_line_is_blank, &
+            err_handler = this%err_handler, host_params = this%host_params, &
+            directive = is_directive, trimmed_line_text = line)
+      ELSE
+        CALL definition%call_key(line(1:sindex-1), block_parents, &
+            pass_number, this_status, this_errcode, &
+            key_value = line(sindex + 1:), host_state = this_host, &
+            key_filename = fn, key_line_number = line_number, &
+            key_offset = wsl, value_filename = fn, &
+            value_line_number = line_number, value_offset = wsl + sindex + 1, &
+            parser = this%parser, interop_parser_id = this%interop_parser, &
+            non_value_line_is_blank = non_value_line_is_blank, &
+            err_handler = this%err_handler, host_params = this%host_params, &
+            directive = is_directive, trimmed_line_text = line)
+      END IF
 
       errcode = IOR(errcode, this_errcode)
       status = IOR(status, this_status)
@@ -300,9 +350,10 @@ MODULE eis_deck_from_text_mod
   !> @param[in] non_value_line_is_blank
   !> @param[in] end_pass_on_error
   !> @param[in] finalize_on_error
+  !> @param[in] host_params
   SUBROUTINE tdp_init(this, err_handler, parser, unknown_block_is_fatal, &
       unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
-      end_pass_on_error, finalize_on_error)
+      end_pass_on_error, finalize_on_error, host_params)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
@@ -326,6 +377,8 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
     !> Should finalize events occur if an error was encountered
     LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
+    !> Host parameters to use when parsing this deck. Optional, default NULL
+    TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
     INTEGER(eis_error) :: err
 
     this%is_init = .TRUE.
@@ -394,6 +447,8 @@ MODULE eis_deck_from_text_mod
     IF (PRESENT(end_pass_on_error)) this%end_pass_on_error = end_pass_on_error
     IF (PRESENT(finalize_on_error)) this%finalize_on_error &
         = finalize_on_error
+
+    IF (PRESENT(host_params)) this%host_params = host_params
 
   END SUBROUTINE tdp_init
 
@@ -575,7 +630,7 @@ MODULE eis_deck_from_text_mod
     IF (.NOT. ukf) strip_err = IAND(errcode, NOT(eis_err_unknown_key))
     IF (.NOT. bkf) strip_err = IAND(errcode, NOT(eis_err_bad_key))
 
-    IF (strip_err == eis_err_none) THEN
+    IF (strip_err == eis_err_none .OR. epoe) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
       CALL definition%end_pass(host_state, err, pass_number = pass_number)
       IF (PRESENT(state)) state = IOR(state, host_state)
