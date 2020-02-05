@@ -3662,7 +3662,10 @@ CONTAINS
                         this%stack%co_entries(this%stack%stack_point)%text, &
                         this%stack%co_entries(this%stack%stack_point)%charindex&
                         , filename = filename, line_number = line_number, &
-                        full_line = full_line, full_line_pos = trim_charindex)
+                        full_line = full_line, &
+                        full_line_pos = trim_charindex - charindex &
+                        + this%stack%co_entries(this%stack%stack_point)&
+                        %charindex)
                   ELSE
                     CALL this%err_handler%add_error(eis_err_parser, err, &
                         "{unknown}", charindex)
