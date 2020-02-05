@@ -200,7 +200,7 @@ MODULE eis_error_mod
       CALL this%strings%store('err_is_error', '{error} at {errfile}, &
           &line {errline}')
       CALL this%strings%store('err_is_error_file', '{error} at {errfile}')
-      CALL this%strings%store('err_is_error_none', '{error}')
+      CALL this%strings%store('err_is_error_only', '{error}')
       CALL this%strings%store('err_report_place','{charpos}:"{errtext}" &
           &- {error}')
       CALL this%strings%store('err_proximate_source', 'Error reported from &
@@ -623,8 +623,6 @@ MODULE eis_error_mod
 
     IF (ALLOCATED(filename)) THEN
       CALL errstr_store%store('errfile',filename)
-    ELSE
-      CALL errstr_store%store('errfile','{unknown}')
     END IF
 
     IF (ALLOCATED(context_filename)) THEN
@@ -652,10 +650,14 @@ MODULE eis_error_mod
 
     CALL eis_append_string(report, REPEAT("=", 80))
     !Report that there is an error
-    IF (ALLOCATED(err_source) .AND. line_number > 0) THEN
+    IF (ALLOCATED(filename) .AND. line_number > 0) THEN
       ok = this%strings%get('err_is_error', temp)
-    ELSE IF (ALLOCATED(err_source)) THEN
-      ok = this%strings%get('err_is_error_file', temp)
+    ELSE IF (ALLOCATED(filename)) THEN
+      IF (TRIM(filename) == '{unknown}') THEN
+        ok = this%strings%get('err_is_error_only', temp)
+      ELSE
+        ok = this%strings%get('err_is_error_file', temp)
+      END IF
     ELSE
       ok = this%strings%get('err_is_error_only', temp)
     END IF
@@ -665,10 +667,11 @@ MODULE eis_error_mod
     !Print the context and location information
     IF (ALLOCATED(this%errors(index)%full_line)) THEN
       nchar = FLOOR(LOG10(REAL(charpos, eis_num)))+1
-      nline = FLOOR(LOG10(REAL(line_number, eis_num)))+1
+      nline = 0
+      IF (line_number > 0) nline = FLOOR(LOG10(REAL(line_number, eis_num)))+1
       nspace = MAX(nchar, nline)
       WRITE(format_str, '(A,I3,A)') '(I',nspace,')'
-      WRITE(linestr, format_str) line_number
+      WRITE(linestr, format_str) MAX(line_number, 1)
       WRITE(posstr, format_str) charpos
       CALL eis_append_string(report, "")
       spos = MAX(1, this%errors(index)%full_line_pos-10)
