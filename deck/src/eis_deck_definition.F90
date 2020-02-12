@@ -658,15 +658,6 @@ MODULE eis_deck_definition_mod
       IF (PRESENT(interop_parser)) THEN
         this%info%parser => eis_get_interop_parser(interop_parser)
       END IF
-      IF (.NOT. ASSOCIATED(this%info%parser)) THEN
-        this%info%owns_parser = .TRUE.
-        this%info%owns_interop = .TRUE.
-        ALLOCATE(this%info%parser)
-        IF (.NOT. stop_interop) THEN
-          this%info%interop_parser = eis_add_interop_parser(this%info%parser, &
-              owns = .FALSE.)
-        END IF
-      END IF
     END IF
 
   END FUNCTION dd_init
