@@ -87,6 +87,7 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), POINTER :: r32data => NULL()
     REAL(REAL64), POINTER :: r64data => NULL()
     LOGICAL, POINTER :: logicaldata => NULL()
+    TYPE(eis_stack), POINTER :: stackdata => NULL()
 
     INTEGER(INT32), DIMENSION(:), POINTER :: i32arraydata => NULL()
     INTEGER(INT64), DIMENSION(:), POINTER :: i64arraydata => NULL()
@@ -106,6 +107,7 @@ MODULE eis_deck_definition_mod
     INTEGER :: c_r32len = 1
     TYPE(C_PTR) :: c_r64data = C_NULL_PTR
     INTEGER :: c_r64len = 1
+    INTEGER :: c_stackdata = -1
 
     CHARACTER(LEN=:), ALLOCATABLE :: name
     INTEGER :: expected_params = -1
@@ -519,7 +521,7 @@ MODULE eis_deck_definition_mod
 
 
 
-  FUNCTION dd_init(this, init_deck, start_pass, start_deck, end_deck, &
+  FUNCTION dd_init(this, errcode, init_deck, start_pass, start_deck, end_deck, &
       end_pass, final_deck, any_key_text, any_key_value, &
       any_key_numeric_value, any_key_stack, block_remapper, c_init_deck, &
       c_start_pass, c_start_deck, c_end_deck, c_end_pass, c_final_deck, &
@@ -533,6 +535,7 @@ MODULE eis_deck_definition_mod
       c_on_start_pass, c_on_end_pass, c_on_final, c_on_generic_block_failure, &
       parser, interop_parser, text_fallback, no_interop) RESULT(root)
     CLASS(eis_deck_definition), INTENT(INOUT) :: this
+    INTEGER, INTENT(INOUT), OPTIONAL :: errcode
     PROCEDURE(block_generic_callback), OPTIONAL :: init_deck, final_deck
     PROCEDURE(block_generic_callback), OPTIONAL :: start_pass, end_pass
     PROCEDURE(block_callback), OPTIONAL :: start_deck, end_deck
@@ -585,6 +588,8 @@ MODULE eis_deck_definition_mod
     CLASS(eis_deck_block_definition), POINTER :: root
     INTEGER :: dummy
     LOGICAL :: stop_interop
+
+    IF (PRESENT(errcode)) errcode = eis_err_none
 
     root => this%root_definition
     IF (this%is_init) RETURN
@@ -1640,7 +1645,7 @@ MODULE eis_deck_definition_mod
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
       expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
-      text_fallback)
+      text_fallback, stackvalue, c_stackvalue)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1660,6 +1665,8 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), TARGET, OPTIONAL :: r32value
     REAL(REAL64), TARGET, OPTIONAL :: r64value
     LOGICAL, TARGET, OPTIONAL :: logicalvalue
+    TYPE(eis_stack), TARGET, OPTIONAL :: stackvalue
+    INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
     INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
     INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
     REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
@@ -1675,6 +1682,8 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), POINTER, OPTIONAL :: r32value
     REAL(REAL64), POINTER, OPTIONAL :: r64value
     LOGICAL, POINTER, OPTIONAL :: logicalvalue
+    TYPE(eis_stack), POINTER, OPTIONAL :: stackvalue
+    INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
     INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
     INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
     REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
@@ -1723,7 +1732,8 @@ MODULE eis_deck_definition_mod
         c_i64len = c_i64len, c_r32len = c_r32len, c_r64len = c_r64len, &
         init_flag = init_flag, i32count = i32count, i64count = i64count, &
         description = description, hidden = hidden, &
-        text_fallback = text_fallback)
+        text_fallback = text_fallback, stackvalue = stackvalue, &
+        c_stackvalue = c_stackvalue)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -1777,6 +1787,7 @@ MODULE eis_deck_definition_mod
     TYPE(eis_parser), POINTER :: ps
     INTEGER :: interop_parser, i_key_offset, i_value_offset
     LOGICAL :: run, any_candidates, isscalarvar, isarrayvar, non_value_blank
+    LOGICAL :: isstackvar
     INTEGER(INT32), DIMENSION(:), POINTER :: c_i32
     INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
     REAL(REAL32), DIMENSION(:), POINTER :: c_r32
@@ -1899,6 +1910,7 @@ MODULE eis_deck_definition_mod
     any_candidates = .FALSE.
     isscalarvar = .FALSE.
     isarrayvar = .FALSE.
+    isstackvar = .FALSE.
     IF (ASSOCIATED(dkd)) THEN
       isscalarvar = ANY([ASSOCIATED(dkd%i32data), ASSOCIATED(dkd%i64data), &
           ASSOCIATED(dkd%r32data), ASSOCIATED(dkd%r64data), &
@@ -1914,6 +1926,7 @@ MODULE eis_deck_definition_mod
            (C_ASSOCIATED(dkd%c_i64data) .AND. dkd%c_i64len > 1), &
            (C_ASSOCIATED(dkd%c_r32data) .AND. dkd%c_r32len > 1), &
            (C_ASSOCIATED(dkd%c_r64data) .AND. dkd%c_r64len > 1)])
+      isstackvar = ASSOCIATED(dkd%stackdata) .OR. dkd%c_stackdata > 0
       any_candidates = ANY([ASSOCIATED(dkd%key_text_fn), &
           ASSOCIATED(dkd%c_key_text_fn), &
           ASSOCIATED(dkd%key_value_fn), &
@@ -1922,10 +1935,13 @@ MODULE eis_deck_definition_mod
           ASSOCIATED(dkd%c_key_numeric_value_fn), &
           ASSOCIATED(dkd%key_stack_fn), &
           ASSOCIATED(dkd%c_key_stack_fn)])
-       any_candidates = any_candidates .OR. isscalarvar .OR. isarrayvar
-     ELSE
-       any_candidates = .FALSE.
-     END IF
+     any_candidates = any_candidates .OR. isscalarvar .OR. isarrayvar &
+         .OR. isstackvar
+   ELSE
+     any_candidates = .FALSE.
+   END IF
+
+    
 
     IF (any_candidates) THEN
       run = .NOT. ANY([dkd%use_eq, dkd%use_le, dkd%use_ge])
@@ -2176,6 +2192,33 @@ MODULE eis_deck_definition_mod
             status = IOR(status, this_stat)
           END IF
           handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
+        END IF
+      END IF
+
+      IF (isstackvar .AND. is_key_stack .AND. .NOT. handled) THEN
+        stack_err = eis_err_none
+        stack_ptr => dkd%stackdata
+        IF (.NOT. ASSOCIATED(dkd%stackdata)) stack_ptr &
+            => eis_get_interop_stack(dkd%c_stackdata)
+        IF (ASSOCIATED(stack_ptr)) THEN
+          IF (.NOT. PRESENT(value_function)) THEN
+            IF (is_key_value) THEN
+              CALL ps%tokenize(value, stack_ptr, stack_err, &
+                  filename = value_filename, line_number = value_line_number, &
+                  char_offset = value_offset, append = .TRUE.)
+              parser_error = stack_err /= eis_err_none
+            ELSE
+              stack_err = eis_err_bad_value
+            END IF
+          ELSE
+            CALL ps%set_result_function(value_function, stack_ptr, &
+                stack_err, append = .TRUE.)
+              parser_error = stack_err /= eis_err_none
+          END IF
+          handled = .TRUE.
+          errcode = IOR(errcode, stack_err)
+        ELSE
+          errcode = IOR(errcode, eis_err_bad_stack)
         END IF
       END IF
 
@@ -2699,7 +2742,7 @@ MODULE eis_deck_definition_mod
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
       c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
       expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
-      text_fallback)
+      text_fallback, stackvalue, c_stackvalue)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -2720,6 +2763,8 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), TARGET, OPTIONAL :: r32value
     REAL(REAL64), TARGET, OPTIONAL :: r64value
     LOGICAL, TARGET, OPTIONAL :: logicalvalue
+    TYPE(eis_stack), TARGET, OPTIONAL :: stackvalue
+    INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
     INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
     INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
     REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
@@ -2735,6 +2780,8 @@ MODULE eis_deck_definition_mod
     REAL(REAL32), POINTER, OPTIONAL :: r32value
     REAL(REAL64), POINTER, OPTIONAL :: r64value
     LOGICAL, POINTER, OPTIONAL :: logicalvalue
+    TYPE(eis_stack), POINTER, OPTIONAL :: stackvalue
+    INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
     INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
     INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
     REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
@@ -2785,6 +2832,9 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(i64array)) this%i64arraydata => i64array
     IF (PRESENT(r32array)) this%r32arraydata => r32array
     IF (PRESENT(r64array)) this%r64arraydata => r64array
+
+    IF (PRESENT(stackvalue)) this%stackdata => stackvalue
+    IF (PRESENT(c_stackvalue)) this%c_stackdata = c_stackvalue
 
     IF (PRESENT(init_flag)) this%set_variable => init_flag
     IF (PRESENT(i32count)) this%i32count_variable => i32count

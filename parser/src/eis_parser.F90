@@ -1176,8 +1176,9 @@ CONTAINS
   !> @param[in] line_number
   !> @param[in] char_offset
   !> @param[in] cap_bits
+  !> @param[in] append
   SUBROUTINE eip_set_eval_function(this, function_in, output, err, &
-      filename, line_number, char_offset, cap_bits)
+      filename, line_number, char_offset, cap_bits, append)
 
     CLASS(eis_parser) :: this
     !> Function to be called when the stack is evaluated
@@ -1196,12 +1197,19 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: char_offset
     !> Capability bits for the expression
     INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: cap_bits
+    !> Should the eval function be appended to the stack
+    LOGICAL, INTENT(IN), OPTIONAL :: append
+
+    LOGICAL :: should_append
 
     err = eis_err_none
 
     IF (.NOT. this%is_init) CALL this%init(err)
 
-    CALL initialise_stack(output)
+    should_append = .FALSE.
+    IF (PRESENT(append)) should_append = append
+
+    IF (.NOT. append) CALL initialise_stack(output)
     output%eval_fn => function_in
     CALL eis_allocate_string(output%filename, filename)
     IF (PRESENT(line_number)) THEN
@@ -1218,6 +1226,16 @@ CONTAINS
       output%cap_bits = cap_bits
     ELSE
       output%cap_bits = 0_eis_bitmask
+    END IF
+
+    IF (should_append) THEN
+      CALL this%registry%result_function_to_functor_stack(output, err)
+      IF (err /= eis_err_none) THEN
+        CALL this%err_handler%add_error(eis_err_parser, err, &
+            filename = filename, &
+            line_number = line_number)
+        RETURN
+      END IF
     END IF
 
   END SUBROUTINE eip_set_eval_function
@@ -1301,7 +1319,6 @@ CONTAINS
       output%char_offset = 0
     END IF
 
-    IF (ASSOCIATED(output%eval_fn)) NULLIFY(output%eval_fn)
     IF (should_dealloc) THEN
       CALL deallocate_stack(output)
     ELSE
