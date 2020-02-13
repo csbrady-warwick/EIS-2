@@ -1342,18 +1342,24 @@ CONTAINS
   !> @param[in] stack_in
   !> @param[inout] errcode
   !> @param[inout] stack_out
-  SUBROUTINE eir_rf_to_fs(this, stack_in, errcode, output_stack)
+  !> @param[in] append
+  SUBROUTINE eir_rf_to_fs(this, stack_in, errcode, output_stack, append)
     CLASS(eis_registry) :: this
     !> Stack containing
     TYPE(eis_stack), INTENT(INOUT), TARGET :: stack_in
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: output_stack
+    LOGICAL, INTENT(IN), OPTIONAL :: append
     INTEGER :: i, dummy
     CLASS(*), POINTER :: gptr
     CLASS(parser_result_functor), POINTER :: eval_functor
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
     TYPE(eis_stack), POINTER :: res_stack
+    LOGICAL :: should_append
+
+    should_append = .FALSE.
+    IF (PRESENT(append)) should_append = append
 
     errcode = eis_err_none
 
@@ -1393,7 +1399,11 @@ CONTAINS
     iblock%can_simplify = .FALSE.
     ALLOCATE(icoblock%text, SOURCE = stack_in%full_line)
 
-    CALL initialise_stack(res_stack)
+    IF (.NOT. should_append) THEN
+      CALL initialise_stack(res_stack)
+    ELSE
+      res_stack%eval_fn => NULL()
+    END IF
     CALL push_to_stack(res_stack, iblock, icoblock)
 
   END SUBROUTINE eir_rf_to_fs

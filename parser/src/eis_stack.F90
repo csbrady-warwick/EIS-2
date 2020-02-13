@@ -22,6 +22,7 @@ MODULE eis_stack_mod
     CALL initialise_stack_element(stack%entries)
     CALL initialise_stack_co_element(stack%co_entries)
     stack%init = .TRUE.
+    stack%eval_fn => NULL()
 
   END SUBROUTINE initialise_stack
 

@@ -342,6 +342,7 @@ MODULE eis_deck_from_text_mod
   !> @brief
   !> Initialise function for the parser
   !> @param[inout] this
+  !> @param[inout] errcode
   !> @param[in] err_handler
   !> @param[in] parser
   !> @param[in] unknown_block_is_fatal
@@ -351,10 +352,13 @@ MODULE eis_deck_from_text_mod
   !> @param[in] end_pass_on_error
   !> @param[in] finalize_on_error
   !> @param[in] host_params
-  SUBROUTINE tdp_init(this, err_handler, parser, unknown_block_is_fatal, &
-      unknown_key_is_fatal, bad_key_is_fatal, non_value_line_is_blank, &
-      end_pass_on_error, finalize_on_error, host_params)
+  SUBROUTINE tdp_init(this, errcode, err_handler, parser, &
+      unknown_block_is_fatal, unknown_key_is_fatal, bad_key_is_fatal, &
+      non_value_line_is_blank, end_pass_on_error, finalize_on_error, &
+      host_params)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
+    !> Error code from initialisation
+    INTEGER, INTENT(INOUT), OPTIONAL :: errcode
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
     CLASS(eis_error_handler), INTENT(IN), POINTER, OPTIONAL :: err_handler
@@ -382,6 +386,8 @@ MODULE eis_deck_from_text_mod
     INTEGER(eis_error) :: err
 
     this%is_init = .TRUE.
+
+    IF (PRESENT(errcode)) errcode = eis_err_none
 
     !If you specify an error handler then this becomes the error handler
     !unless you specify a NULL error handler in which case the existing handler
