@@ -454,7 +454,6 @@ MODULE eis_string_deck_mod
     INTEGER :: iline, cloc, ln, lnm
     CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename
     LOGICAL :: found
-    INTEGER, DIMENSION(2) :: ranges
 
     CALL this%clear_blocklist()
 
@@ -476,10 +475,10 @@ MODULE eis_string_deck_mod
         IF (cloc < LEN(str)) THEN
           iline = iline - 1 !Decrement because deleting line
           found = this%data%strings%delete(iline)
-          ALLOCATE(import_filename, SOURCE = this%import_prefix &
-              // TRIM(ADJUSTL(str(cloc+1:))))
+          !ALLOCATE(import_filename, SOURCE = this%import_prefix &
+          !    // TRIM(ADJUSTL(str(cloc+1:))))
           errcode = eis_err_none
-          ranges = this%data%strings%load_from_ascii_file(&
+          CALL this%data%strings%load_from_ascii_file(&
               this%import_prefix // TRIM(ADJUSTL(str(cloc+1:))), errcode, &
               index_start = iline, &
               filename_processor = this%filename_processor, &
@@ -533,17 +532,17 @@ MODULE eis_string_deck_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: parsed_text
     !> Raw text from the file
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
-    INTEGER, DIMENSION(2) :: ranges
     INTEGER(eis_error) :: ierr
     CHARACTER(LEN=:), ALLOCATABLE :: ext
     LOGICAL :: got
+    CHARACTER(LEN=:), ALLOCATABLE :: temp
 
     errcode = eis_err_none
     ierr = eis_err_none
     CALL this%init(ierr)
     errcode = IOR(errcode, ierr)
-    ranges = this%data%strings%load_from_ascii_file(filename, errcode, &
-        raw_text = raw_text, filename_processor = this%filename_processor, &
+    CALL this%data%strings%load_from_ascii_file(filename, errcode, &
+        filename_processor = this%filename_processor, &
         file_text_processor = this%file_text_processor, final_filename = ext)
     got = ALLOCATED(ext)
     IF (got) got = got .AND. LEN(ext) > 0
@@ -566,7 +565,10 @@ MODULE eis_string_deck_mod
     errcode = IOR(errcode, ierr)
     IF (PRESENT(parsed_text)) THEN
       CALL this%data%strings%serialise(parsed_text)
-      RETURN
+    END IF
+
+    IF (PRESENT(raw_text)) THEN
+      CALL this%data%strings%get_raw(raw_text)
     END IF
 
   END SUBROUTINE esd_parse_deck_file

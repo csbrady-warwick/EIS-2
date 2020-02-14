@@ -362,13 +362,12 @@ CONTAINS
     CLASS(eis_key_value_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    INTEGER, DIMENSION(2) :: ranges
     TYPE(eis_string_store) :: raw_strings
     CHARACTER(LEN=:), ALLOCATABLE :: str
     INTEGER :: istr
     LOGICAL :: ok
 
-    ranges = raw_strings%load_from_ascii_file(filename, errcode)
+    CALL raw_strings%load_from_ascii_file(filename, errcode)
     CALL raw_strings%remove_blank_lines()
     CALL raw_strings%combine_split_lines("\")
     DO istr = 1, raw_strings%get_size()
