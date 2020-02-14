@@ -85,6 +85,7 @@ MODULE eis_string_store_mod
     PROCEDURE, PUBLIC :: remove_whitespace => ess_remove_whitespace
     PROCEDURE, PUBLIC :: serialise => ess_serialise
     PROCEDURE, PUBLIC :: deserialise => ess_deserialise
+    PROCEDURE, PUBLIC :: get_raw => ess_raw
 
   END TYPE eis_string_store
 
@@ -847,10 +848,10 @@ CONTAINS
   !> @param[in] index_start
   !> @param[out] raw_text
   !> @param[out] final_filename
-  !> @return index_range
-  FUNCTION ess_load_from_ascii_file(this, filename, errcode, index_start, &
-      raw_text, filename_processor, file_text_processor, final_filename) &
-      RESULT(index_range)
+  !> @param[out] index_range
+  SUBROUTINE ess_load_from_ascii_file(this, filename, errcode, index_start, &
+      raw_text, filename_processor, file_text_processor, final_filename, &
+      index_range)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -860,7 +861,8 @@ CONTAINS
     PROCEDURE(file_text_processor_proto), POINTER, OPTIONAL :: &
         file_text_processor
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT), OPTIONAL :: final_filename
-    INTEGER, DIMENSION(2) :: index_range
+    INTEGER, DIMENSION(2), INTENT(OUT), OPTIONAL :: index_range
+    INTEGER, DIMENSION(2) :: temp
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
 
     errcode = eis_err_none
@@ -877,7 +879,7 @@ CONTAINS
     END IF
      
     CALL eis_load_file_to_string(fname, str)
-    index_range = -1
+    IF (PRESENT(index_range)) index_range = -1
     IF (.NOT. ALLOCATED(str)) THEN
       errcode = IOR(errcode, eis_err_no_file)
       RETURN
@@ -890,10 +892,11 @@ CONTAINS
 
     IF (PRESENT(raw_text)) ALLOCATE(raw_text, SOURCE = str)
 
-    index_range = this%populate(str, errcode, index_start, filename = fname)
+    temp = this%populate(str, errcode, index_start, filename = fname)
+    IF (PRESENT(index_range)) index_range = temp
     DEALLOCATE(str)
 
-  END FUNCTION ess_load_from_ascii_file
+  END SUBROUTINE ess_load_from_ascii_file
 
 
 
@@ -1090,10 +1093,15 @@ CONTAINS
     INTEGER :: istr, sindex
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str
     LOGICAL :: ok
+    INTEGER :: chari
+    INTEGER, PARAMETER :: c_char_tab = 9
 
     CALL this%strings%enable_disorder()
     DO istr = 1, this%get_size()
       ok = this%get(istr, str)
+      DO chari = 1, LEN(str)
+        IF (IACHAR(str(chari:chari)) == c_char_tab) str(chari:chari) = ' '
+      END DO
       sindex = this%store(TRIM(ADJUSTL(str)), istr, &
           extra_trimmed_white_space_length = LEN(TRIM(str)) &
           - LEN(TRIM(ADJUSTL(str))))
@@ -1101,6 +1109,28 @@ CONTAINS
     CALL this%strings%disable_disorder()
 
   END SUBROUTINE ess_remove_whitespace
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get stored strings in raw line by line format
+  !> @param[in] this
+  !> @param[out] str
+  SUBROUTINE ess_raw(this, str)
+    CLASS(eis_string_store), INTENT(INOUT) :: this
+    !> String holding the portable representation
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(OUT) :: str
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str_rec
+    INTEGER :: istr
+    LOGICAL :: ok
+
+    DO istr = 1, this%get_size()
+      ok = this%get(istr, str_rec)
+      CALL eis_append_string(str, str_rec)
+    END DO
+
+  END SUBROUTINE ess_raw
 
 
 

@@ -763,7 +763,7 @@ MODULE eis_deck_caller_mod
     IF (has_value) has_value = has_value .AND. LEN(value_text) > 0
 
     IF (.NOT. has_value) THEN
-      CALL this%current_block%definition%call_key(key_text, &
+      CALL this%current_block%definition%call_key_text(key_text, &
           this%current_parents(1:this%current_level), pass_l, host_state_l, &
           errcode, key_filename = key_info%key_filename, &
           key_line_number = key_info%key_line_number, &
@@ -1180,7 +1180,8 @@ MODULE eis_deck_caller_mod
 
           IF (.NOT. ALLOCATED(sptr%key%value_text)) THEN
             IF (ALLOCATED(sptr%key%trimmed_line_text)) THEN
-              CALL this%current_block%definition%call_key(sptr%key%key_text, &
+              CALL this%current_block%definition%call_key_text(&
+                  sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
                   host_state_l, errcode, key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
@@ -1191,7 +1192,8 @@ MODULE eis_deck_caller_mod
                   host_params = sptr%host_params, &
                   trimmed_line_text = sptr%key%trimmed_line_text)
             ELSE
-              CALL this%current_block%definition%call_key(sptr%key%key_text, &
+              CALL this%current_block%definition%call_key_text(&
+                  sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
                   host_state_l, errcode, key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
@@ -1203,7 +1205,8 @@ MODULE eis_deck_caller_mod
             END IF
           ELSE
             IF (ALLOCATED(sptr%key%trimmed_line_text)) THEN
-              CALL this%current_block%definition%call_key(sptr%key%key_text, &
+              CALL this%current_block%definition%call_key_text(&
+                  sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
                   host_state_l, errcode, key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
@@ -1218,7 +1221,8 @@ MODULE eis_deck_caller_mod
                   host_params = sptr%host_params, &
                   trimmed_line_text = sptr%key%trimmed_line_text)
             ELSE
-              CALL this%current_block%definition%call_key(sptr%key%key_text, &
+              CALL this%current_block%definition%call_key_text(&
+                  sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
                   host_state_l, errcode, key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
