@@ -228,8 +228,16 @@ MODULE eis_deck_from_text_mod
       END IF
     END DO
 
+    this_errcode = eis_err_none
     CALL definition%end_block(block_parents, pass_number, this_status, &
         this_errcode, host_state = this_host, display_name=block%block_name)
+
+    IF (this_errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_deck_parser, this_errcode, &
+          filename = block%filename, line_number = block%line_number)
+    END IF
+
+    errcode = IOR(errcode, this_errcode)
 
   END SUBROUTINE tdp_call_blocks
 
