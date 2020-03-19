@@ -160,6 +160,7 @@ MODULE eis_error_mod
           &subscript a constant')
       CALL this%strings%store('err_extra_bracket', 'Extraneous bracket')
       CALL this%strings%store('err_bad_stack', 'Invalid or unavailable stack')
+      CALL this%strings%store('err_bad_parser', 'Invalid or unavailable parser')
       CALL this%strings%store('err_extra_results', 'Unexpected additional &
           &results from a stack')
 
@@ -464,6 +465,9 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_bad_stack) /= 0) THEN
       ok = this%strings%append('err_bad_stack', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_bad_parser) /= 0) THEN
+      ok = this%strings%append('err_bad_parser', err_string)
     END IF
 
     !Errors from deck parser

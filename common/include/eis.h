@@ -8,6 +8,12 @@
 #define EIS_BITMASK int64_t
 #define EIS_NUM double
 
+#ifdef __cplusplus
+#define EXTERN extern "C"
+#else
+#define EXTERN extern
+#endif
+
   /*Error constants*/
   const EIS_ERROR eis_err_none                 = 0x0LL;
   const EIS_ERROR eis_err_parser               = 0x1LL;
@@ -44,5 +50,8 @@
   const EIS_ERROR eis_err_text                 = 0x800000000LL;
   const EIS_ERROR eis_err_interop              = 0x1000000000LL;
   const EIS_ERROR eis_err_out_of_range         = 0x2000000000LL;
+  const EIS_ERROR eis_err_stack_params         = 0x4000000000LL;
+  const EIS_ERROR eis_err_invalid_minify       = 0x8000000000LL;
+  const EIS_ERROR eis_err_bad_parser           = 0x1000000000LL;
 
 #endif

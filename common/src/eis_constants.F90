@@ -142,13 +142,16 @@ MODULE eis_constants
   !> Trying to perform an operation that is invalid after minification
   INTEGER(eis_error), PARAMETER :: eis_err_invalid_minify &
       = 2_eis_error**35_eis_error
+  !> Requested a bad parser through the interoperability interface
+  INTEGER(eis_error), PARAMETER :: eis_err_bad_parser &
+      = 2_eis_error**36_eis_error
 
   !> No status specified
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0
   !> Terminate operations status
   INTEGER(eis_status), PARAMETER :: eis_status_terminate = 2**0
-  !Interoperable stack should be retained
-  INTEGER(eis_status), PARAMETER :: eis_status_retain_stack = 2**1
+  !Interoperable stack is a temporary and should be deleted
+  INTEGER(eis_status), PARAMETER :: eis_status_delete_stack = 2**1
   !> This element in a stack should not be simplified through
   INTEGER(eis_status), PARAMETER :: eis_status_no_simplify = 2**2
   !> This element in a stack is an emplaced value that should not be emplaced

@@ -1780,7 +1780,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: handled, is_key_value, is_directive, is_key_stack
     CHARACTER(LEN=:), ALLOCATABLE :: key, value, line_text
     TYPE(eis_stack), TARGET :: stack
-    TYPE(eis_stack), POINTER :: stack_ptr
+    CLASS(eis_stack), POINTER :: stack_ptr
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: value_array
     CHARACTER(LEN=1), DIMENSION(:), ALLOCATABLE, TARGET :: c_key_text, c_key, &
         c_value, c_line_text
@@ -2172,8 +2172,7 @@ MODULE eis_deck_definition_mod
         IF (stack_err /= eis_err_none) errcode = IOR(errcode, stack_err)
         IF (ASSOCIATED(dkd%c_key_stack_fn) .AND. stack_err == eis_err_none &
             .AND. .NOT. handled) THEN
-          ALLOCATE(stack_ptr)
-          stack_ptr = stack
+          ALLOCATE(stack_ptr, SOURCE = stack)
           stack_id = eis_add_interop_stack(stack_ptr, &
               interop_parser, owns = .TRUE.)
           this_err = eis_err_none
@@ -2182,7 +2181,7 @@ MODULE eis_deck_definition_mod
               INT(pass_number, C_INT), interop_parser, &
               SIZE(parents, KIND = C_INT), INT(parents, C_INT), &
               INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
-          IF (IAND(this_stat, eis_status_retain_stack) == 0) &
+          IF (IAND(this_stat, eis_status_delete_stack) /= 0) &
               CALL eis_release_interop_stack(stack_id)
           !If the block is flagged handled then you care about the error code
           !value
@@ -2610,7 +2609,7 @@ MODULE eis_deck_definition_mod
               INT(pass_number, C_INT), interop_parser, &
               SIZE(parents, KIND = C_INT), INT(parents, C_INT), &
               INT(parent_kind, C_INT), this_stat, this_bitmask, this_err)
-          IF (IAND(this_stat, eis_status_retain_stack) == 0) &
+          IF (IAND(this_stat, eis_status_delete_stack) /= 0) &
               CALL eis_release_interop_stack(stack_id)
           !If the block is flagged handled then you care about the error code
           !value

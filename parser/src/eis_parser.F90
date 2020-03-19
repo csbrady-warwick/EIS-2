@@ -65,6 +65,7 @@ MODULE eis_parser_mod
   TYPE :: parser_holder
     CLASS(eis_parser), POINTER :: contents => NULL()
     LOGICAL :: owns = .FALSE.
+    INTEGER :: refcount = 1
     CONTAINS
     FINAL :: ph_destructor
   END TYPE parser_holder
@@ -154,6 +155,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: add_functor => eip_add_functor
     PROCEDURE, PUBLIC :: add_functor_pointer => eip_add_functor_ptr
+
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: tokenize_number => eip_tokenize_number
     PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
@@ -162,6 +164,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: minify => eip_minify
     PROCEDURE, PUBLIC :: undefer => eip_undefer
     PROCEDURE, PUBLIC :: emplace => eip_emplace
+
     PROCEDURE, PUBLIC :: print_errors => eip_print_errors
     PROCEDURE, PUBLIC :: get_error_count => eip_get_error_count
     PROCEDURE, PUBLIC :: get_error_report => eip_get_error_report
@@ -176,6 +179,7 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: optimize => eip_optimise
     PROCEDURE, PUBLIC :: get_text => eip_get_text
     PROCEDURE, PUBLIC :: combine_stacks => eip_combine_stacks
+    PROCEDURE, PUBLIC :: blank_stack => eip_blank_stack
 
     PROCEDURE, PUBLIC :: get_global_symbol_count => eip_get_global_symbol_count
     PROCEDURE, PUBLIC :: get_global_symbol => eip_get_global_symbol
@@ -198,7 +202,7 @@ MODULE eis_parser_mod
   PUBLIC :: eis_get_interop_parser, eis_get_interop_stack
   PUBLIC :: eis_add_interop_parser, eis_add_interop_stack
   PUBLIC :: eis_release_interop_parser, eis_release_interop_stack
-  PUBLIC :: eis_fast_evaluate, eis_iter_evaluate
+  PUBLIC :: eis_fast_evaluate, eis_iter_evaluate, eis_copy_interop_stack
 
 CONTAINS
 
@@ -229,7 +233,7 @@ CONTAINS
     !> Parser index to retrieve
     INTEGER, INTENT(IN) :: index
     !> Pointer to parser
-    TYPE(eis_parser), POINTER :: eis_get_interop_parser
+    CLASS(eis_parser), POINTER :: eis_get_interop_parser
     eis_get_interop_parser => NULL()
     IF (index < 1 .OR. index > interop_parser_count) RETURN
     eis_get_interop_parser => interop_parsers(index)%contents
@@ -248,9 +252,9 @@ CONTAINS
     !> Stack index to retreive
     INTEGER, INTENT(IN) :: index
     !> Pointer to parser that generated the stack (optional)
-    TYPE(eis_parser), POINTER, OPTIONAL, INTENT(OUT) :: parser
+    CLASS(eis_parser), POINTER, OPTIONAL, INTENT(OUT) :: parser
     !> Pointer to requested stack
-    TYPE(eis_stack), POINTER :: eis_get_interop_stack
+    CLASS(eis_stack), POINTER :: eis_get_interop_stack
     eis_get_interop_stack => NULL()
     IF (PRESENT(parser)) parser => NULL()
     IF (index < 1 .OR. index > interop_stack_count) RETURN
@@ -309,7 +313,7 @@ CONTAINS
   !> @return eis_get_interop_stack
   FUNCTION eis_add_interop_stack(stack, parser_index, owns)
     !> Stack to make interoperable
-    TYPE(eis_stack), POINTER, INTENT(INOUT) :: stack
+    CLASS(eis_stack), POINTER, INTENT(INOUT) :: stack
     !> Index of the interoperable parser that generated the stack
     INTEGER, INTENT(IN) :: parser_index
     !> Whether or not the interoperability layer owns the canonical
@@ -368,7 +372,7 @@ CONTAINS
     IF (index < 1 .OR. index > interop_parser_count) RETURN
     IF (index == interop_parser_count) &
         interop_parser_count = interop_parser_count - 1
-    IF (.NOT. gone) interop_parsers(index)%contents%interop_id = -1
+    IF (.NOT. is_gone) interop_parsers(index)%contents%interop_id = -1
     IF (interop_parsers(index)%owns) DEALLOCATE(interop_parsers(index)&
         %contents)
     interop_parsers(index)%contents => NULL()
@@ -405,6 +409,7 @@ CONTAINS
   END SUBROUTINE eis_release_interop_stack
 
 
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Copy an interoperable stack
@@ -413,8 +418,8 @@ CONTAINS
   FUNCTION eis_copy_interop_stack(index)
     INTEGER, INTENT(IN) :: index !< Source stack
     INTEGER :: eis_copy_interop_stack !< UID of copied stack
-    TYPE(eis_parser), POINTER :: parser
-    TYPE(eis_stack), POINTER :: old, new
+    CLASS(eis_parser), POINTER :: parser
+    CLASS(eis_stack), POINTER :: old, new
 
     eis_copy_interop_stack = -1
     old => eis_get_interop_stack(index, parser = parser)
@@ -457,6 +462,8 @@ CONTAINS
     REAL(eis_num), PARAMETER :: pi = 3.141592653589793238462643383279503_eis_num
     REAL(eis_num) :: c
     LOGICAL :: no_import_l
+
+    errcode = eis_err_none
 
     IF (this%owns_err_handler .AND. ASSOCIATED(this%err_handler)) &
         DEALLOCATE(this%err_handler)
@@ -841,7 +848,8 @@ CONTAINS
 
     char_type = eis_char_unknown
 
-    IF (chr == ' ') THEN
+    !Non printable characters are spaces
+    IF (IACHAR(chr) <= 32) THEN
       char_type = eis_char_space
     ELSE IF (chr >= '0' .AND. chr <= '9' .OR. chr == '.') THEN
       char_type = eis_char_numeric
@@ -1223,9 +1231,7 @@ CONTAINS
       output%char_offset = 0
     END IF
     IF (PRESENT(cap_bits)) THEN
-      output%cap_bits = cap_bits
-    ELSE
-      output%cap_bits = 0_eis_bitmask
+      output%cap_bits = IOR(output%cap_bits, cap_bits)
     END IF
 
     IF (should_append) THEN
@@ -1394,10 +1400,12 @@ CONTAINS
       END IF
     END DO
 
-    CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-        cap_bits, charindex + output%char_offset,  charindex, output, err, &
-        filename, line_number, expression, atext)
-    output%cap_bits = IOR(output%cap_bits, cap_bits)
+    IF (current_type /= eis_char_space) THEN
+      CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
+          cap_bits, charindex + output%char_offset,  charindex, output, err, &
+          filename, line_number, expression, atext)
+      output%cap_bits = IOR(output%cap_bits, cap_bits)
+    END IF
 
     IF (err == eis_err_none) THEN
       DO i = this%stack%stack_point, 1, -1
@@ -1792,7 +1800,7 @@ CONTAINS
         stack_late_bind_fn_c
     INTEGER(eis_status) :: status_code
     TYPE(eis_stack), DIMENSION(:), ALLOCATABLE :: stacks
-    TYPE(eis_stack), POINTER :: inter_stack
+    CLASS(eis_stack), POINTER :: inter_stack
     INTEGER(eis_status_c), DIMENSION(:), ALLOCATABLE :: per_stack_params
     INTEGER(C_INT), DIMENSION(:), ALLOCATABLE :: interop_param_stack_ids
     INTEGER :: rcount
@@ -1904,7 +1912,7 @@ CONTAINS
       !Now go through and release the stacks unless the interop function said
       !to keep them. Go backwards so the interop list shrinks properly
       DO inode = nparams, 1, -1
-        IF (IAND(per_stack_params(inode), eis_status_retain_stack) == 0) THEN
+        IF (IAND(per_stack_params(inode), eis_status_delete_stack) /= 0) THEN
           CALL eis_release_interop_stack(interop_param_stack_ids(inode))
         END IF
       END DO
@@ -2023,12 +2031,13 @@ CONTAINS
       remaining_functions = .TRUE.
     END IF
 
-    IF (interop_stack_id > 0 &
-        .AND. IAND(status_code, eis_status_retain_stack) == 0) THEN
-      CALL eis_release_interop_stack(interop_stack_id)
+    IF (interop_stack_id > 0) THEN
+      IF (IAND(status_code, eis_status_delete_stack) /= 0) THEN
+        CALL eis_release_interop_stack(interop_stack_id)
+      END IF
+    ELSE
+      CALL deallocate_stack(emplace_stack)
     END IF
-
-    CALL deallocate_stack(emplace_stack)
 
   END SUBROUTINE eip_emplace_node
 
@@ -2890,8 +2899,8 @@ CONTAINS
   !> @param[in] global
   !> @param[in] description
   !> @param[in] hidden
-  SUBROUTINE eip_add_constant_defer(this, name, errcode, &
-      can_simplify, global, cap_bits, description, hidden)
+  SUBROUTINE eip_add_constant_defer(this, name, errcode, cap_bits, &
+      can_simplify, global, description, hidden)
 
     CLASS(eis_parser) :: this
     !> Name to register variable with. Will be used in expressions to
@@ -3232,6 +3241,7 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
+    errcode = eis_err_none
     CALL this%registry%add_emplaced_function(name, errcode, &
         err_handler = this%err_handler, &
         expected_parameters = expected_params, description = description, &
@@ -3270,6 +3280,7 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
+    errcode = eis_err_none
     CALL this%registry%add_emplaced_function(name, errcode, &
         err_handler = this%err_handler, &
         expected_parameters = expected_params, description = description, &
@@ -3307,6 +3318,7 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
 
+    errcode = eis_err_none
     CALL this%registry%add_emplaced_function(name, errcode, &
         err_handler = this%err_handler, &
         expected_parameters = expected_params, description = description, &
@@ -3885,6 +3897,20 @@ CONTAINS
     END IF
 
   END SUBROUTINE eip_combine_stacks
+
+
+
+  !> @brief
+  !> Convert a stack to an unintialised stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  SUBROUTINE eip_blank_stack(this, stack)
+    CLASS(eis_parser) :: this
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+
+    CALL deallocate_stack(stack)
+
+  END SUBROUTINE eip_blank_stack
 
 
 
