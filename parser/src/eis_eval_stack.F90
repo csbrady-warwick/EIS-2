@@ -1,4 +1,5 @@
 MODULE eis_eval_stack_mod
+!      ALLOCATE(root)
 
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_header
@@ -54,9 +55,9 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
-    IF (element%ptype == eis_pt_constant) THEN
+    IF (element%rtype == eis_pt_constant) THEN
       CALL ees_push(this, element%numerical_data, errcode)
-    ELSE IF (element%ptype == eis_pt_pointer_variable) THEN
+    ELSE IF (element%rtype == eis_pt_pointer_variable) THEN
       IF (ASSOCIATED(element%i32data)) &
           CALL ees_push(this, REAL(element%i32data, eis_num), errcode)
       IF (ASSOCIATED(element%i64data)) &

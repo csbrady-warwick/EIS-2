@@ -1,4 +1,4 @@
-!Copyright (c) 2019, C.S.Brady
+!Copyrigh (c) 2019, C.S.Brady
 
 !All rights reserved.
 
@@ -118,6 +118,7 @@ MODULE eis_parser_mod
     PROCEDURE :: add_stack_variable_defer &
         => eip_add_stack_variable_defer
     PROCEDURE :: emplace_node => eip_emplace_node
+    PROCEDURE :: inline_function_expand => eip_inline_function_expand
     PROCEDURE :: add_function_now => eip_add_function_now
     PROCEDURE :: add_function_defer => eip_add_function_defer
     PROCEDURE :: add_variable_now => eip_add_variable_now
@@ -135,6 +136,9 @@ MODULE eis_parser_mod
     PROCEDURE :: evaluate_string => eip_evaluate_string
     PROCEDURE :: get_registry_symbol_count => eip_get_registry_symbol_count
     PROCEDURE :: get_registry_symbol => eip_get_registry_symbol
+    PROCEDURE :: tokenize_inner => eip_tokenize_inner
+    PROCEDURE :: replace_fn => eip_replace_fn
+    PROCEDURE :: expand_fn => eip_expand_fn
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
@@ -144,6 +148,7 @@ MODULE eis_parser_mod
     GENERIC, PUBLIC :: add_integer_constant => add_constant_i4, add_constant_i8
     GENERIC, PUBLIC :: add_stack_variable => add_stack_variable_stack, &
         add_stack_variable_string, add_stack_variable_defer
+    PROCEDURE, PUBLIC :: add_stack_function => eip_add_stack_function
     PROCEDURE, PUBLIC :: add_emplaced_function &
         => eip_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_stack_function &
@@ -221,6 +226,75 @@ CONTAINS
       DEALLOCATE(this%err_handler)
     END IF
   END SUBROUTINE eip_destructor
+
+
+
+  SUBROUTINE eip_expand_fn(this, stack, errcode)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    TYPE(eis_tree_item), POINTER :: root
+    INTEGER :: sp
+    TYPE(eis_stack) :: intermediate, output
+
+    errcode = eis_err_none
+
+    sp = stack%stack_point + 1
+    CALL initialise_stack(output)
+    DO WHILE (sp > 1)
+      ALLOCATE(root)
+      CALL eis_build_node(stack, sp, root)
+      errcode = eis_err_none
+      CALL this%replace_fn(root, errcode)
+      IF (errcode /= eis_err_none) THEN
+        DEALLOCATE(root)
+        RETURN
+      END IF
+      CALL initialise_stack(intermediate)
+      CALL eis_tree_to_stack(root, intermediate)
+      CALL prepend_stack(output, intermediate)
+      CALL deallocate_stack(intermediate)
+      DEALLOCATE(root)
+    END DO
+    stack = output
+
+  END SUBROUTINE eip_expand_fn
+
+
+
+  RECURSIVE SUBROUTINE eip_replace_fn(this, node, errcode)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    TYPE(eis_tree_item), INTENT(INOUT) :: node
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: inode, sp
+    INTEGER(eis_error) :: errcode_l
+    TYPE(eis_stack) :: stack
+    TYPE(eis_tree_item), POINTER :: node2
+
+    errcode = eis_err_none
+
+    IF (ASSOCIATED(node%nodes)) THEN
+      DO inode = 1, SIZE(node%nodes)
+        CALL this%replace_fn(node%nodes(inode), errcode_l)
+        errcode = IOR(errcode, errcode_l)
+      END DO
+    END IF
+
+    IF (node%value%rtype == eis_pt_stack_function) THEN
+      CALL this%registry%get_stack_function(node%value%value, stack, errcode)
+      sp = stack%stack_point + 1
+      ALLOCATE(node2)
+      CALL eis_build_node(stack, sp, node2)
+      IF (ASSOCIATED(node%nodes)) THEN
+        CALL this%inline_function_expand(node2, node%nodes, errcode)
+        CALL eis_copy_tree(node2, node)
+      ELSE
+        errcode = eis_err_wrong_parameters
+      END IF
+      DEALLOCATE(node2)
+    END IF
+
+  END SUBROUTINE eip_replace_fn
 
 
 
@@ -1091,7 +1165,10 @@ CONTAINS
   !> @param[out] iblock
   !> @param[out] icoblock
   !> @param[in] unary
-  SUBROUTINE eip_load_block(this, name, iblock, icoblock, unary)
+  !> @param[in] allow_params
+  !> @param[in] allow_dparams
+  SUBROUTINE eip_load_block(this, name, iblock, icoblock, unary, allow_params, &
+      allow_dparams)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to look up in registry
@@ -1101,12 +1178,23 @@ CONTAINS
     TYPE(eis_stack_co_element), INTENT(OUT) :: icoblock
     !> Can this be a unary operator
     LOGICAL, INTENT(IN), OPTIONAL :: unary
+    !> Is it possible to be specifying parameters in this block
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_params
+    !> Is it possible to be specifying deriviate parameters in this block
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_dparams
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
-    LOGICAL :: can_be_unary
+    LOGICAL :: can_be_unary, should_allow_params, should_allow_dparams
     INTEGER :: slen
 
+    should_allow_params = .FALSE.
+    IF (PRESENT(allow_params)) should_allow_params = allow_params
+
+    should_allow_dparams = .FALSE.
+    IF (PRESENT(allow_dparams)) should_allow_dparams = allow_params
+
     iblock%ptype = eis_pt_bad
+    iblock%rtype = eis_pt_bad
     iblock%value = 0
     iblock%numerical_data = 0.0_eis_num
     IF (ALLOCATED(icoblock%text)) DEALLOCATE(icoblock%text)
@@ -1115,6 +1203,7 @@ CONTAINS
 
     IF (LEN(TRIM(name)) == 0) THEN
       iblock%ptype = eis_pt_null
+      iblock%rtype = eis_pt_null
       iblock%value = 0
       iblock%numerical_data = 0.0_eis_num
       RETURN
@@ -1124,12 +1213,14 @@ CONTAINS
     IF (work /= 0) THEN
       ! block is a parenthesis
       iblock%ptype = eis_pt_parenthesis
+      iblock%ptype = eis_pt_parenthesis
       iblock%value = INT(work, eis_i4)
       RETURN
     END IF
 
     IF (strcmp(name, ',')) THEN
       iblock%ptype = eis_pt_separator
+      iblock%rtype = eis_pt_separator
       iblock%value = 0
       RETURN
     END IF
@@ -1137,6 +1228,7 @@ CONTAINS
     slen = LEN_TRIM(name)
     IF (strcmp(name(1:1), '"') .AND. strcmp(name(slen:slen), '"')) THEN
       iblock%ptype = eis_pt_character
+      iblock%rtype = eis_pt_character
       RETURN
     END IF
 
@@ -1153,6 +1245,22 @@ CONTAINS
       can_be_unary = unary
     END IF
 
+    IF (name == "param" .AND. should_allow_params) THEN
+      iblock%ptype = eis_pt_function
+      iblock%rtype = eis_pt_param
+      icoblock%expected_params = 1
+      iblock%can_simplify = .FALSE.
+      RETURN
+    END IF
+
+    IF (name == "dparam" .AND. should_allow_dparams) THEN
+      iblock%ptype = eis_pt_function
+      iblock%rtype = eis_pt_dparam
+      icoblock%expected_params = 1
+      iblock%can_simplify = .FALSE.
+      RETURN
+    END IF
+
     CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
     IF (iblock%ptype /= eis_pt_bad) RETURN
 
@@ -1164,6 +1272,7 @@ CONTAINS
     IF (IAND(work, eis_err_bad_value) == 0) THEN
       ! block is a simple variable
       iblock%ptype = eis_pt_constant
+      iblock%rtype = eis_pt_constant
       iblock%value = 0
       iblock%numerical_data = value
       RETURN
@@ -1261,8 +1370,8 @@ CONTAINS
   !> @param[in] char_offset
   !> @param[in] append
   !> @param[in] allow_text
-  SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, minify, &
-      filename, line_number, char_offset, append, allow_text)
+  SUBROUTINE eip_tokenize(this, expression_in, output, err, simplify, &
+      minify, filename, line_number, char_offset, append, allow_text)
 
     CLASS(eis_parser) :: this
     !> Expression to convert to stack
@@ -1293,6 +1402,67 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: append
     !> Should the parser allow text blocks. Optional, default false
     LOGICAL, INTENT(IN), OPTIONAL :: allow_text
+
+    CALL eip_tokenize_inner(this, expression_in, output, err, simplify, &
+      minify, filename, line_number, char_offset, append, allow_text)
+
+  END SUBROUTINE eip_tokenize
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to tokenize an expression to a stack
+  !> @param[inout] this
+  !> @param[in] expression_in
+  !> @param[inout] output
+  !> @param[inout] err
+  !> @param[in] simplify
+  !> @param[in] minify
+  !> @param[in] filename
+  !> @param[in] line_number
+  !> @param[in] char_offset
+  !> @param[in] append
+  !> @param[in] allow_text
+  !> @param[in] allow_params
+  !> @param[in] allow_dparams
+  SUBROUTINE eip_tokenize_inner(this, expression_in, output, err, simplify, &
+      minify, filename, line_number, char_offset, append, allow_text, &
+      allow_params, allow_dparams)
+
+    CLASS(eis_parser) :: this
+    !> Expression to convert to stack
+    CHARACTER(LEN=*), INTENT(IN) :: expression_in
+    !> Stack to contain the output. If stack is not empty then new values
+    !> are pushed to the end of the stack. This will usually cause multi valued
+    !> results
+    TYPE(eis_stack), INTENT(INOUT), TARGET :: output
+    !> Error code for errors during tokenize
+    INTEGER(eis_error), INTENT(INOUT) :: err
+    !> Should the stack be simplified after generation. Optional, default value
+    !> set in call to "init"
+    LOGICAL, INTENT(IN), OPTIONAL :: simplify
+    !> Should the stack be minified after generation. Optional, default value
+    !> set in call to "init"
+    LOGICAL, INTENT(IN), OPTIONAL :: minify
+    !> The filename of the file containing the expression. Optional, default
+    !> do not use filename when reporting error
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
+    !> The line number of the expression within the file. Optional, default
+    !> do not use line number when reporting error
+    INTEGER, INTENT(IN), OPTIONAL :: line_number
+    !> The character offset of the expression within the line. Optional,
+    !> default 0
+    INTEGER, INTENT(IN), OPTIONAL :: char_offset
+    !> Whether the newly parsed value should be appended to
+    !> the values in the stack or no. Optional, default false
+    LOGICAL, INTENT(IN), OPTIONAL :: append
+    !> Should the parser allow text blocks. Optional, default false
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_text
+    !> Should the parser allow function parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_params
+    !> Should the parser allow function derivative parameters
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_dparams
     LOGICAL :: maybe_e, should_simplify, should_minify, should_dealloc
     CHARACTER(LEN=:), ALLOCATABLE :: current, expression
     INTEGER :: current_type, current_pointer, i, ptype
@@ -1380,7 +1550,8 @@ CONTAINS
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
             cap_bits, charindex + output%char_offset, charindex, output, err, &
-            filename, line_number, expression, atext)
+            filename, line_number, expression, atext, allow_params, &
+            allow_dparams)
         charindex = i
         IF (err /= eis_err_none) THEN
           err = IOR(err, eis_err_parser)
@@ -1403,7 +1574,7 @@ CONTAINS
     IF (current_type /= eis_char_space) THEN
       CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
           cap_bits, charindex + output%char_offset,  charindex, output, err, &
-          filename, line_number, expression, atext)
+          filename, line_number, expression, atext, allow_params, allow_dparams)
       output%cap_bits = IOR(output%cap_bits, cap_bits)
     END IF
 
@@ -1445,11 +1616,12 @@ CONTAINS
     END DO
     DEALLOCATE(expression)
 
+    CALL this%expand_fn(output, err)
     IF (should_simplify) CALL this%simplify(output, err, &
         host_params = C_NULL_PTR)
     IF (should_minify) CALL this%minify(output, err)
 
-  END SUBROUTINE eip_tokenize
+  END SUBROUTINE eip_tokenize_inner
 
 
 
@@ -2042,6 +2214,7 @@ CONTAINS
   END SUBROUTINE eip_emplace_node
 
 
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Function to emplace all functions in a stack
@@ -2106,11 +2279,76 @@ CONTAINS
     DEALLOCATE(root)
     sptr%has_emplaced = remaining_functions
 
+    CALL this%expand_fn(sptr, errcode)
     IF (this%should_minify) CALL this%minify(sptr, errcode)
     IF (this%should_simplify) CALL this%simplify(sptr, errcode, &
         host_params = params)
 
   END SUBROUTINE eip_emplace
+
+
+
+  RECURSIVE SUBROUTINE eip_inline_function_expand(this, fn_tree, &
+      params, errcode, dparams)
+    CLASS(eis_parser) :: this
+    CLASS(eis_tree_item), INTENT(INOUT) :: fn_tree
+    CLASS(eis_tree_item), DIMENSION(:), INTENT(IN) :: params
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(eis_tree_item), DIMENSION(:), INTENT(IN), OPTIONAL :: dparams
+    TYPE(eis_stack) :: stack
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: results
+    INTEGER :: inode, rcount, el
+    INTEGER(eis_error) :: errcode_l
+
+    errcode = eis_err_none
+
+    IF (ASSOCIATED(fn_tree%nodes)) THEN
+      DO inode = SIZE(fn_tree%nodes), 1, -1
+        CALL this%inline_function_expand(fn_tree%nodes(inode), params, &
+            errcode, dparams)
+      END DO
+    END IF
+
+    CALL initialise_stack(stack)
+
+    IF (fn_tree%value%rtype == eis_pt_param &
+        .OR. fn_tree%value%rtype == eis_pt_dparam) THEN
+      CALL eis_tree_to_stack(fn_tree%nodes(1), stack)
+      rcount = this%evaluate(stack, results, errcode_l)
+      IF (errcode_l /= eis_err_none) THEN
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+            fn_tree%co_value%text, fn_tree%co_value%charindex)
+        errcode = errcode_l
+        RETURN
+      END IF
+      el = NINT(results(1))
+      IF (fn_tree%value%rtype == eis_pt_param) THEN
+        IF (el < 1 .OR. el > SIZE(params)) THEN
+          errcode = eis_err_bad_value
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+              fn_tree%nodes(1)%co_value%text, &
+              fn_tree%nodes(1)%co_value%charindex)
+          RETURN
+        END IF
+        CALL eis_copy_tree(params(SIZE(params) - INT(results(1)) + 1), fn_tree)
+      ELSE IF (PRESENT(dparams)) THEN
+        IF (el < 1 .OR. el > SIZE(dparams)) THEN
+          errcode = eis_err_bad_value
+          CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+              fn_tree%nodes(1)%co_value%text, &
+              fn_tree%nodes(1)%co_value%charindex)
+          RETURN
+        END IF
+        CALL eis_copy_tree(dparams(INT(results(1))), fn_tree)
+      ELSE
+        errcode = eis_err_bad_value
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+            fn_tree%co_value%text, fn_tree%co_value%charindex)
+      END IF
+    END IF
+
+  END SUBROUTINE eip_inline_function_expand
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -3251,6 +3489,65 @@ CONTAINS
 
 
 
+  !> @brief
+  !> Add a stack function from a string expression to the parser.
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] string
+  !> @param[in] expected_params
+  !> @param[inout] errcode
+  !> @param[in] global
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eip_add_stack_function(this, name, string, expected_params, &
+      errcode, global, description, hidden)
+
+    CLASS(eis_parser) :: this
+    !> Name to associated with the stack function
+    CHARACTER(LEN=*), INTENT(IN) :: name
+    !> Parseable string to make into stack function
+    CHARACTER(LEN=*), INTENT(IN) :: string
+    !> Number of parameters that the function will expect
+    INTEGER, INTENT(IN) :: expected_params
+    !> Error code from the parse and the store of the function
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Whether to add this stack_function to the global list for all
+    !> parsers or just for this parser. Optional, default this parser only
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    !> Description to go with constant
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    !> Is this symbol hidden in document generation
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    LOGICAL :: is_global
+    TYPE(eis_stack) :: stack
+
+    errcode = eis_err_none
+
+    IF (expected_params <= 0) THEN
+      errcode = eis_err_bad_value
+      CALL this%err_handler%add_error(eis_err_parser, errcode)
+      RETURN
+    END IF
+
+    is_global = .FALSE.
+    IF (PRESENT(global)) is_global = global
+
+    CALL initialise_stack(stack)
+    CALL this%tokenize_inner(string, stack, errcode, allow_params = .TRUE.)
+    IF (is_global) THEN
+      CALL global_registry%add_stack_function(name, stack, expected_params, &
+          errcode, err_handler = this%err_handler, description = description, &
+          hidden = hidden)
+    ELSE
+      CALL this%registry%add_stack_function(name, stack, expected_params, &
+          errcode, err_handler = this%err_handler, description = description, &
+          hidden = hidden)
+    END IF
+    CALL deallocate_stack(stack)
+
+  END SUBROUTINE eip_add_stack_function
+
+
 
   !> @brief
   !> Add an interoperable emplaced function to the parser. Emplaced functions
@@ -3416,9 +3713,11 @@ CONTAINS
   !> @param[in] line_number
   !> @param[in] full_line
   !> @param[in] allow_text
+  !> @param[in] allow_params
+  !> @param[in] allow_dparams
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
       cap_bits, charindex, trim_charindex, output, err, filename, line_number, &
-      full_line, allow_text)
+      full_line, allow_text, allow_params, allow_dparams)
 
     CLASS(eis_parser) :: this
     !> Text to parse
@@ -3448,6 +3747,10 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
     !> Should the parser allow text blocks 
     LOGICAL, INTENT(IN) :: allow_text
+    !> Should function parameters be allowed in parsing
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_params
+    !> Should function derivative parameters be allowed in parsing
+    LOGICAL, INTENT(IN), OPTIONAL :: allow_dparams
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
     INTEGER :: istr
@@ -3458,7 +3761,8 @@ CONTAINS
     IF (ICHAR(current(1:1)) == 0) RETURN
 
     ! Populate the block
-    CALL this%load_block(current, iblock, icoblock)
+    CALL this%load_block(current, iblock, icoblock, &
+        allow_params = allow_params, allow_dparams = allow_dparams)
     cap_bits = icoblock%cap_bits
     icoblock%charindex = charindex
     icoblock%full_line_pos = trim_charindex

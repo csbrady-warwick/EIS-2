@@ -14,7 +14,6 @@ MODULE eis_tree_mod
     TYPE(eis_stack_element) :: value
     TYPE(eis_stack_co_element) :: co_value
     TYPE(eis_tree_item), DIMENSION(:), POINTER :: nodes => NULL()
-    LOGICAL :: is_new = .FALSE.
     CONTAINS
     FINAL :: eit_destructor
   END TYPE eis_tree_item
@@ -218,6 +217,7 @@ MODULE eis_tree_mod
             .AND. IAND(status, eis_status_no_simplify) == 0
         IF (IAND(status, eis_status_no_simplify) == 0) THEN
           tree%value%ptype = eis_pt_constant
+          tree%value%rtype = eis_pt_constant
           tree%value%numerical_data = res
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
@@ -269,6 +269,28 @@ MODULE eis_tree_mod
     CALL push_to_stack(stack_in, tree%value, tree%co_value)
 
   END SUBROUTINE eis_tree_to_stack
+
+
+
+  RECURSIVE SUBROUTINE eis_copy_tree(node_source, node_dest)
+
+    TYPE(eis_tree_item), INTENT(IN) :: node_source
+    TYPE(eis_tree_item), INTENT(OUT) :: node_dest
+    INTEGER :: i
+
+    IF (ASSOCIATED(node_dest%nodes)) DEALLOCATE(node_dest%nodes)
+
+    node_dest = node_source
+    node_dest%nodes => NULL()
+
+    IF (ASSOCIATED(node_source%nodes)) THEN
+      ALLOCATE(node_dest%nodes(SIZE(node_source%nodes)))
+      DO i = 1, SIZE(node_source%nodes)
+        CALL eis_copy_tree(node_source%nodes(i), node_dest%nodes(i))
+      END DO
+    END IF
+
+  END SUBROUTINE eis_copy_tree
 
 
 

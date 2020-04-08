@@ -63,6 +63,7 @@ MODULE eis_registry_mod
   !>@class
   !> Type holding the information needed to construct an instance of a 
   !> function, constant or variable
+  !> @todo Update this to use derived classes rather than this approach
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     CHARACTER(LEN=:), ALLOCATABLE :: description
@@ -77,6 +78,7 @@ MODULE eis_registry_mod
     REAL(REAL64), POINTER :: r64data => NULL()
     CLASS(eis_functor), POINTER :: functor => NULL()
     INTEGER :: ptype = eis_pt_null
+    INTEGER :: rtype = eis_pt_null
     INTEGER :: associativity = eis_assoc_null
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = 0
@@ -96,6 +98,7 @@ MODULE eis_registry_mod
     TYPE(ordered_store) :: stack_variable_registry
     TYPE(ordered_store) :: emplaced_registry !< Contains deferred stacks
     TYPE(ordered_store) :: functor_registry !< Contains functors
+    TYPE(ordered_store) :: stack_function_registry !< Contains stack functions
 
     CONTAINS
 
@@ -110,6 +113,8 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: add_functor_pointer => eir_add_functor_pointer
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
     PROCEDURE, PUBLIC :: add_stack_variable => eir_add_stack_var
+    PROCEDURE, PUBLIC :: add_stack_function => eir_add_stack_function
+    PROCEDURE, PUBLIC :: get_stack_function => eir_get_stack_function
     PROCEDURE, PUBLIC :: add_emplaced_function => eir_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_function_c => eir_add_emplaced_function_c
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
@@ -560,6 +565,7 @@ CONTAINS
     TYPE(eis_function_entry) :: temp
     
     temp%ptype = eis_pt_constant
+    temp%rtype = eis_pt_constant
     temp%numerical_data = value
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
@@ -639,7 +645,8 @@ CONTAINS
 
     IF (ANY([PRESENT(i32data), PRESENT(i64data), PRESENT(r32data), &
         PRESENT(r64data)])) THEN
-      temp%ptype = eis_pt_pointer_variable
+      temp%ptype = eis_pt_variable
+      temp%rtype = eis_pt_pointer_variable
       temp%fn_ptr => NULL()
 
       IF (PRESENT(i32data)) temp%i32data => i32data
@@ -648,6 +655,7 @@ CONTAINS
       IF (PRESENT(r64data)) temp%r64data => r64data
     ELSE
       temp%ptype = eis_pt_variable
+      temp%rtype = eis_pt_variable
       temp%fn_ptr => fn
     END IF
 
@@ -715,6 +723,7 @@ CONTAINS
 
     temp%fn_ptr => fn
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_function
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -793,6 +802,7 @@ CONTAINS
       temp%per_stack_functor = .FALSE.
     END IF
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_functor
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -872,6 +882,7 @@ CONTAINS
       index = this%functor_registry%hold(ptr, owns = .TRUE.)
     END IF
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_functor
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -884,6 +895,72 @@ CONTAINS
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_functor_pointer
+
+
+
+  !> @brief
+  !> Add a stack function to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[in] expected_parameters
+  !> @param[inout] errcode
+  !> @param[inout] err_handler
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eir_add_stack_function(this, name, stack, expected_parameters, &
+      errcode, err_handler, description, hidden)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
+    TYPE(eis_stack), INTENT(IN) :: stack !< Stack defining the function
+    INTEGER, INTENT(IN) :: expected_parameters !< Number of expected parameters
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code
+    !> Error handler for reporting errors. Optional, default no error handling
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    INTEGER :: index
+    TYPE(eis_function_entry) :: temp
+
+    index = this%stack_function_registry%store(stack)
+    temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_stack_function
+    temp%expected_parameters = expected_parameters
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
+    IF (PRESENT(hidden)) temp%is_hidden = hidden
+    temp%can_simplify = .FALSE.
+    temp%cap_bits = stack%cap_bits
+    temp%value = index
+
+    CALL this%stored_items%store(name, temp)
+
+  END SUBROUTINE eir_add_stack_function
+
+
+
+  SUBROUTINE eir_get_stack_function(this, id, stack, errcode)
+    CLASS(eis_registry) :: this
+    INTEGER, INTENT(IN) :: id
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_stack), POINTER :: sptr
+
+    errcode = eis_err_bad_value
+    gptr => this%stack_function_registry%get(id)
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+    errcode = eis_err_none
+
+    SELECT TYPE(gptr)
+      CLASS IS (eis_stack)
+        sptr => gptr
+    END SELECT
+
+    CALL deallocate_stack(stack)
+    CALL initialise_stack(stack)
+    stack = sptr
+
+  END SUBROUTINE eir_get_stack_function
 
 
 
@@ -935,6 +1012,7 @@ CONTAINS
 
     temp%fn_ptr => fn
     temp%ptype = eis_pt_operator
+    temp%rtype = eis_pt_operator
     temp%associativity = associativity
     temp%precedence = precedence
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
@@ -1016,6 +1094,7 @@ CONTAINS
     END IF
 
     temp_ptr%ptype = eis_pt_stored_variable
+    temp_ptr%rtype = eis_pt_stored_variable
     temp_ptr%index_type = eis_reg_index_stack
     temp_ptr%value = index
     temp_ptr%cap_bits = stack%cap_bits
@@ -1087,6 +1166,7 @@ CONTAINS
         SOURCE = description)
     IF (PRESENT(hidden)) temp_ptr%is_hidden = hidden
     temp_ptr%ptype = eis_pt_emplaced_function
+    temp_ptr%rtype = eis_pt_emplaced_function
     temp_ptr%index_type = eis_reg_index_emplaced
     temp_ptr%value = index
     temp_ptr%can_simplify = .FALSE.
@@ -1235,6 +1315,7 @@ CONTAINS
 
     IF (ASSOCIATED(temp)) THEN
       block_in%ptype = temp%ptype
+      block_in%rtype = temp%rtype
       coblock_in%cap_bits = temp%cap_bits
       coblock_in%associativity = temp%associativity
       coblock_in%precedence = temp%precedence
@@ -1257,6 +1338,7 @@ CONTAINS
       IF (PRESENT(hidden)) hidden = temp%is_hidden
     ELSE
       block_in%ptype = eis_pt_bad
+      block_in%rtype = eis_pt_bad
     END IF
 
   END SUBROUTINE eir_fill_block
@@ -1394,6 +1476,7 @@ CONTAINS
       dummy = this%functor_registry%hold(gptr, owns = .TRUE.)
     END IF
     iblock%ptype = eis_pt_function
+    iblock%rtype = eis_pt_functor
     iblock%functor => eval_functor
     iblock%actual_params = 0
     iblock%can_simplify = .FALSE.

@@ -82,6 +82,10 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_emplaced_variable = 11 !< Type emplaced variable
   INTEGER, PARAMETER :: eis_pt_emplaced_function = 12 !< Type emplaced function
   INTEGER, PARAMETER :: eis_pt_pointer_variable = 13 !< Type pointer variable
+  INTEGER, PARAMETER :: eis_pt_functor = 14 !< Type functor
+  INTEGER, PARAMETER :: eis_pt_param = 15 !< Parameter to a deck function
+  INTEGER, PARAMETER :: eis_pt_dparam = 16 !< Derivative parameter to a function
+  INTEGER, PARAMETER :: eis_pt_stack_function = 17 !< Stack specified function
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
 
@@ -120,6 +124,7 @@ MODULE eis_parser_constants
   !> stack lifetime
   TYPE eis_stack_element
     INTEGER :: ptype
+    INTEGER :: rtype
     INTEGER :: value
     INTEGER :: actual_params = -1
     LOGICAL :: has_string_params = .FALSE.
@@ -213,6 +218,7 @@ MODULE eis_parser_constants
     TYPE(eis_stack_element), INTENT(IN) :: src
 
     dest%ptype = src%ptype
+    dest%rtype = src%rtype
     dest%value = src%value
     dest%actual_params = src%actual_params
     dest%numerical_data = src%numerical_data
@@ -235,6 +241,7 @@ MODULE eis_parser_constants
 
     DO i = 1, SIZE(dest)
       dest(i)%ptype = src(i)%ptype
+      dest(i)%rtype = src(i)%rtype
       dest(i)%value = src(i)%value
       dest(i)%actual_params = src(i)%actual_params
       dest(i)%numerical_data = src(i)%numerical_data
