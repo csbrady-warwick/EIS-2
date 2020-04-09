@@ -188,6 +188,7 @@ MODULE eis_tree_mod
     INTEGER(eis_error) :: err
     INTEGER(eis_status) :: status
     CHARACTER(LEN=30) :: rstring
+    TYPE(eis_tree_item), DIMENSION(:), POINTER :: tdata
 
     status = eis_status_none
 
@@ -201,6 +202,90 @@ MODULE eis_tree_mod
             err_handler, filename, line_number, full_line)
         can_simplify = can_simplify .AND. simp1
       END DO
+    END IF
+
+    IF (tree%value%ptype == eis_pt_operator) THEN
+      IF (tree%value%rtype == eis_pt_op_multiply) THEN
+        IF (tree%nodes(1)%value%rtype == eis_pt_zero &
+            .OR. tree%nodes(2)%value%rtype == eis_pt_zero) THEN
+          tree%value%ptype = eis_pt_constant
+          tree%value%rtype = eis_pt_zero
+          tree%value%numerical_data = 0.0_eis_num
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            ALLOCATE(tree%co_value%text, SOURCE = "0")
+          END IF
+          DEALLOCATE(tree%nodes)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(2), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(2)%value%rtype == eis_pt_unity) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(1), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        END IF
+
+      ELSE IF (tree%value%rtype == eis_pt_op_divide) THEN
+        IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(2), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
+          tree%value%ptype = eis_pt_constant
+          tree%value%rtype = eis_pt_zero
+          tree%value%numerical_data = 0.0_eis_num
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            ALLOCATE(tree%co_value%text, SOURCE = "0")
+          END IF
+          DEALLOCATE(tree%nodes)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
+          errcode = eis_err_maths_domain
+          RETURN
+        END IF
+      ELSE IF (tree%value%rtype == eis_pt_op_plus) THEN
+        IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(2), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(1), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        END IF
+      ELSE IF (tree%value%rtype == eis_pt_op_minus) THEN
+        IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(1), tree)
+          DEALLOCATE(tdata)
+          can_simplify = .TRUE.
+          RETURN
+        END IF
+      END IF
+    END IF
+
+    IF (has_nodes) THEN
       IF (can_simplify) THEN
         DO inode = SIZE(tree%nodes), 1, -1
           CALL ees_push(eval, tree%nodes(inode)%value%numerical_data, err)
@@ -276,9 +361,10 @@ MODULE eis_tree_mod
 
     TYPE(eis_tree_item), INTENT(IN) :: node_source
     TYPE(eis_tree_item), INTENT(OUT) :: node_dest
+    TYPE(eis_tree_item), DIMENSION(:), POINTER :: dest_nodes
     INTEGER :: i
 
-    IF (ASSOCIATED(node_dest%nodes)) DEALLOCATE(node_dest%nodes)
+    dest_nodes => node_dest%nodes
 
     node_dest = node_source
     node_dest%nodes => NULL()
@@ -289,6 +375,8 @@ MODULE eis_tree_mod
         CALL eis_copy_tree(node_source%nodes(i), node_dest%nodes(i))
       END DO
     END IF
+
+    IF (ASSOCIATED(dest_nodes)) DEALLOCATE(dest_nodes)
 
   END SUBROUTINE eis_copy_tree
 
@@ -350,6 +438,7 @@ MODULE eis_tree_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: nformat
     TYPE(eis_tree_item), POINTER :: root
+    CHARACTER(LEN=:), ALLOCATABLE :: temp
     INTEGER :: sp
 
     IF (.NOT. stack%init) RETURN
@@ -358,11 +447,15 @@ MODULE eis_tree_mod
     DO WHILE (sp > 1)
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
-      CALL infix_output(root, str, nformat)
+      CALL infix_output(root, temp, nformat)
+      CALL eis_prepend_string(str, temp, newline = .FALSE.)
+      IF (sp > 1) CALL eis_prepend_string(str, ', ', newline = .FALSE.)
+      DEALLOCATE(temp)
       DEALLOCATE(root)
     END DO
 
   END SUBROUTINE eis_infix_stack
+
 
 
   RECURSIVE SUBROUTINE dot_output(node, str, id_in, nformat)

@@ -583,17 +583,21 @@ CONTAINS
           unary = .TRUE., err_handler = this%err_handler, &
           description = 'Unary minus')
       CALL global_registry%add_operator('+', eis_bplus, eis_assoc_a, 2, err, &
-          err_handler = this%err_handler, description = 'Addition operator')
+          err_handler = this%err_handler, description = 'Addition operator', &
+          operator_id = eis_pt_op_plus)
       CALL global_registry%add_operator('-', eis_bminus, eis_assoc_la, 2, err, &
-          err_handler = this%err_handler, description = 'Subtraction operator')
+          err_handler = this%err_handler, &
+          description = 'Subtraction operator', operator_id = eis_pt_op_plus)
       CALL global_registry%add_operator('*', eis_times, eis_assoc_a, 3, err, &
           err_handler = this%err_handler, &
-          description = 'Multiplication operator')
+          description = 'Multiplication operator', &
+          operator_id = eis_pt_op_multiply)
       CALL global_registry%add_operator('/', eis_divide, eis_assoc_la, 3, err, &
-          err_handler = this%err_handler, description = 'Division operator')
+          err_handler = this%err_handler, description = 'Division operator', &
+          operator_id = eis_pt_op_divide)
       CALL global_registry%add_operator('^', eis_pow, eis_assoc_ra, 4, err, &
           err_handler = this%err_handler, description = 'Raise to power &
-          &operator')
+          &operator', operator_id = eis_pt_op_power)
       CALL global_registry%add_operator('e', eis_expo, eis_assoc_la, 4, err, &
           err_handler = this%err_handler, description = 'Exponentiation &
           &operator')
@@ -1260,6 +1264,26 @@ CONTAINS
       iblock%can_simplify = .FALSE.
       RETURN
     END IF
+
+!    IF (should_allow_dparams .OR. should_allow_params) THEN
+      IF (name == "zero" .OR. name == "0") THEN
+        iblock%ptype = eis_pt_constant
+        iblock%rtype = eis_pt_zero
+        iblock%value = 0
+        iblock%numerical_data = 0.0_eis_num
+        iblock%can_simplify = .TRUE.
+        RETURN
+      END IF
+
+      IF (name == "unity" .OR. name == "1") THEN
+        iblock%ptype = eis_pt_constant
+        iblock%rtype = eis_pt_unity
+        iblock%value = 0
+        iblock%numerical_data = 1.0_eis_num
+        iblock%can_simplify = .TRUE.
+        RETURN
+      END IF
+!    END IF
 
     CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
     IF (iblock%ptype /= eis_pt_bad) RETURN

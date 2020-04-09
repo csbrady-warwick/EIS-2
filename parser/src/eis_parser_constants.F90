@@ -86,6 +86,15 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_param = 15 !< Parameter to a deck function
   INTEGER, PARAMETER :: eis_pt_dparam = 16 !< Derivative parameter to a function
   INTEGER, PARAMETER :: eis_pt_stack_function = 17 !< Stack specified function
+  INTEGER, PARAMETER :: eis_pt_zero = 18 !< Actual zero
+  INTEGER, PARAMETER :: eis_pt_unity = 19 !< Actual unity
+  INTEGER, PARAMETER :: eis_pt_op_plus = 20 !< Addition operator
+  INTEGER, PARAMETER :: eis_pt_op_minus = 21 !< Subtraction operator
+  INTEGER, PARAMETER :: eis_pt_op_multiply = 22 !< Multiplication operator
+  INTEGER, PARAMETER :: eis_pt_op_divide = 23 !< Division operator
+  INTEGER, PARAMETER :: eis_pt_op_power = 24 !< Raise to the power of operator
+  INTEGER, PARAMETER :: eis_pt_op_unitary_plus = 25 !< Unitary plus
+  INTEGER, PARAMETER :: eis_pt_op_unitary_minus = 26 !< Unitary minus
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
 

@@ -55,7 +55,9 @@ MODULE eis_eval_stack_mod
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
 
-    IF (element%rtype == eis_pt_constant) THEN
+    !If a ptype constant has made it this far it should be evaluated as a
+    !constant
+    IF (element%ptype == eis_pt_constant) THEN
       CALL ees_push(this, element%numerical_data, errcode)
     ELSE IF (element%rtype == eis_pt_pointer_variable) THEN
       IF (ASSOCIATED(element%i32data)) &
