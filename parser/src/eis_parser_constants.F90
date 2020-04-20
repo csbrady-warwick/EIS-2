@@ -1,6 +1,7 @@
 MODULE eis_parser_constants
 
   USE eis_constants
+  USE eis_named_store_mod
   USE ISO_C_BINDING
   IMPLICIT NONE
 
@@ -58,9 +59,10 @@ MODULE eis_parser_constants
     END SUBROUTINE
   END INTERFACE
 
-  PRIVATE :: eis_element_assign, eis_element_array_assign
+  PRIVATE :: eis_element_assign, eis_element_array_assign, eis_co_element_assign
   INTERFACE ASSIGNMENT(=)
     MODULE PROCEDURE eis_element_assign, eis_element_array_assign
+    MODULE PROCEDURE eis_co_element_assign
   END INTERFACE
 
   INTEGER, PARAMETER :: eis_physics_none = 0 !< No physical units specified
@@ -93,10 +95,13 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_op_multiply = 22 !< Multiplication operator
   INTEGER, PARAMETER :: eis_pt_op_divide = 23 !< Division operator
   INTEGER, PARAMETER :: eis_pt_op_power = 24 !< Raise to the power of operator
-  INTEGER, PARAMETER :: eis_pt_op_unitary_plus = 25 !< Unitary plus
-  INTEGER, PARAMETER :: eis_pt_op_unitary_minus = 26 !< Unitary minus
+  INTEGER, PARAMETER :: eis_pt_op_unary_plus = 25 !< Unitary plus
+  INTEGER, PARAMETER :: eis_pt_op_unary_minus = 26 !< Unitary minus
+  INTEGER, PARAMETER :: eis_pt_placed_function = 27 !< Function used in deriv
+  INTEGER, PARAMETER :: eis_pt_integer = 28 !< True integer
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
+
 
   ! Associativity constants
   INTEGER, PARAMETER :: eis_assoc_null = 0 !< No associativity specified
@@ -109,10 +114,16 @@ MODULE eis_parser_constants
   !> Parenthesis is right bracket
   INTEGER, PARAMETER :: eis_paren_right_bracket = 2
 
+  INTEGER, PARAMETER :: eis_registry_none = 0
+  INTEGER, PARAMETER :: eis_registry_global = 1
+  INTEGER, PARAMETER :: eis_registry_local = 2
+
   !> Symbol display information
   INTEGER, PARAMETER :: eis_fsn_auto = 0
   INTEGER, PARAMETER :: eis_fsn_always = 1
   INTEGER, PARAMETER :: eis_fsn_never = 2
+
+  INTEGER, PARAMETER :: eis_deriv_forbidden = -1
 
   !> Information about a stack element that is needed during parsing but is
   !> not essential for evaluation
@@ -120,13 +131,15 @@ MODULE eis_parser_constants
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
     LOGICAL :: can_have_string_params = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
     INTEGER :: charindex = -1
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     CHARACTER(LEN=:), ALLOCATABLE :: text, full_line, filename
     INTEGER :: line_number = -1
-    TYPE(eis_stack), POINTER :: origin => NULL()
+    INTEGER :: registry_type = eis_registry_none
+    INTEGER :: deriv_values = -1
   END TYPE eis_stack_co_element
 
   !> Information about a stack element that is always needed for the entire
@@ -165,6 +178,7 @@ MODULE eis_parser_constants
     LOGICAL :: sanity_checked = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
     LOGICAL :: has_deferred = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
   END TYPE eis_stack
 
   INTERFACE
@@ -271,5 +285,59 @@ MODULE eis_parser_constants
     END DO
 
   END SUBROUTINE eis_element_array_assign
+
+
+
+  SUBROUTINE eis_co_element_assign(dest, src)
+    TYPE(eis_stack_co_element), INTENT(OUT) :: dest
+    TYPE(eis_stack_co_element), INTENT(IN) :: src
+
+    dest%associativity = src%associativity
+    dest%precedence = src%precedence
+    dest%expected_params = src%expected_params
+    dest%can_have_string_params = src%can_have_string_params
+    dest%charindex = src%charindex
+    dest%full_line_pos = src%full_line_pos
+    dest%defer = src%defer
+    dest%cap_bits = src%cap_bits
+    dest%text = src%text
+    dest%full_line = src%full_line
+    dest%filename = src%filename
+    dest%line_number = src%line_number
+    dest%registry_type = src%registry_type
+    dest%deriv_values = src%deriv_values
+    dest%can_accept_maths_domain_errors = &
+        src%can_accept_maths_domain_errors
+
+  END SUBROUTINE eis_co_element_assign
+
+
+
+  SUBROUTINE eis_co_element_assign_array(dest, src)
+    TYPE(eis_stack_co_element), DIMENSION(:), INTENT(OUT) :: dest
+    TYPE(eis_stack_co_element), DIMENSION(:), INTENT(IN) :: src
+    INTEGER :: i
+
+    DO i = 1, SIZE(dest)
+      dest(i)%associativity = src(i)%associativity
+      dest(i)%precedence = src(i)%precedence
+      dest(i)%expected_params = src(i)%expected_params
+      dest(i)%can_have_string_params = src(i)%can_have_string_params
+      dest(i)%charindex = src(i)%charindex
+      dest(i)%full_line_pos = src(i)%full_line_pos
+      dest(i)%defer = src(i)%defer
+      dest(i)%cap_bits = src(i)%cap_bits
+      dest(i)%text = src(i)%text
+      dest(i)%full_line = src(i)%full_line
+      dest(i)%filename = src(i)%filename
+      dest(i)%line_number = src(i)%line_number
+      dest(i)%registry_type = src(i)%registry_type
+      dest(i)%deriv_values = src(i)%deriv_values
+      dest(i)%can_accept_maths_domain_errors &
+          = src(i)%can_accept_maths_domain_errors
+    END DO
+
+  END SUBROUTINE eis_co_element_assign_array
+
 
 END MODULE eis_parser_constants

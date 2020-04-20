@@ -197,6 +197,8 @@ MODULE eis_error_mod
       CALL this%strings%store('err_stack_params', 'A stack variable that &
           &returns more than one parameter was used in a mathematical &
           &expression')
+      CALL this%strings%store('eis_err_no_deriv', 'A derivative was &
+          &requested of a function for which no derivative is defined')
 
       CALL this%strings%store('err_is_error', '{error} at {errfile}, &
           &line {errline}')
@@ -517,6 +519,9 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_stack_params) /= 0) THEN
       ok = this%strings%append('err_stack_params', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_no_deriv) /= 0) THEN
+      ok = this%strings%append('err_no_deriv', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &

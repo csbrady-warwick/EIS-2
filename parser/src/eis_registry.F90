@@ -6,6 +6,7 @@ MODULE eis_registry_mod
   USE eis_named_store_mod
   USE eis_ordered_store_mod
   USE eis_stack_mod
+  USE eis_core_functions_mod
 
   IMPLICIT NONE
 
@@ -87,6 +88,8 @@ MODULE eis_registry_mod
     LOGICAL :: owns_functor = .TRUE.
     LOGICAL :: per_stack_functor = .FALSE.
     LOGICAL :: string_params = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
+    INTEGER :: deriv_values = -1
   END TYPE eis_function_entry
 
   !> Registry for all valid functions, constants and variables for a given
@@ -99,10 +102,12 @@ MODULE eis_registry_mod
     TYPE(ordered_store) :: emplaced_registry !< Contains deferred stacks
     TYPE(ordered_store) :: functor_registry !< Contains functors
     TYPE(ordered_store) :: stack_function_registry !< Contains stack functions
+    TYPE(ordered_store) :: deriv_function_registry !< Contains derivatives
 
     CONTAINS
 
     PROCEDURE :: add_emplaced_func_holder => eir_add_emplaced_func_holder
+    PROCEDURE :: create_deriv_store => eir_create_deriv_store
 
     PROCEDURE, PUBLIC :: include_namespace => eir_include_namespace
     PROCEDURE, PUBLIC :: is_included => eir_is_included 
@@ -125,6 +130,12 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: get_name_count => eir_get_name_count
     PROCEDURE, PUBLIC :: get_name => eir_get_name
     PROCEDURE, PUBLIC :: result_function_to_functor_stack => eir_rf_to_fs
+    PROCEDURE, PUBLIC :: set_symbol_derivative_value &
+        => eir_set_symbol_derivative_value
+    PROCEDURE, PUBLIC :: lock_symbol_derivative &
+        => eir_lock_symbol_derivative
+    PROCEDURE, PUBLIC :: get_symbol_derivative_value &
+        => eir_get_symbol_derivative_value
     
   END TYPE eis_registry
 
@@ -133,7 +144,10 @@ MODULE eis_registry_mod
 
 CONTAINS
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Operation function for functor that is used to encapsulate an
+  !> evaluation function
   FUNCTION prf_operate(this, nparams, params, host_params, status_code, &
       errcode)
     CLASS(parser_result_functor), INTENT(INOUT) :: this
@@ -222,6 +236,7 @@ CONTAINS
     END IF
 
   END SUBROUTINE ern_add_item
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -671,6 +686,26 @@ CONTAINS
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{function} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[inout] fn_entry
+  SUBROUTINE eir_create_deriv_store(this, fn_entry)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    !> Function entry to set the derivative store for
+    CLASS(eis_function_entry), INTENT(INOUT) :: fn_entry
+    TYPE(named_store), POINTER :: store
+    CLASS(*), POINTER :: gptr
+
+    ALLOCATE(store)
+    gptr => store
+    fn_entry%deriv_values = this%deriv_function_registry%hold(gptr, &
+        owns = .TRUE.)
+
+  END SUBROUTINE eir_create_deriv_store
+
+
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -687,9 +722,10 @@ CONTAINS
   !> @param[in] description
   !> @param[in] hidden
   !> @param[in] can_have_text_params
+  !> @param[in] can_accept_maths_domain_errors
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
       can_simplify, cap_bits, defer, err_handler, description, hidden, &
-      can_have_text_params)
+      can_have_text_params, can_accept_maths_domain_errors)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -719,6 +755,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Can this function give a valid result if one of the parameters has
+    LOGICAL, INTENT(IN), OPTIONAL :: can_accept_maths_domain_errors
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
@@ -732,7 +770,9 @@ CONTAINS
     IF (PRESENT(defer)) temp%defer = defer
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
-
+    IF (PRESENT(can_accept_maths_domain_errors)) &
+        temp%can_accept_maths_domain_errors = can_accept_maths_domain_errors
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_function
@@ -812,6 +852,7 @@ CONTAINS
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
 
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_functor
@@ -892,6 +933,7 @@ CONTAINS
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
 
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_functor_pointer
@@ -1038,6 +1080,9 @@ CONTAINS
       CALL this%uop_table%store(name, temp)
     END IF
 
+    CALL this%create_deriv_store(temp)
+    CALL this%stored_items%store(name, temp)
+
   END SUBROUTINE eir_add_operator
 
 
@@ -1178,7 +1223,8 @@ CONTAINS
     temp_ptr%value = index
     temp_ptr%can_simplify = .FALSE.
 
-    CALL this%stored_items%store(name, temp)
+    CALL this%create_deriv_store(temp_ptr)
+    CALL this%stored_items%store(name, temp_ptr)
 
   END SUBROUTINE eir_add_emplaced_func_holder
 
@@ -1329,6 +1375,9 @@ CONTAINS
       coblock_in%expected_params = temp%expected_parameters
       coblock_in%defer = temp%defer
       coblock_in%can_have_string_params = temp%string_params
+      coblock_in%can_accept_maths_domain_errors = &
+          temp%can_accept_maths_domain_errors
+      coblock_in%deriv_values = temp%deriv_values
       block_in%actual_params = temp%expected_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
@@ -1591,5 +1640,191 @@ CONTAINS
     CALL this%stored_items%get_name(index, name)
 
   END SUBROUTINE eir_get_name
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Set the derivative for a symbol
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] wrt
+  !> @param[in] stack
+  !> @param[in] unary_ops 
+  !> @param[inout] errcode
+  SUBROUTINE eir_set_symbol_derivative_value(this, symbol, wrt, stack, &
+      unary_ops, errcode)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    CLASS(eis_stack), INTENT(IN) :: stack
+    LOGICAL, INTENT(IN) :: unary_ops
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_function_entry), POINTER :: temp
+    TYPE(eis_stack), POINTER :: p
+    TYPE(named_store), POINTER :: store
+
+    errcode = eis_err_none
+
+    temp => NULL()
+    gptr => NULL()
+    IF (unary_ops) THEN
+      gptr => this%uop_table%get(symbol)
+    END IF
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_items%get(symbol)
+
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp => co
+      END SELECT
+    END IF
+
+    IF (.NOT. ASSOCIATED(temp)) THEN
+      errcode = eis_err_not_found
+      RETURN
+    END IF
+
+    store => NULL()
+    IF (temp%deriv_values > 0) THEN
+      gptr => this%deriv_function_registry%get(temp%deriv_values)
+      IF (ASSOCIATED(gptr)) THEN
+        SELECT TYPE (co => gptr)
+          CLASS IS (named_store)
+            store => co
+        END SELECT
+      END IF
+    END IF
+
+    IF (.NOT. ASSOCIATED(store)) THEN
+      ALLOCATE(store)
+      gptr => store
+      temp%deriv_values = this%deriv_function_registry%hold(gptr, owns = .TRUE.)
+    END IF
+
+    !This seems to be unnecessary but without it gfortran multiplies required
+    !required memory by orders of magnitude
+    ALLOCATE(p, SOURCE = stack)
+    gptr => p
+
+    CALL store%hold(wrt, gptr, owns = .TRUE.)
+
+  END SUBROUTINE eir_set_symbol_derivative_value
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Lock the derivative for a symbol
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] wrt
+  !> @param[in] unary_ops 
+  !> @param[inout] errcode
+  SUBROUTINE eir_lock_symbol_derivative(this, symbol, wrt, unary_ops, errcode)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    LOGICAL, INTENT(IN) :: unary_ops
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_function_entry), POINTER :: temp
+    TYPE(named_store), POINTER :: store
+    INTEGER, POINTER :: iptr
+
+    errcode = eis_err_none
+
+    temp => NULL()
+    gptr => NULL()
+    IF (unary_ops) THEN
+      gptr => this%uop_table%get(symbol)
+    END IF
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_items%get(symbol)
+
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp => co
+      END SELECT
+    END IF
+
+    IF (.NOT. ASSOCIATED(temp)) THEN
+      errcode = eis_err_not_found
+      RETURN
+    END IF
+
+    store => NULL()
+    IF (temp%deriv_values > 0) THEN
+      gptr => this%deriv_function_registry%get(temp%deriv_values)
+      IF (ASSOCIATED(gptr)) THEN
+        SELECT TYPE (co => gptr)
+          CLASS IS (named_store)
+            store => co
+        END SELECT
+      END IF
+    END IF
+
+    IF (.NOT. ASSOCIATED(store)) THEN
+      ALLOCATE(store)
+      gptr => store
+      temp%deriv_values = this%deriv_function_registry%hold(gptr, owns = .TRUE.)
+    END IF
+
+    ALLOCATE(iptr, SOURCE = eis_deriv_forbidden)
+    gptr => iptr
+
+    CALL store%hold(wrt, gptr, owns = .TRUE.)
+
+  END SUBROUTINE eir_lock_symbol_derivative
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the derivative for a symbol
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] stack
+  !> @param[inout] errcode
+  !> @param[in] wrt
+  !> @param[out] locked
+  SUBROUTINE eir_get_symbol_derivative_value(this, index, stack, errcode, wrt, &
+      locked)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index
+    CLASS(eis_stack), POINTER, INTENT(OUT) :: stack
+    INTEGER(eis_error), INTENT(IN) :: errcode
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
+    LOGICAL, INTENT(OUT), OPTIONAL :: locked
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_stack), POINTER :: p
+    TYPE(named_store), POINTER :: store
+
+    stack => NULL()
+
+    IF (PRESENT(locked)) locked = .FALSE.
+
+    gptr => this%deriv_function_registry%get(index)
+    store => NULL()
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+
+    SELECT TYPE (co => gptr)
+      CLASS IS (named_store)
+        store => co
+      TYPE IS (INTEGER)
+        locked = (co == eis_deriv_forbidden)
+    END SELECT
+    IF (.NOT. ASSOCIATED(store)) RETURN
+
+    gptr => NULL()
+    IF (PRESENT(wrt)) gptr => store%get(wrt)
+    IF (.NOT. ASSOCIATED(gptr)) gptr => store%get('[***]')
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+    SELECT TYPE (co => gptr)
+      CLASS IS (eis_stack)
+        stack => co
+    END SELECT
+
+  END SUBROUTINE eir_get_symbol_derivative_value
 
 END MODULE eis_registry_mod

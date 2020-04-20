@@ -5,6 +5,7 @@ MODULE eis_algorithm
 
   PRIVATE
   PUBLIC :: eis_interpolate1d, eis_interpolate2d
+  PUBLIC :: eis_deriv_interpolate1d, eis_bisect_axis
 
   CONTAINS
 
@@ -59,6 +60,22 @@ MODULE eis_algorithm
 
     eis_interpolate1d = y(cell) + frac * (y(cell+1) - y(cell))
   END FUNCTION eis_interpolate1d
+
+
+
+  FUNCTION eis_deriv_interpolate1d(point, x, y, errcode)
+    REAL(eis_num), INTENT(IN) :: point
+    REAL(eis_num), DIMENSION(:), INTENT(IN) :: x, y
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: eis_deriv_interpolate1d
+    INTEGER(eis_i8) :: cell
+    REAL(eis_num) :: frac
+
+    errcode = eis_err_none
+    CALL eis_bisect_axis(point, x, cell, frac)
+
+    eis_deriv_interpolate1d = (y(cell+1) - y(cell))/(x(cell+1) - x(cell))
+  END FUNCTION eis_deriv_interpolate1d
 
 
 

@@ -48,12 +48,21 @@ MODULE eis_eval_stack_mod
   !> @param[in] host_params
   !> @param[inout] status_code
   !> @param[inout] errcode
-  SUBROUTINE ees_eval_element(this, element, host_params, status_code, errcode)
+  !> @param[in] force_trip_maths_domain
+  SUBROUTINE ees_eval_element(this, element, host_params, status_code, &
+      errcode, force_trip_maths_domain)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack_element), INTENT(IN) :: element !< Element to be evaluated
     TYPE(C_PTR), INTENT(IN) :: host_params !< Host code supplied parameters
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
+    !> Should maths domain errors always trigger
+    LOGICAL, INTENT(IN), OPTIONAL :: force_trip_maths_domain
+    LOGICAL :: maths_domain_trip
+
+    maths_domain_trip = .FALSE.
+    IF (PRESENT(force_trip_maths_domain)) maths_domain_trip &
+        = force_trip_maths_domain
 
     !If a ptype constant has made it this far it should be evaluated as a
     !constant
@@ -255,7 +264,9 @@ MODULE eis_eval_stack_mod
       CALL ees_eval_element(this, stack%entries(istack), host_params, &
           stat_in, err)
       status = IOR(status, stat_in)
-      IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
+      IF (err /= eis_err_none .AND. .NOT. (err == eis_err_maths_domain &
+          .AND. stack%can_accept_maths_domain_errors) &
+          .AND. PRESENT(err_handler)) THEN
         IF (ALLOCATED(stack%co_entries)) THEN
           IF (ALLOCATED(stack%co_entries(istack)%full_line)) THEN
             IF (.NOT. ALLOCATED(stack%filename)) THEN
@@ -288,6 +299,9 @@ MODULE eis_eval_stack_mod
       END IF
       errcode = IOR(errcode, err)
     END DO
+
+    IF (stack%can_accept_maths_domain_errors) errcode = IAND(errcode, &
+        NOT(eis_err_maths_domain))
 
     IF (.NOT. ALLOCATED(result_vals)) THEN
       ALLOCATE(result_vals(1:this%stack_point))

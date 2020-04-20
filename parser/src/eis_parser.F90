@@ -84,6 +84,7 @@ MODULE eis_parser_mod
   TYPE(parser_holder), DIMENSION(:), ALLOCATABLE :: interop_parsers
   TYPE(stack_holder), DIMENSION(:), ALLOCATABLE :: interop_stacks
 
+
   !> Type representing a maths parser
   TYPE :: eis_parser
 
@@ -94,6 +95,8 @@ MODULE eis_parser_mod
     TYPE(eis_error_handler), POINTER :: err_handler => NULL()
     LOGICAL :: owns_err_handler = .FALSE.
     INTEGER, PUBLIC :: interop_id = -1
+
+    TYPE(eis_stack), POINTER :: zero_stack => NULL()
 
     !State information used during tokenization
     INTEGER :: last_block_type, last_block_value, last_charindex
@@ -139,6 +142,8 @@ MODULE eis_parser_mod
     PROCEDURE :: tokenize_inner => eip_tokenize_inner
     PROCEDURE :: replace_fn => eip_replace_fn
     PROCEDURE :: expand_fn => eip_expand_fn
+    PROCEDURE :: gen_deriv_tree => eip_gen_deriv_tree
+    PROCEDURE :: set_symbol_derivative_inner => eip_set_sym_deriv_inner
 
     GENERIC, PUBLIC :: add_function => add_function_now, add_function_defer
     GENERIC, PUBLIC :: add_variable => add_variable_now, add_variable_defer
@@ -160,9 +165,12 @@ MODULE eis_parser_mod
     PROCEDURE, PUBLIC :: add_emplaced_variable => eip_add_emplaced_variable
     PROCEDURE, PUBLIC :: add_functor => eip_add_functor
     PROCEDURE, PUBLIC :: add_functor_pointer => eip_add_functor_ptr
+    PROCEDURE, PUBLIC :: set_symbol_derivative => eip_set_sym_deriv
+    PROCEDURE, PUBLIC :: lock_symbol_derivative => eip_lock_sym_deriv
 
     PROCEDURE, PUBLIC :: tokenize => eip_tokenize
     PROCEDURE, PUBLIC :: tokenize_number => eip_tokenize_number
+    PROCEDURE, PUBLIC :: get_deriv_stack => eip_get_deriv_stack
     PROCEDURE, PUBLIC :: set_result_function => eip_set_eval_function
     GENERIC, PUBLIC :: evaluate => evaluate_string, evaluate_stack
     PROCEDURE, PUBLIC :: simplify => eip_simplify
@@ -225,13 +233,148 @@ CONTAINS
     IF (ASSOCIATED(this%err_handler) .AND. this%owns_err_handler) THEN
       DEALLOCATE(this%err_handler)
     END IF
+    IF (ASSOCIATED(this%zero_stack)) DEALLOCATE(this%zero_stack)
   END SUBROUTINE eip_destructor
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Calculate a stack that contains the derivative of another
+  !> stack
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] output
+  !> @param[in] wrt
+  !> @param[inout] errcode
+  SUBROUTINE eip_get_deriv_stack(this, stack, output, wrt, errcode)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Input stack containing function that you want the derivative of
+    CLASS(eis_stack), INTENT(INOUT) :: stack
+    !> Output stack filled with the derivative of stack
+    CLASS(eis_stack), INTENT(INOUT) :: output
+    !> String saying what the derivative is with respect to
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    !> Error code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: istack, sp
+    TYPE(eis_tree_item), POINTER :: root, result
+    TYPE(eis_stack) :: intermediate
 
+    CALL initialise_stack(output)
+    sp = stack%stack_point + 1
+    DO WHILE (sp > 1)
+      ALLOCATE(root, result)
+      CALL eis_build_node(stack, sp, root)
+      errcode = eis_err_none
+      CALL this%gen_deriv_tree(root, result, wrt, output, errcode)
+      IF (errcode /= eis_err_none) THEN
+        DEALLOCATE(root, result)
+        RETURN
+      END IF
+      CALL initialise_stack(intermediate)
+      CALL eis_tree_to_stack(result, intermediate)
+      CALL prepend_stack(output, intermediate)
+      CALL deallocate_stack(intermediate)
+      DEALLOCATE(root, result)
+    END DO
+
+    IF (this%should_simplify) CALL this%simplify(output, errcode)
+
+  END SUBROUTINE eip_get_deriv_stack
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Core function to produce an eis_tree_item corresponding to the
+  !> derivative of another eis_tree_item. Operates recursively
+  !> @param[inout] this
+  !> @param[inout] tree
+  !> @param[inout] deriv_tree
+  !> @param[in] wrt
+  !> @param[inout] output stack
+  !> @param[inout] errcode
+  RECURSIVE SUBROUTINE eip_gen_deriv_tree(this, tree, deriv_tree, wrt, output, &
+      errcode)
+    CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Tree item of source data
+    CLASS(eis_tree_item), INTENT(INOUT) :: tree
+    !> Tree item to hold derivative
+    CLASS(eis_tree_item), TARGET, INTENT(INOUT) :: deriv_tree
+    !> String holding variable derivative is with respect to
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    !> Stack that will hold the derivative when deriv_tree is converted back to
+    !> a stack. Used to set stack parameters
+    CLASS(eis_stack), INTENT(INOUT) :: output
+    !> Error code for the operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    INTEGER :: inode, sp
+    CLASS(eis_stack), POINTER :: stack_res
+    CLASS(eis_tree_item), POINTER :: deriv_ptr
+    TYPE(eis_tree_item), DIMENSION(:), ALLOCATABLE :: deriv_nodes
+    LOGICAL :: locked
+
+    deriv_ptr => deriv_tree
+
+    locked = .FALSE.
+
+    IF (tree%co_value%registry_type == eis_registry_local) THEN
+      CALL this%registry%get_symbol_derivative_value(&
+          tree%co_value%deriv_values, stack_res, errcode, wrt, locked = locked)
+    ELSE
+      CALL global_registry%get_symbol_derivative_value(&
+          tree%co_value%deriv_values, stack_res, errcode, wrt, locked = locked)
+    END IF
+
+    IF (.NOT. ASSOCIATED(stack_res)) THEN
+      IF (locked) THEN
+        errcode = eis_err_no_deriv
+        CALL this%err_handler%add_error(eis_err_parser, errcode, &
+            tree%co_value%text, tree%co_value%charindex)
+        RETURN
+      END IF
+      stack_res => this%zero_stack
+    END IF
+
+    output%cap_bits = IOR(output%cap_bits, stack_res%cap_bits)
+    output%has_deferred = output%has_deferred .OR. stack_res%has_deferred
+    output%has_emplaced = output%has_deferred .OR. stack_res%has_emplaced
+    output%can_accept_maths_domain_errors &
+        = output%can_accept_maths_domain_errors &
+        .OR. stack_res%can_accept_maths_domain_errors
+
+    IF (ASSOCIATED(tree%nodes)) THEN
+      ALLOCATE(deriv_nodes(SIZE(tree%nodes)))
+      DO inode = 1, SIZE(tree%nodes)
+        CALL this%gen_deriv_tree(tree%nodes(inode), deriv_nodes(inode), &
+            wrt, output, errcode)
+      END DO
+
+      sp = stack_res%stack_point + 1
+      CALL eis_build_node(stack_res, sp, deriv_ptr)
+      CALL this%inline_function_expand(deriv_tree, tree%nodes, errcode, &
+          deriv_nodes, func = tree)
+      DEALLOCATE(deriv_nodes)
+    ELSE
+      sp = stack_res%stack_point + 1
+      CALL eis_build_node(stack_res, sp, deriv_ptr)
+    END IF
+
+  END SUBROUTINE eip_gen_deriv_tree
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Core function to replace all stack functions in a stack
+  !> with the stacks that represent them
+  !> @param[inout] this
+  !> @param[inout] stack
+  !> @param[inout] errcode
   SUBROUTINE eip_expand_fn(this, stack, errcode)
     CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Stack to operate on
     TYPE(eis_stack), INTENT(INOUT) :: stack
+    !> Error code from operation
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_tree_item), POINTER :: root
     INTEGER :: sp
@@ -245,7 +388,7 @@ CONTAINS
       ALLOCATE(root)
       CALL eis_build_node(stack, sp, root)
       errcode = eis_err_none
-      CALL this%replace_fn(root, errcode)
+      CALL this%replace_fn(root, errcode, output)
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
         RETURN
@@ -256,16 +399,49 @@ CONTAINS
       CALL deallocate_stack(intermediate)
       DEALLOCATE(root)
     END DO
+
+    output%cap_bits = IOR(output%cap_bits, stack%cap_bits)
+    output%has_deferred = output%has_deferred .OR. stack%has_deferred
+    output%has_emplaced = output%has_deferred .OR. stack%has_emplaced
+    output%can_accept_maths_domain_errors &
+        = output%can_accept_maths_domain_errors &
+        .OR. stack%can_accept_maths_domain_errors
+    IF (ALLOCATED(stack%full_line)) THEN
+      ALLOCATE(output%full_line, SOURCE = stack%full_line)
+    ELSE
+      ALLOCATE(output%full_line, SOURCE = "")
+    END IF
+    output%params = stack%params
+    IF (ALLOCATED(stack%filename)) THEN
+      ALLOCATE(output%filename, SOURCE = stack%filename)
+    ELSE
+      ALLOCATE(output%filename, SOURCE = "")
+    END IF
+
+    output%line_number = stack%line_number
+
     stack = output
 
   END SUBROUTINE eip_expand_fn
 
 
 
-  RECURSIVE SUBROUTINE eip_replace_fn(this, node, errcode)
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Core function to replace an individual eis_tree_item for a
+  !> stack function with the true stack, replacing operands as needed
+  !> @param[inout] this
+  !> @param[inout] node
+  !> @param[inout] errcode
+  !> @param[inout] output
+  RECURSIVE SUBROUTINE eip_replace_fn(this, node, errcode, output)
     CLASS(eis_parser), INTENT(INOUT) :: this
+    !> Node of an eis_tree to operate on
     TYPE(eis_tree_item), INTENT(INOUT) :: node
+    !> Error code from results
     INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> Stack that will contain the replaced code
+    CLASS(eis_stack), INTENT(INOUT), OPTIONAL :: output
     INTEGER :: inode, sp
     INTEGER(eis_error) :: errcode_l
     TYPE(eis_stack) :: stack
@@ -281,7 +457,20 @@ CONTAINS
     END IF
 
     IF (node%value%rtype == eis_pt_stack_function) THEN
-      CALL this%registry%get_stack_function(node%value%value, stack, errcode)
+      IF (node%co_value%registry_type == eis_registry_local) THEN
+        CALL this%registry%get_stack_function(node%value%value, stack, errcode)
+      ELSE
+        CALL global_registry%get_stack_function(node%value%value, stack, &
+            errcode)
+      END IF
+      IF (PRESENT(output)) THEN
+        output%cap_bits = IOR(output%cap_bits, stack%cap_bits)
+        output%has_deferred = output%has_deferred .OR. stack%has_deferred
+        output%has_emplaced = output%has_deferred .OR. stack%has_emplaced
+        output%can_accept_maths_domain_errors &
+            = output%can_accept_maths_domain_errors &
+            .OR. stack%can_accept_maths_domain_errors
+      END IF
       sp = stack%stack_point + 1
       ALLOCATE(node2)
       CALL eis_build_node(stack, sp, node2)
@@ -578,16 +767,16 @@ CONTAINS
       global_setup = .TRUE.
       CALL global_registry%add_operator('+', eis_uplus, eis_assoc_ra, 4, err, &
         unary = .TRUE., err_handler = this%err_handler, &
-        description = 'Unary plus')
+        description = 'Unary plus', operator_id = eis_pt_op_unary_plus)
       CALL global_registry%add_operator('-', eis_uminus, eis_assoc_ra, 4, err, &
           unary = .TRUE., err_handler = this%err_handler, &
-          description = 'Unary minus')
+          description = 'Unary minus', operator_id = eis_pt_op_unary_minus)
       CALL global_registry%add_operator('+', eis_bplus, eis_assoc_a, 2, err, &
           err_handler = this%err_handler, description = 'Addition operator', &
           operator_id = eis_pt_op_plus)
       CALL global_registry%add_operator('-', eis_bminus, eis_assoc_la, 2, err, &
           err_handler = this%err_handler, &
-          description = 'Subtraction operator', operator_id = eis_pt_op_plus)
+          description = 'Subtraction operator', operator_id = eis_pt_op_minus)
       CALL global_registry%add_operator('*', eis_times, eis_assoc_a, 3, err, &
           err_handler = this%err_handler, &
           description = 'Multiplication operator', &
@@ -625,6 +814,8 @@ CONTAINS
           err_handler = this%err_handler, description = 'equal to operator')
       CALL global_registry%add_operator('==', eis_eq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler, description = 'equal to operator')
+      CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
+          err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('/=', eis_neq, eis_assoc_la, 1, err, &
@@ -681,6 +872,11 @@ CONTAINS
       CALL global_registry%add_constant('scale.yocto', 1.0e-24_eis_num, err, &
           err_handler = this%err_handler, description = '10^-24')
 
+
+      CALL global_registry%add_constant('math.huge', HUGE(1.0_eis_num), err, &
+          err_handler = this%err_handler, description = 'Largest number')
+      CALL global_registry%add_constant('math.tiny', TINY(1.0_eis_num), err, &
+          err_handler = this%err_handler, description = 'Smallest number')
       CALL global_registry%add_function('math.abs', eis_abs, 1, err, &
           err_handler = this%err_handler, description = '`abs(a)` - Returns &
           &absolute value of a')
@@ -763,10 +959,12 @@ CONTAINS
 #ifdef F2008
       CALL global_registry%add_function('math.bessel_j', eis_bessel_j, 2, err, &
           err_handler = this%err_handler, description = '`bessel_j(n, x)` - &
-          &Returns the Bessel function of the first kind of order n of x')
+          &Returns the Bessel function of the first kind of order n of x. &
+          &Does not have derivative with respect to order')
       CALL global_registry%add_function('math.bessel_y', eis_bessel_y, 2, err, &
           err_handler = this%err_handler, description  = '`bessel_y(n, x)` - &
-          &Returns the Bessel function of the second kind of order n of x')
+          &Returns the Bessel function of the second kind of order n of x. &
+          &Does not have derivative with respect to order')
       CALL global_registry%add_function('math.erf', eis_erf, 1, err, &
           err_handler = this%err_handler, description = '`erf(x)` - Return &
           &the error function of x')
@@ -794,6 +992,10 @@ CONTAINS
           &other parameters are the maximum value of the profile (A), the value&
           & of the function at x=0 (A0) and the characteristic rise of the &
           &function')
+      CALL global_registry%add_function('utility.dsemigauss', &
+          eis_dsemigauss, -1, &
+          err, err_handler = this%err_handler, description = '`dsemigauss(x, &
+          &A, A0, w, dx, dA, DA0, dw)`. Derivative of semigauss')
       CALL global_registry%add_function('utility.supergauss', eis_supergauss, &
           4, err, err_handler = this%err_handler, description = '`supergauss(&
           &x,x0,w,n)` - Returns a superGaussian function of the form &
@@ -805,10 +1007,19 @@ CONTAINS
           &points as (x,y) pairs. The nearest x points to p will be selected &
           &and the corresponding y value will be selected by linear &
           &interpolation')
+      CALL global_registry%add_function('utility.deriv_interpolate', &
+          eis_deriv_interpol, -1, err, err_handler = this%err_handler, &
+          description = 'deriv_interpolate(&
+          &p, (x0, y0), (x1, y1), ...) - get a gradient from a specified &
+          &interpolation function. Specify a point p and a series of control &
+          &points as (x,y) pairs. The nearest x points to p will be selected &
+          &and the gradient of the corresponding linear reconstruction from &
+          &"utility.interpolate" will be selected and returned')
 
       CALL global_registry%add_function('logic.if', eis_if, &
           3, err, err_handler = this%err_handler, description = '`if(a,b,c)` - &
-          & If a is not equal to zero returns b, otherwise returns c')
+          & If a is not equal to zero returns b, otherwise returns c', &
+          can_accept_maths_domain_errors = .TRUE.)
 
       !Unit indepdendent physical constants
       CALL global_registry%add_constant('physics.na', &
@@ -906,6 +1117,182 @@ CONTAINS
           END IF
         END IF
       END IF
+
+      CALL this%set_symbol_derivative_inner('+', 'dparam(1)', errcode, &
+          global = .TRUE., unary = .TRUE.)
+      CALL this%set_symbol_derivative_inner('-', '-dparam(1)', errcode, &
+          global = .TRUE., unary = .TRUE.)
+      CALL this%set_symbol_derivative('+', 'dparam(1) + dparam(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('-', 'dparam(1) - dparam(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('*', &
+          'dparam(1)*param(2) + dparam(2)*param(1)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('/', &
+          '(param(2)*dparam(1)-param(1)*dparam(2))/(param(2)^2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('^', &
+          'param(1)^(param(2)-1)*(param(2)*dparam(1) + &
+          &param(1)*loge(param(1))*dparam(2))', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('e', 'dparam(1) * 10^param(2) + &
+          &param(1) * loge(10) * dparam(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('lt', 'param(1) lt param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('<', 'param(1) < param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('le', 'param(1) le param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('<=', 'param(1) <= param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('gt', 'param(1) gt param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('>', 'param(1) > param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('ge', 'param(1) ge param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('>=', 'param(1) >= param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('eq', 'param(1) eq param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('==', 'param(1) == param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('ne', 'param(1) ne param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('/=', 'param(1) /= param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('!=', 'param(1) != param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('and', 'param(1) and param(2)', errcode, &
+          global = .TRUE.)
+      CALL this%set_symbol_derivative('or', 'param(1) or param(2)', errcode, &
+          global = .TRUE.)
+
+      CALL this%set_symbol_derivative('math.abs', 'if(param(1) > 0, dparam(1), &
+          &if(param(1) < 0, -dparam(1), math.huge))', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.floor', 'math.floor(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.ceil', 'math.ceil(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.ceiling', &
+          'math.ceiling(param(1))', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.nint', 'math.nint(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.trunc', 'math.trunc(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.truncate', &
+          'math.truncate(param(1))', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.sqrt', &
+          'dparam(1)/(2*sqrt(param(1)))', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.sin', 'math.cos(param(1)) &
+          &* dparam(1)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.cos', '-math.sin(param(1)) &
+          &* dparam(1)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.tan', &
+          'dparam(1)/math.cos(param(1))^2', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.asin', &
+          'dparam(1)/math.sqrt(1-param(1)^2)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.acos', &
+          '-dparam(1)/math.sqrt(1-param(1)^2)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.atan', &
+          'dparam(1)/(1+param(1)^2)', errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.atan2', &
+          '(param(2)*dparam(1) - param(1)*dparam(2))/(param(1)^2+param(2)^2)', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.sinh', &
+          'dparam(1) * math.cosh(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.cosh', &
+          'dparam(1) * math.sinh(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.tanh', &
+          'dparam(1) / math.cosh(param(1))^2', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.asinh', &
+          'dparam(1) / (math.sqrt(1+param(1)^2))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.acosh', &
+          'dparam(1) / (math.sqrt(param(1)-1) * math.sqrt(1+param(1)))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.atanh', &
+          'dparam(1) / (1-param(1)^2)', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.exp', &
+          'dparam(1) * math.exp(param(1))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.loge', &
+          'dparam(1) / param(1)', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.log10', &
+          'dparam(1) / (param(1) * math.loge(10))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.logbase', &
+          'dparam(1) / (param(1)*math.loge(param(2))) - math.loge(param(1)) &
+          &* dparam(2)/(param(2)*math.loge(param(2))^2)', &
+          errcode, global = .TRUE.)
+
+      CALL this%set_symbol_derivative('utility.gauss', &
+          'gauss(param(1), param(2), param(3)) * (-(2*(param(1)-param(2)) &
+          &* (dparam(1) - dparam(2)))/param(3)^2 + (2*(param(1)-param(2))^2 &
+          &* dparam(3)) / param(3)^3)', &
+          errcode, global = .TRUE.)
+
+      CALL this%set_symbol_derivative('utility.semigauss', &
+          'if (param(1) <= sqrt(-loge(param(3)/param(2))) * param(4), &
+          &(-2 * sqrt(-loge(param(3)/param(2))) * param(1) * param(2) &
+          &* param(3) * param(4) * dparam(1) + sqrt(-loge(param(3)/param(2))) &
+          &* param(2) * param(4)^3 * dparam(3) + param(1) * param(4)^2 &
+          &* (param(3) * dparam(2) - param(2) * dparam(3)) + 2.0 &
+          &* sqrt(-loge(param(3)/param(2))) * param(1)^2 * param(2) &
+          &* param(3) * dparam(4) + 2 * loge(param(3)/param(2)) * param(2) &
+          &* param(3) * param(4) * ( param(1) * dparam(4) - param(4) &
+          &* dparam(1))) / (exp((param(1) - sqrt(-loge(param(3)/param(2))) &
+          &* param(4)^2) / param(4)^2) * sqrt(-loge(param(3)/param(2))) &
+          &* param(3) * param(4)^3), 0.0)', &
+          errcode, global = .TRUE.)
+
+      CALL this%set_symbol_derivative('utility.supergauss', &
+          '-(((param(1)-param(2))/param(3))^param(4) * (param(4) &
+          &* ((dparam(1)-dparam(2))/(param(1)-param(2)) - dparam(3)/param(3)) &
+          &+ loge((param(1)-param(2))/param(3)) * dparam(4))) &
+          &* supergauss(param(1), param(2), param(3), param(4))', &
+          errcode, global = .TRUE.)
+
+      CALL this%set_symbol_derivative('utility.interpolate', &
+          'utility.deriv_interpolate(all_params) * dparam(1)', &
+          errcode, global = .TRUE.)
+
+      CALL this%set_symbol_derivative('logic.if', &
+          'if(param(1), dparam(2), dparam(3))', &
+          errcode, global = .TRUE.)
+
+#ifdef F2008
+      CALL this%set_symbol_derivative('math.bessel_j', &
+          '0.5 * dparam(2) * (math.bessel_j(param(1)-1, param(2)) &
+          &- math.bessel_j(param(1)+1, param(2)))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.bessel_y', &
+          '0.5 * dparam(2) * (math.bessel_y(param(1)-1, param(2)) &
+          &- math.bessel_y(param(1)+1, param(2)))', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.erf', &
+          '2 * dparam(1) * math.exp(-param(1)^2) / math.sqrt(math.pi)', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.erfc', &
+          '-2 * dparam(1) * math.exp(-param(1)^2) / math.sqrt(math.pi)', &
+          errcode, global = .TRUE.)
+      CALL this%set_symbol_derivative('math.erfc_scaled', &
+          '-2 * dparam(1)/math.sqrt(math.pi) + 2 &
+          & * erfc_scaled(param(1)) * param(1) * dparam(1)', &
+          errcode, global = .TRUE.)
+#endif
+
+    END IF
+
+    IF (.NOT. ASSOCIATED(this%zero_stack)) THEN
+      ALLOCATE(this%zero_stack)
+      CALL this%tokenize("0",this%zero_stack, errcode)
     END IF
 
   END SUBROUTINE eip_init
@@ -1171,8 +1558,9 @@ CONTAINS
   !> @param[in] unary
   !> @param[in] allow_params
   !> @param[in] allow_dparams
+  !> @param[inout] can_accept_maths_domain_errors
   SUBROUTINE eip_load_block(this, name, iblock, icoblock, unary, allow_params, &
-      allow_dparams)
+      allow_dparams, can_accept_maths_domain_errors)
 
     CLASS(eis_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to look up in registry
@@ -1186,6 +1574,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: allow_params
     !> Is it possible to be specifying deriviate parameters in this block
     LOGICAL, INTENT(IN), OPTIONAL :: allow_dparams
+    !> Does this block flag itself as allowing maths domain errors
+    LOGICAL, INTENT(INOUT), OPTIONAL :: can_accept_maths_domain_errors
     INTEGER(eis_i8) :: work
     REAL(eis_num) :: value
     LOGICAL :: can_be_unary, should_allow_params, should_allow_dparams
@@ -1257,9 +1647,33 @@ CONTAINS
       RETURN
     END IF
 
+    IF (name == "all_params" .AND. should_allow_params) THEN
+      iblock%ptype = eis_pt_constant
+      iblock%rtype = eis_pt_param
+      icoblock%expected_params = 0
+      iblock%can_simplify = .FALSE.
+      RETURN
+    END IF
+
     IF (name == "dparam" .AND. should_allow_dparams) THEN
       iblock%ptype = eis_pt_function
       iblock%rtype = eis_pt_dparam
+      icoblock%expected_params = 1
+      iblock%can_simplify = .FALSE.
+      RETURN
+    END IF
+
+    IF (name == "all_dparams" .AND. should_allow_dparams) THEN
+      iblock%ptype = eis_pt_constant
+      iblock%rtype = eis_pt_dparam
+      icoblock%expected_params = 0
+      iblock%can_simplify = .FALSE.
+      RETURN
+    END IF
+
+    IF (name == "func" .AND. should_allow_dparams) THEN
+      iblock%ptype = eis_pt_function
+      iblock%rtype = eis_pt_placed_function
       icoblock%expected_params = 1
       iblock%can_simplify = .FALSE.
       RETURN
@@ -1286,10 +1700,22 @@ CONTAINS
 !    END IF
 
     CALL this%registry%fill_block(name, iblock, icoblock, can_be_unary)
-    IF (iblock%ptype /= eis_pt_bad) RETURN
+    IF (iblock%ptype /= eis_pt_bad) THEN
+      icoblock%registry_type = eis_registry_local
+      IF (PRESENT(can_accept_maths_domain_errors)) &
+          can_accept_maths_domain_errors = can_accept_maths_domain_errors &
+          .OR. icoblock%can_accept_maths_domain_errors
+      RETURN
+    END IF
 
     CALL global_registry%fill_block(name, iblock, icoblock, can_be_unary)
-    IF (iblock%ptype /= eis_pt_bad) RETURN
+    IF (iblock%ptype /= eis_pt_bad) THEN
+      icoblock%registry_type = eis_registry_global
+      IF (PRESENT(can_accept_maths_domain_errors)) &
+          can_accept_maths_domain_errors = can_accept_maths_domain_errors &
+          .OR. icoblock%can_accept_maths_domain_errors
+      RETURN
+    END IF
 
 
     value = parse_string_as_real(name, work)
@@ -1492,7 +1918,7 @@ CONTAINS
     INTEGER :: current_type, current_pointer, i, ptype
     INTEGER(eis_bitmask) :: cap_bits
     INTEGER :: charindex
-    LOGICAL :: atext
+    LOGICAL :: atext, camde
 
     TYPE(eis_stack_element) :: iblock
     TYPE(eis_stack_co_element) :: icoblock
@@ -1503,6 +1929,8 @@ CONTAINS
     IF (PRESENT(simplify)) should_simplify = simplify
     atext = this%allow_text
     IF (PRESENT(allow_text)) atext = allow_text
+
+    camde = .FALSE.
 
     IF (.NOT. this%is_init) CALL this%init(err)
     should_dealloc = .TRUE.
@@ -1575,7 +2003,7 @@ CONTAINS
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
             cap_bits, charindex + output%char_offset, charindex, output, err, &
             filename, line_number, expression, atext, allow_params, &
-            allow_dparams)
+            allow_dparams, camde)
         charindex = i
         IF (err /= eis_err_none) THEN
           err = IOR(err, eis_err_parser)
@@ -1598,7 +2026,8 @@ CONTAINS
     IF (current_type /= eis_char_space) THEN
       CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
           cap_bits, charindex + output%char_offset,  charindex, output, err, &
-          filename, line_number, expression, atext, allow_params, allow_dparams)
+          filename, line_number, expression, atext, allow_params, &
+          allow_dparams, camde)
       output%cap_bits = IOR(output%cap_bits, cap_bits)
     END IF
 
@@ -1639,6 +2068,8 @@ CONTAINS
           output%co_entries(i)%line_number = line_number
     END DO
     DEALLOCATE(expression)
+
+    output%can_accept_maths_domain_errors = camde
 
     CALL this%expand_fn(output, err)
     IF (should_simplify) CALL this%simplify(output, err, &
@@ -1969,9 +2400,10 @@ CONTAINS
   !> @param[in] host_params
   !> @param[out] remaining_functions
   !> @param[inout] capbits
+  !> @param[inout] can_accept_maths_domain_errors
   !> @param[inout] errcode
   RECURSIVE SUBROUTINE eip_emplace_node(this, tree_node, host_params, &
-      remaining_functions, capbits, errcode)
+      remaining_functions, capbits, can_accept_maths_domain_errors, errcode)
     CLASS(eis_parser) :: this
     TYPE(eis_tree_item), INTENT(INOUT) :: tree_node !< Node to operate on
     TYPE(C_PTR), INTENT(IN) :: host_params !< Host code specified parameters
@@ -1980,6 +2412,8 @@ CONTAINS
     LOGICAL, INTENT(INOUT) :: remaining_functions
     !> Capability bits for this node.
     INTEGER(eis_bitmask), INTENT(INOUT) :: capbits
+    !> Should this stack trap maths domain error
+    LOGICAL, INTENT(INOUT) :: can_accept_maths_domain_errors
     !> Error code for this node
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_tree_item), POINTER :: new_node
@@ -2011,7 +2445,8 @@ CONTAINS
     IF (ASSOCIATED(tree_node%nodes)) THEN
       DO inode = 1, SIZE(tree_node%nodes)
         CALL this%emplace_node(tree_node%nodes(inode), host_params, &
-            remaining_functions, capbits, errcode)
+            remaining_functions, capbits, can_accept_maths_domain_errors, &
+            errcode)
       END DO
     END IF
 
@@ -2213,6 +2648,8 @@ CONTAINS
     IF (emplace_stack%stack_point == 0) RETURN
 
     capbits = IOR(capbits, emplace_stack%cap_bits)
+    can_accept_maths_domain_errors = can_accept_maths_domain_errors &
+        .AND. emplace_stack%can_accept_maths_domain_errors
     !If emplacement is not forbidden by status then build new node
     IF (IAND(status_code, eis_status_no_emplace) == 0) THEN
       sp = emplace_stack%stack_point + 1
@@ -2295,7 +2732,8 @@ CONTAINS
     capbits = sptr%cap_bits
     sp = sptr%stack_point + 1
     CALL eis_build_node(stack, sp, root)
-    CALL this%emplace_node(root, params, remaining_functions, capbits, errcode)
+    CALL this%emplace_node(root, params, remaining_functions, capbits, &
+        stack%can_accept_maths_domain_errors, errcode)
     CALL deallocate_stack(sptr)
     CALL initialise_stack(sptr)
     CALL eis_tree_to_stack(root, sptr)
@@ -2313,30 +2751,83 @@ CONTAINS
 
 
   RECURSIVE SUBROUTINE eip_inline_function_expand(this, fn_tree, &
-      params, errcode, dparams)
+      params, errcode, dparams, func)
     CLASS(eis_parser) :: this
     CLASS(eis_tree_item), INTENT(INOUT) :: fn_tree
     CLASS(eis_tree_item), DIMENSION(:), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     CLASS(eis_tree_item), DIMENSION(:), INTENT(IN), OPTIONAL :: dparams
+    CLASS(eis_tree_item), INTENT(IN), OPTIONAL :: func
     TYPE(eis_stack) :: stack
     REAL(eis_num), DIMENSION(:), ALLOCATABLE :: results
-    INTEGER :: inode, rcount, el
+    INTEGER :: inode, rcount, el, param_count, pdest, iparam
     INTEGER(eis_error) :: errcode_l
+    CLASS(eis_tree_item), DIMENSION(:), POINTER :: temp
+    LOGICAL :: need_node_replace
 
     errcode = eis_err_none
 
     IF (ASSOCIATED(fn_tree%nodes)) THEN
+      need_node_replace = .FALSE.
+      param_count = SIZE(fn_tree%nodes)
       DO inode = SIZE(fn_tree%nodes), 1, -1
         CALL this%inline_function_expand(fn_tree%nodes(inode), params, &
-            errcode, dparams)
+            errcode, dparams, func)
+        IF (fn_tree%nodes(inode)%value%rtype == eis_pt_param &
+            .AND.fn_tree%nodes(inode)%value%ptype == eis_pt_constant) THEN
+          need_node_replace = .TRUE.
+          param_count = param_count - 1 + SIZE(params)
+        END IF
+        IF (fn_tree%nodes(inode)%value%rtype == eis_pt_dparam &
+            .AND.fn_tree%nodes(inode)%value%ptype == eis_pt_constant) THEN
+          need_node_replace = .TRUE.
+          param_count = param_count - 1 + SIZE(dparams)
+        END IF
       END DO
+      IF (need_node_replace) THEN
+        !Can only pass all parameters to variadic function
+        IF (fn_tree%co_value%expected_params > -1) THEN
+          errcode = eis_err_bad_value
+          CALL this%err_handler%add_error(eis_err_parser, errcode_l, &
+              fn_tree%co_value%text, fn_tree%co_value%charindex)
+          RETURN
+        END IF
+        temp => fn_tree%nodes
+        ALLOCATE(fn_tree%nodes(1:param_count))
+        fn_tree%value%actual_params = param_count
+        pdest = 1
+        DO inode = 1,SIZE(temp)
+          IF (temp(inode)%value%rtype == eis_pt_param &
+              .OR. temp(inode)%value%rtype == eis_pt_dparam &
+              .AND. temp(inode)%value%ptype == eis_pt_constant) THEN
+            IF (temp(inode)%value%rtype == eis_pt_param) THEN
+              DO iparam = 1, SIZE(params)
+                CALL eis_copy_tree(params(iparam), fn_tree%nodes(pdest))
+                pdest = pdest + 1
+              END DO
+            ELSE
+              DO iparam = 1, SIZE(dparams)
+                CALL eis_copy_tree(dparams(iparam), fn_tree%nodes(pdest))
+                pdest = pdest + 1
+              END DO
+            END IF
+          ELSE
+            CALL eis_copy_tree(temp(inode), fn_tree%nodes(pdest))
+            pdest = pdest + 1
+          END IF
+        END DO
+        DEALLOCATE(temp)
+      END IF
     END IF
 
     CALL initialise_stack(stack)
 
-    IF (fn_tree%value%rtype == eis_pt_param &
-        .OR. fn_tree%value%rtype == eis_pt_dparam) THEN
+    !Only replace a node if it is a param, or a dparam and is a function
+    !If not a function then it's an "all_params" or "all_dparams" command
+    !and should be handled at the level of its parent
+    IF ((fn_tree%value%rtype == eis_pt_param &
+        .OR. fn_tree%value%rtype == eis_pt_dparam) &
+        .AND. fn_tree%value%ptype == eis_pt_function) THEN
       CALL eis_tree_to_stack(fn_tree%nodes(1), stack)
       rcount = this%evaluate(stack, results, errcode_l)
       IF (errcode_l /= eis_err_none) THEN
@@ -2363,7 +2854,21 @@ CONTAINS
               fn_tree%nodes(1)%co_value%charindex)
           RETURN
         END IF
-        CALL eis_copy_tree(dparams(INT(results(1))), fn_tree)
+        CALL eis_copy_tree(dparams(SIZE(params) - INT(results(1)) + 1), fn_tree)
+      ELSE
+        errcode = eis_err_bad_value
+        CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+            fn_tree%co_value%text, fn_tree%co_value%charindex)
+      END IF
+    END IF
+
+    IF (fn_tree%value%rtype == eis_pt_placed_function) THEN
+      IF (PRESENT(func)) THEN
+        temp => fn_tree%nodes
+        fn_tree%nodes => NULL()
+        CALL eis_copy_tree(func, fn_tree)
+        IF (ASSOCIATED(fn_tree%nodes)) DEALLOCATE(fn_tree%nodes)
+        fn_tree%nodes => temp
       ELSE
         errcode = eis_err_bad_value
         CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
@@ -2574,6 +3079,8 @@ CONTAINS
           can_have_text_params = text_params)
     END IF
 
+    CALL this%lock_symbol_derivative(name, errcode)
+
   END SUBROUTINE eip_add_functor
 
 
@@ -2665,7 +3172,155 @@ CONTAINS
           owns = owns, can_have_text_params = text_params)
     END IF
 
+    CALL this%lock_symbol_derivative(name, errcode)
+
   END SUBROUTINE eip_add_functor_ptr
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Set the derivative for a symbol
+  !> @detail
+  !> This function specifies a derivative for a given parser symbol
+  !> in terms of a valid parser expression. If the derivative has a
+  !> different value depending on what the derivative is with respect to
+  !> then you can specify this with the optional "wrt" parameter
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] deriv
+  !> @param[inout] errcode
+  !> @param[in] wrt
+  !> @param[in] global
+  SUBROUTINE eip_set_sym_deriv(this, symbol, deriv, errcode, wrt, &
+      global)
+    CLASS(eis_parser) :: this
+    !> Symbol to set the derivative of
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    !> Derivative parser expression for the symbol
+    CHARACTER(LEN=*), INTENT(IN) :: deriv
+    !> Error code for the operation
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> What to take the derivative with respect to. Optional. Not present
+    !> means that the stated derivative is with respect to any variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
+    !> Is the symbol in the global or parser local registry. Optional.
+    !> Not present means use local registry
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+
+    CALL this%set_symbol_derivative_inner(symbol, deriv, errcode, wrt, global)
+
+  END SUBROUTINE eip_set_sym_deriv
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Lock the derivative for a symbol
+  !> @detail
+  !> This function locks a given derivative of a symbol as being invalid
+  !> This function should be used for functions that do not have a meaningful
+  !> derivative. If this is not used then all parser symbols except functors
+  !> are assumed to have a derivative of zero
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[inout] errcode
+  !> @param[in] wrt
+  !> @param[in] global
+  SUBROUTINE eip_lock_sym_deriv(this, symbol, errcode, wrt, global)
+    CLASS(eis_parser) :: this
+    !> Symbol to lock
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    !> Error code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    !> What to take the derivative with respect to. Optional. Not present
+    !> means that the stated derivative is with respect to any variable
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
+    !> Is the symbol in the global or parser local registry. Optional.
+    !> Not present means use local registry
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    LOGICAL :: use_global
+    CHARACTER(LEN=:), ALLOCATABLE :: str
+
+    errcode = eis_err_none
+    IF (PRESENT(wrt)) THEN
+      ALLOCATE(str, SOURCE = wrt)
+    ELSE
+      ALLOCATE(str, SOURCE = "[***]")
+    END IF
+
+    use_global = .FALSE.
+    IF (PRESENT(global)) use_global = global
+
+    IF (use_global) THEN
+      CALL global_registry%lock_symbol_derivative(symbol, str, .FALSE., errcode)
+    ELSE
+      CALL this%registry%lock_symbol_derivative(symbol, str, .FALSE., errcode)
+    END IF
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_parser, errcode)
+    END IF
+
+  END SUBROUTINE eip_lock_sym_deriv
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Core inner function for setting symbolic derivatives
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] deriv
+  !> @param[inout] errcode
+  !> @param[in] wrt
+  !> @param[in] global
+  !> @param[in] unary
+  SUBROUTINE eip_set_sym_deriv_inner(this, symbol, deriv, errcode, wrt, &
+      global, unary)
+    CLASS(eis_parser) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    CHARACTER(LEN=*), INTENT(IN) :: deriv
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
+    LOGICAL, INTENT(IN), OPTIONAL :: global
+    LOGICAL, INTENT(IN), OPTIONAL :: unary
+    CHARACTER(LEN=:), ALLOCATABLE :: str
+    TYPE(eis_stack) :: stack
+    LOGICAL :: use_global, is_unary
+
+
+    errcode = eis_err_none
+    IF (PRESENT(wrt)) THEN
+      ALLOCATE(str, SOURCE = wrt)
+    ELSE
+      ALLOCATE(str, SOURCE = "[***]")
+    END IF
+    CALL this%tokenize_inner(deriv, stack, errcode, allow_params = .TRUE. , &
+        allow_dparams = .TRUE.)
+
+    IF (errcode == eis_err_none) THEN
+      use_global = .FALSE.
+      IF (PRESENT(global)) use_global = global
+
+      is_unary = .FALSE.
+      IF (PRESENT(unary)) is_unary = unary
+
+      IF (use_global) THEN
+        CALL global_registry%set_symbol_derivative_value(symbol, str, stack, &
+            is_unary, errcode)
+      ELSE
+        CALL this%registry%set_symbol_derivative_value(symbol, str, stack, &
+            is_unary, errcode)
+      END IF
+    END IF
+
+    IF (errcode /= eis_err_none) THEN
+      CALL this%err_handler%add_error(eis_err_parser, errcode)
+    END IF
+
+
+  END SUBROUTINE eip_set_sym_deriv_inner
+
 
 
   !> @author C.S.Brady@warwick.ac.uk
@@ -3549,7 +4204,7 @@ CONTAINS
 
     IF (expected_params <= 0) THEN
       errcode = eis_err_bad_value
-      CALL this%err_handler%add_error(eis_err_parser, errcode)
+      CALL this%err_handler%add_error(eis_err_parser, errcode, string)
       RETURN
     END IF
 
@@ -3741,7 +4396,8 @@ CONTAINS
   !> @param[in] allow_dparams
   SUBROUTINE eip_tokenize_subexpression_infix(this, current, iblock, icoblock, &
       cap_bits, charindex, trim_charindex, output, err, filename, line_number, &
-      full_line, allow_text, allow_params, allow_dparams)
+      full_line, allow_text, allow_params, allow_dparams, &
+      can_accept_maths_domain_errors)
 
     CLASS(eis_parser) :: this
     !> Text to parse
@@ -3775,6 +4431,8 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: allow_params
     !> Should function derivative parameters be allowed in parsing
     LOGICAL, INTENT(IN), OPTIONAL :: allow_dparams
+    !> Does the function flag the stack as allowing maths domain errors
+    LOGICAL, INTENT(INOUT), OPTIONAL :: can_accept_maths_domain_errors
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
     INTEGER :: istr
@@ -3786,7 +4444,8 @@ CONTAINS
 
     ! Populate the block
     CALL this%load_block(current, iblock, icoblock, &
-        allow_params = allow_params, allow_dparams = allow_dparams)
+        allow_params = allow_params, allow_dparams = allow_dparams, &
+        can_accept_maths_domain_errors = can_accept_maths_domain_errors)
     cap_bits = icoblock%cap_bits
     icoblock%charindex = charindex
     icoblock%full_line_pos = trim_charindex

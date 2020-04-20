@@ -8,6 +8,10 @@ MODULE eis_named_store_mod
   INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
   INTEGER(INT64), PARAMETER :: default_bucket_count = 100
 
+  INTERFACE ASSIGNMENT(=)
+    MODULE PROCEDURE copy_named_store
+  END INTERFACE
+
   !>Item stored in a named store
   TYPE :: named_store_item
     CHARACTER(LEN=:), ALLOCATABLE :: name
@@ -270,7 +274,7 @@ CONTAINS
   !> @param[in] shallow
   !> @return nsil_delete
   SUBROUTINE nsil_copy(this, dest, shallow)
-    CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
+    CLASS(named_store_inner_list), INTENT(IN) :: this !< self pointer
     CLASS(named_store_inner_list), INTENT(INOUT) :: dest !< Destination
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     LOGICAL :: do_shallow
@@ -711,7 +715,7 @@ CONTAINS
   !> @param[in] dest
   SUBROUTINE ns_copy(this, dest, shallow)
 
-    CLASS(named_store), INTENT(INOUT) :: this
+    CLASS(named_store), INTENT(IN) :: this
     CLASS(named_store), INTENT(INOUT) :: dest
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     INTEGER(INT64) :: i
@@ -750,5 +754,15 @@ CONTAINS
     CALL this%cleanup()
 
   END SUBROUTINE ns_destructor
+
+
+
+  SUBROUTINE copy_named_store(dest, source)
+    CLASS(named_store), INTENT(INOUT) :: dest
+    CLASS(named_store), INTENT(IN) :: source
+
+    CALL source%copy(dest, .FALSE.)
+
+  END SUBROUTINE copy_named_store
 
 END MODULE eis_named_store_mod

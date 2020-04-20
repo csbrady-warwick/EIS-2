@@ -6,6 +6,7 @@ MODULE eis_tree_mod
   USE eis_header
   USE eis_stack_mod
   USE eis_utils
+  USE eis_registry_mod
   IMPLICIT NONE
 
   !> @class
@@ -100,6 +101,8 @@ MODULE eis_tree_mod
     simplified%cap_bits = stack%cap_bits
     simplified%has_deferred = stack%has_deferred
     simplified%has_emplaced = stack%has_emplaced
+    simplified%can_accept_maths_domain_errors &
+        = stack%can_accept_maths_domain_errors
     IF (ALLOCATED(stack%full_line)) THEN
       ALLOCATE(simplified%full_line, SOURCE = stack%full_line)
     ELSE
@@ -206,11 +209,13 @@ MODULE eis_tree_mod
 
     IF (tree%value%ptype == eis_pt_operator) THEN
       IF (tree%value%rtype == eis_pt_op_multiply) THEN
+        !Simplify multiply by zero
         IF (tree%nodes(1)%value%rtype == eis_pt_zero &
             .OR. tree%nodes(2)%value%rtype == eis_pt_zero) THEN
           tree%value%ptype = eis_pt_constant
           tree%value%rtype = eis_pt_zero
           tree%value%numerical_data = 0.0_eis_num
+          tree%co_value%deriv_values = -1
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
             ALLOCATE(tree%co_value%text, SOURCE = "0")
@@ -218,34 +223,74 @@ MODULE eis_tree_mod
           DEALLOCATE(tree%nodes)
           can_simplify = .TRUE.
           RETURN
+       !Simplify multiply by 1 on right
         ELSE IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
           tdata => tree%nodes
           tree%nodes => NULL()
           CALL eis_copy_tree(tdata(2), tree)
           DEALLOCATE(tdata)
-          can_simplify = .TRUE.
           RETURN
+        !Simplify multiply by 1 of the left
         ELSE IF (tree%nodes(2)%value%rtype == eis_pt_unity) THEN
           tdata => tree%nodes
           tree%nodes => NULL()
           CALL eis_copy_tree(tdata(1), tree)
           DEALLOCATE(tdata)
-          can_simplify = .TRUE.
           RETURN
         END IF
 
       ELSE IF (tree%value%rtype == eis_pt_op_divide) THEN
+        !Simplify divide by 1
         IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
           tdata => tree%nodes
           tree%nodes => NULL()
           CALL eis_copy_tree(tdata(2), tree)
           DEALLOCATE(tdata)
-          can_simplify = .TRUE.
           RETURN
+        !Simplify 0/f
         ELSE IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
           tree%value%ptype = eis_pt_constant
           tree%value%rtype = eis_pt_zero
+          tree%value%numerical_data = tree%nodes(2)%value%numerical_data
+          tree%co_value%deriv_values = -1
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            ALLOCATE(tree%co_value%text, SOURCE = "0")
+          END IF
+          DEALLOCATE(tree%nodes)
+          can_simplify = .FALSE.
+          RETURN
+        !Error on divide by zero
+        ELSE IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
+          errcode = eis_err_maths_domain
+          RETURN
+        END IF
+      ELSE IF (tree%value%rtype == eis_pt_op_plus) THEN
+        !Simplify add zero on right
+        IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(2), tree)
+          DEALLOCATE(tdata)
+          RETURN
+        !Simplify add zero on left
+        ELSE IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
+          tdata => tree%nodes
+          tree%nodes => NULL()
+          CALL eis_copy_tree(tdata(1), tree)
+          DEALLOCATE(tdata)
+          RETURN
+        END IF
+      ELSE IF (tree%value%rtype == eis_pt_op_minus) THEN
+        !Simplify subtract zero on right
+        IF ((tree%nodes(1)%value%rtype == eis_pt_zero &
+            .AND. tree%nodes(2)%value%rtype == eis_pt_zero) &
+            .OR. (tree%nodes(1)%value%rtype == eis_pt_unity &
+            .AND. tree%nodes(2)%value%rtype == eis_pt_unity)) THEN
+          tree%value%ptype = eis_pt_constant
+          tree%value%rtype = eis_pt_zero
           tree%value%numerical_data = 0.0_eis_num
+          tree%co_value%deriv_values = -1
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
             ALLOCATE(tree%co_value%text, SOURCE = "0")
@@ -254,31 +299,27 @@ MODULE eis_tree_mod
           can_simplify = .TRUE.
           RETURN
         ELSE IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
-          errcode = eis_err_maths_domain
-          RETURN
-        END IF
-      ELSE IF (tree%value%rtype == eis_pt_op_plus) THEN
-        IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
           tdata => tree%nodes
           tree%nodes => NULL()
           CALL eis_copy_tree(tdata(2), tree)
           DEALLOCATE(tdata)
-          can_simplify = .TRUE.
-          RETURN
-        ELSE IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
-          tdata => tree%nodes
-          tree%nodes => NULL()
-          CALL eis_copy_tree(tdata(1), tree)
-          DEALLOCATE(tdata)
-          can_simplify = .TRUE.
           RETURN
         END IF
-      ELSE IF (tree%value%rtype == eis_pt_op_minus) THEN
-        IF (tree%nodes(2)%value%rtype == eis_pt_zero) THEN
-          tdata => tree%nodes
-          tree%nodes => NULL()
-          CALL eis_copy_tree(tdata(1), tree)
-          DEALLOCATE(tdata)
+      ELSE IF (tree%value%rtype == eis_pt_op_unary_minus) THEN
+        IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
+          tree%value%ptype = eis_pt_constant
+          tree%value%rtype = eis_pt_zero
+          tree%value%numerical_data = 0.0_eis_num
+          tree%co_value%deriv_values = -1
+          IF (ALLOCATED(tree%co_value%text)) THEN
+            DEALLOCATE(tree%co_value%text)
+            ALLOCATE(tree%co_value%text, SOURCE = "0")
+          END IF
+          DEALLOCATE(tree%nodes)
+          can_simplify = .TRUE.
+          RETURN
+        ELSE IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
+          !Leave -unity as -unity to allow other simplification
           can_simplify = .TRUE.
           RETURN
         END IF
@@ -295,18 +336,20 @@ MODULE eis_tree_mod
 
     IF (can_simplify .AND. tree%value%ptype /= eis_pt_constant) THEN
       err = eis_err_none
-      CALL ees_eval_element(eval, tree%value, params, status, err)
+      CALL ees_eval_element(eval, tree%value, params, status, err, .TRUE.)
       CALL ees_pop_scalar(eval, res, err)
-      IF (err == eis_err_none) THEN
+      IF (err == eis_err_none .OR. (err == eis_err_maths_domain &
+          .AND. tree%co_value%can_accept_maths_domain_errors)) THEN
         can_simplify = can_simplify &
             .AND. IAND(status, eis_status_no_simplify) == 0
         IF (IAND(status, eis_status_no_simplify) == 0) THEN
           tree%value%ptype = eis_pt_constant
           tree%value%rtype = eis_pt_constant
           tree%value%numerical_data = res
+          tree%co_value%deriv_values = -1
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
-            WRITE(rstring,'(E30.17)') res
+            WRITE(rstring,'(ES30.17)') res
             ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
           END IF
           IF (has_nodes) DEALLOCATE(tree%nodes)
