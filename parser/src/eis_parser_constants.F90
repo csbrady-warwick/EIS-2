@@ -99,6 +99,7 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_op_unary_minus = 26 !< Unitary minus
   INTEGER, PARAMETER :: eis_pt_placed_function = 27 !< Function used in deriv
   INTEGER, PARAMETER :: eis_pt_integer = 28 !< True integer
+  INTEGER, PARAMETER :: eis_pt_deriv_fn = 29 !< Derivative function
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
 

@@ -2831,7 +2831,7 @@ CONTAINS
       CALL eis_tree_to_stack(fn_tree%nodes(1), stack)
       rcount = this%evaluate(stack, results, errcode_l)
       IF (errcode_l /= eis_err_none) THEN
-        CALL this%err_handler%add_error(eis_err_emplacer, errcode_l, &
+        CALL this%err_handler%add_error(eis_err_parser, errcode_l, &
             fn_tree%co_value%text, fn_tree%co_value%charindex)
         errcode = errcode_l
         RETURN
@@ -2840,7 +2840,7 @@ CONTAINS
       IF (fn_tree%value%rtype == eis_pt_param) THEN
         IF (el < 1 .OR. el > SIZE(params)) THEN
           errcode = eis_err_bad_value
-          CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+          CALL this%err_handler%add_error(eis_err_parser, errcode, &
               fn_tree%nodes(1)%co_value%text, &
               fn_tree%nodes(1)%co_value%charindex)
           RETURN
@@ -2849,7 +2849,7 @@ CONTAINS
       ELSE IF (PRESENT(dparams)) THEN
         IF (el < 1 .OR. el > SIZE(dparams)) THEN
           errcode = eis_err_bad_value
-          CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+          CALL this%err_handler%add_error(eis_err_parser, errcode, &
               fn_tree%nodes(1)%co_value%text, &
               fn_tree%nodes(1)%co_value%charindex)
           RETURN
@@ -2857,7 +2857,7 @@ CONTAINS
         CALL eis_copy_tree(dparams(SIZE(params) - INT(results(1)) + 1), fn_tree)
       ELSE
         errcode = eis_err_bad_value
-        CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+        CALL this%err_handler%add_error(eis_err_parser, errcode, &
             fn_tree%co_value%text, fn_tree%co_value%charindex)
       END IF
     END IF
@@ -2871,7 +2871,7 @@ CONTAINS
         fn_tree%nodes => temp
       ELSE
         errcode = eis_err_bad_value
-        CALL this%err_handler%add_error(eis_err_emplacer, errcode, &
+        CALL this%err_handler%add_error(eis_err_parser, errcode, &
             fn_tree%co_value%text, fn_tree%co_value%charindex)
       END IF
     END IF
