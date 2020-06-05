@@ -676,21 +676,21 @@ MODULE eis_error_mod
       nspace = MAX(nchar, nline)
       WRITE(format_str, '(A,I3,A)') '(I',nspace,')'
       WRITE(linestr, format_str) MAX(line_number, 1)
-      WRITE(posstr, format_str) charpos
+      WRITE(posstr, format_str) this%errors(index)%full_line_pos
       CALL eis_append_string(report, "")
-      spos = MAX(1, this%errors(index)%full_line_pos-10)
+      spos = MAX(1, charpos-10)
       epos = MIN(LEN(this%errors(index)%full_line), &
-          this%errors(index)%full_line_pos+MAX(10, LEN(errname)))
+          charpos+MAX(10, LEN(errname)))
       predots = "" ; postdots = ""
       IF (spos /= 1) predots = "..."
       IF (epos /= LEN(this%errors(index)%full_line)) postdots = "..."
       CALL eis_append_string(report, TRIM(linestr) // " : " // TRIM(predots) &
            // this%errors(index)%full_line(spos:epos) // TRIM(postdots))
       CALL eis_append_string(report, REPEAT(" ", &
-          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)) &
+          MAX(charpos - spos + LEN(TRIM(predots)) &
           + nspace + 3,0)) // "^")
       CALL eis_append_string(report, REPEAT(" ", &
-          MAX(this%errors(index)%full_line_pos - spos + LEN(TRIM(predots)) &
+          MAX(charpos - spos + LEN(TRIM(predots)) &
           + nspace + 3,0)) // TRIM(posstr))
     ELSE
       IF (charpos > 0 .OR. ALLOCATED(errname)) THEN

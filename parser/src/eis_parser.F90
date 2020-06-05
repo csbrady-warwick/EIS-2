@@ -1379,7 +1379,7 @@ CONTAINS
         current_pointer = current_pointer+1
       ELSE
         CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-            cap_bits, charindex + output%char_offset, charindex, output, err, &
+            cap_bits, charindex, charindex  + output%char_offset, output, err, &
             filename, line_number, expression, atext)
         charindex = i
         IF (err /= eis_err_none) THEN
@@ -1402,7 +1402,7 @@ CONTAINS
 
     IF (current_type /= eis_char_space) THEN
       CALL this%tokenize_subexpression_infix(current, iblock, icoblock, &
-          cap_bits, charindex + output%char_offset,  charindex, output, err, &
+          cap_bits, charindex,  charindex + output%char_offset, output, err, &
           filename, line_number, expression, atext)
       output%cap_bits = IOR(output%cap_bits, cap_bits)
     END IF
@@ -3526,7 +3526,7 @@ CONTAINS
       CALL this%err_handler%add_error(eis_err_parser, err, &
           this%last_block_text, this%last_charindex, filename = filename, &
           line_number = line_number, full_line = full_line, &
-          full_line_pos = trim_charindex)
+          full_line_pos = trim_charindex - (charindex - this%last_charindex))
       RETURN
     END IF
 
@@ -3558,7 +3558,8 @@ CONTAINS
         CALL this%err_handler%add_error(eis_err_parser, err, &
             this%last_block_text, this%last_charindex, &
             filename = filename, line_number = line_number, &
-            full_line = full_line, full_line_pos = trim_charindex)
+            full_line = full_line, &
+            full_line_pos = trim_charindex - (charindex - this%last_charindex))
         RETURN
       END IF
     END IF
@@ -3573,7 +3574,8 @@ CONTAINS
         CALL this%err_handler%add_error(eis_err_parser, err, &
             this%last_block_text, this%last_charindex, &
             filename = filename, line_number = line_number, &
-            full_line = full_line, full_line_pos = trim_charindex)
+            full_line = full_line, &
+            full_line_pos = trim_charindex - (charindex - this%last_charindex))
         RETURN
       END IF
     END IF
@@ -3589,7 +3591,7 @@ CONTAINS
       CALL this%err_handler%add_error(eis_err_parser, err, &
           this%last_block_text, this%last_charindex, filename = filename, &
           line_number = line_number, full_line = full_line, &
-          full_line_pos = trim_charindex)
+          full_line_pos = trim_charindex - (charindex - this%last_charindex))
     END IF
 
     !If current block is a binary operator then previous block must not be
