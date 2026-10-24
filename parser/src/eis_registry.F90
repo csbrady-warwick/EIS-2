@@ -725,7 +725,7 @@ CONTAINS
   !> @param[in] can_accept_maths_domain_errors
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
       can_simplify, cap_bits, defer, err_handler, description, hidden, &
-      can_have_text_params, can_accept_maths_domain_errors)
+      can_have_text_params, can_accept_maths_domain_errors, rtype)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -757,11 +757,14 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
     !> Can this function give a valid result if one of the parameters has
     LOGICAL, INTENT(IN), OPTIONAL :: can_accept_maths_domain_errors
+    !> Override the default rtype. Optional, default eis_pt_function
+    INTEGER, INTENT(IN), OPTIONAL :: rtype
     TYPE(eis_function_entry) :: temp
 
     temp%fn_ptr => fn
     temp%ptype = eis_pt_function
     temp%rtype = eis_pt_function
+    IF (PRESENT(rtype)) temp%rtype = rtype
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden

@@ -107,6 +107,7 @@ MODULE eis_parser_mod
     LOGICAL :: should_simplify = .TRUE.
     LOGICAL :: should_minify = .FALSE.
     LOGICAL :: allow_text = .FALSE.
+    LOGICAL :: maths_fail_quickly = .FALSE.
     TYPE(eis_stack) :: stack, brackets
     INTEGER :: physics_units = eis_physics_none
     CONTAINS
@@ -713,12 +714,15 @@ CONTAINS
   !> @param[in] err_handler - Pass in a pointer to an externally supplied error
   !> handler
   SUBROUTINE eip_init(this, errcode, should_simplify, should_minify, &
-      allow_text, no_import, physics, err_handler)
+      allow_text, no_import, physics, err_handler, maths_fail_quickly)
 
     CLASS(eis_parser) :: this
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     LOGICAL, INTENT(IN), OPTIONAL :: should_simplify, should_minify, no_import
     LOGICAL, INTENT(IN), OPTIONAL :: allow_text
+    !> Should simplification report maths domain errors instead of deferring
+    !> them to evaluation. Optional, default is unchanged
+    LOGICAL, INTENT(IN), OPTIONAL :: maths_fail_quickly
     INTEGER, INTENT(IN), OPTIONAL :: physics
     CLASS(eis_error_handler), POINTER, INTENT(IN), OPTIONAL :: err_handler
     INTEGER(eis_error) :: err
@@ -757,6 +761,8 @@ CONTAINS
     IF (PRESENT(physics)) this%physics_units = physics
     IF (PRESENT(no_import)) no_import_l = no_import
     IF (PRESENT(allow_text)) this%allow_text = allow_text
+    IF (PRESENT(maths_fail_quickly)) this%maths_fail_quickly &
+        = maths_fail_quickly
 
     CALL this%err_handler%init(errcode)
     IF (this%is_init) RETURN
@@ -1019,7 +1025,7 @@ CONTAINS
       CALL global_registry%add_function('logic.if', eis_if, &
           3, err, err_handler = this%err_handler, description = '`if(a,b,c)` - &
           & If a is not equal to zero returns b, otherwise returns c', &
-          can_accept_maths_domain_errors = .TRUE.)
+          can_accept_maths_domain_errors = .TRUE., rtype = eis_pt_control_if)
 
       !Unit indepdendent physical constants
       CALL global_registry%add_constant('physics.na', &
@@ -2340,7 +2346,8 @@ CONTAINS
   !> @param[inout] stack
   !> @param[inout] errcode
   !> @param[in] host_params
-  SUBROUTINE eip_simplify(this, stack, errcode, host_params)
+  SUBROUTINE eip_simplify(this, stack, errcode, host_params, &
+      maths_fail_quickly)
     CLASS(eis_parser) :: this
     !> Stack to simplify
     CLASS(eis_stack), INTENT(INOUT) :: stack
@@ -2349,6 +2356,10 @@ CONTAINS
     !> Optional host code parameters. Can be used by stack elements
     !> to determine if they can be simplified or not
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: host_params
+    !> Report maths domain errors during simplification. Optional, default is
+    !> the setting for the parser
+    LOGICAL, INTENT(IN), OPTIONAL :: maths_fail_quickly
+    LOGICAL :: fail_quickly
     TYPE(C_PTR) :: params
 
     IF (PRESENT(host_params)) THEN
@@ -2357,7 +2368,11 @@ CONTAINS
       params = C_NULL_PTR
     END IF
 
-    CALL eis_simplify_stack(stack, params, errcode, this%err_handler)
+    fail_quickly = this%maths_fail_quickly
+    IF (PRESENT(maths_fail_quickly)) fail_quickly = maths_fail_quickly
+
+    CALL eis_simplify_stack(stack, params, errcode, this%err_handler, &
+        maths_fail_quickly = fail_quickly)
 
   END SUBROUTINE eip_simplify
 

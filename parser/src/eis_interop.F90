@@ -307,19 +307,19 @@ MODULE eis_parser_interop
     INTEGER(eis_error) :: f_errcode
     CLASS(eis_parser), POINTER :: parser
     CLASS(eis_stack), POINTER :: stack
-    PROCEDURE(parser_result_function), POINTER :: fn_ptr
+    PROCEDURE(parser_result_function), POINTER :: result_fn_ptr
 
     errcode = INT(eis_err_none, eis_error_c)
     stack => eis_get_interop_stack(stack_id, parser = parser)
-    CALL C_F_PROCPOINTER(fn, fn_ptr)
+    CALL C_F_PROCPOINTER(fn, result_fn_ptr)
     IF (ASSOCIATED(stack) .AND. ASSOCIATED(parser)) THEN
       IF (C_ASSOCIATED(filename)) THEN
         CALL eis_c_f_string(filename, fstring)
-        CALL parser%set_result_function(fn_ptr, stack, errcode, &
+        CALL parser%set_result_function(result_fn_ptr, stack, errcode, &
             fstring, INT(line_number), INT(char_offset), &
             INT(cap_bits, eis_bitmask), append /= 0)
       ELSE
-        CALL parser%set_result_function(fn_ptr, stack, errcode, &
+        CALL parser%set_result_function(result_fn_ptr, stack, errcode, &
             cap_bits = INT(cap_bits, eis_bitmask), append = (append /= 0))
       END IF
     ELSE
@@ -409,7 +409,7 @@ MODULE eis_parser_interop
     TYPE(C_FUNPTR), VALUE, INTENT(IN) :: fn
     INTEGER(eis_error_c), INTENT(INOUT) :: errcode
     INTEGER(C_INT), VALUE, INTENT(IN) :: expected_params
-    PROCEDURE(parser_late_bind_interop_fn), POINTER :: fn_ptr
+    PROCEDURE(parser_late_bind_interop_fn), POINTER :: late_bind_fn_ptr
     INTEGER(eis_error) :: errcode_f
     CLASS(eis_parser), POINTER :: parser
     CHARACTER(LEN=:), ALLOCATABLE :: name_f
@@ -420,9 +420,9 @@ MODULE eis_parser_interop
     IF (.NOT. ASSOCIATED(parser)) RETURN
 
     CALL eis_c_f_string(name, name_f)
-    CALL C_F_PROCPOINTER(fn, fn_ptr)
+    CALL C_F_PROCPOINTER(fn, late_bind_fn_ptr)
     errcode_f = eis_err_none
-    CALL parser%add_emplaced_c_function(name_f, fn_ptr, errcode_f, &
+    CALL parser%add_emplaced_c_function(name_f, late_bind_fn_ptr, errcode_f, &
         expected_params)
 
     errcode = IOR(errcode, INT(errcode_f, eis_error_c))
@@ -506,7 +506,7 @@ MODULE eis_parser_interop
     CHARACTER(LEN=:), ALLOCATABLE :: fstring
     INTEGER(eis_error) :: f_errcode
     INTEGER(eis_bitmask) :: f_bitmask
-    PROCEDURE(c_functor_function), POINTER :: fn_ptr
+    PROCEDURE(c_functor_function), POINTER :: functor_fn_ptr
     TYPE(interop_functor) :: ifunc
 
     errcode = INT(eis_err_none, eis_error_c)
@@ -515,13 +515,13 @@ MODULE eis_parser_interop
     parser => interop_parsers(parser_id)%contents
 
     IF (C_ASSOCIATED(fn)) THEN
-      CALL C_F_PROCPOINTER(fn, fn_ptr)
+      CALL C_F_PROCPOINTER(fn, functor_fn_ptr)
     ELSE
-      fn_ptr => NULL()
+      functor_fn_ptr => NULL()
     END IF
 
     ifunc%bound_data = bound_data
-    ifunc%c_bound_function => fn_ptr
+    ifunc%c_bound_function => functor_fn_ptr
 
     CALL eis_c_f_string(name, fstring)
     f_errcode = eis_err_none

@@ -205,6 +205,32 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Get the number of stack elements to skip after a jump element. A
+  !> conditional jump pops the condition from the stack and does not skip
+  !> any elements if it is non zero
+  !> @param[inout] this
+  !> @param[in] element
+  !> @param[inout] errcode
+  !> @return offset
+  FUNCTION ees_jump_offset(this, element, errcode) RESULT(offset)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_stack_element), INTENT(IN) :: element !< Jump element
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
+    INTEGER :: offset
+    REAL(eis_num) :: condition
+
+    offset = element%value
+    IF (element%ptype == eis_pt_jump_conditional) THEN
+      CALL ees_pop_scalar(this, condition, errcode)
+      IF (ABS(condition) > TINY(1.0_eis_num)) offset = 0
+    END IF
+
+  END FUNCTION ees_jump_offset
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Evaluate a stack to a set of results. Output array will must be allocatable
   !> and if it is too small to hold the results then it will be reallocated to
   !> be large enough to hold them
@@ -258,8 +284,15 @@ MODULE eis_eval_stack_mod
       RETURN
     END IF
 
-    DO istack = 1, stack%stack_point
+    istack = 1
+    DO WHILE (istack <= stack%stack_point)
       err = eis_err_none
+      IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+          .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) THEN
+        istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+            + 1
+        CYCLE
+      END IF
       stat_in = status
       CALL ees_eval_element(this, stack%entries(istack), host_params, &
           stat_in, err)
@@ -298,6 +331,7 @@ MODULE eis_eval_stack_mod
         END IF
       END IF
       errcode = IOR(errcode, err)
+      istack = istack + 1
     END DO
 
     IF (stack%can_accept_maths_domain_errors) errcode = IAND(errcode, &
@@ -359,10 +393,17 @@ MODULE eis_eval_stack_mod
     END IF
 
     this%stack_point = 0
-    DO istack = 1, stack%stack_point
+    istack = 1
+    DO WHILE (istack <= stack%stack_point)
       IF (this%stack_point == SIZE(this%entries)) &
           CALL ees_resize(this, this%stack_point * 2, err)
       err = eis_err_none
+      IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+          .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) THEN
+        istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+            + 1
+        CYCLE
+      END IF
       stat_in = status
       CALL ees_eval_element(this, stack%entries(istack), host_params, &
           stat_in, err)
@@ -372,6 +413,7 @@ MODULE eis_eval_stack_mod
         result_count = 0
         RETURN
       END IF
+      istack = istack + 1
     END DO
 
     result_count = this%stack_point
@@ -435,15 +477,24 @@ MODULE eis_eval_stack_mod
 
     !At this point know that you have a conventional stack
     DO WHILE(run)
-      DO istack = 1, stack%stack_point
+      istack = 1
+      DO WHILE (istack <= stack%stack_point)
         IF (this%stack_point == SIZE(this%entries)) &
             CALL ees_resize(this, this%stack_point * 2, errcode)
         err = eis_err_none
+        IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+            .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) &
+            THEN
+          istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+              + 1
+          CYCLE
+        END IF
         stat_in = status
         CALL ees_eval_element(this, stack%entries(istack), host_params, &
             stat_in, err)
         status = IOR(status, stat_in)
         errcode = IOR(errcode, err)
+        istack = istack + 1
       END DO
 
       result_count = this%stack_point

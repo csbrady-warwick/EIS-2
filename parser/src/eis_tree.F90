@@ -7,6 +7,7 @@ MODULE eis_tree_mod
   USE eis_stack_mod
   USE eis_utils
   USE eis_registry_mod
+  USE eis_core_functions_mod
   IMPLICIT NONE
 
   !> @class
@@ -54,13 +55,18 @@ MODULE eis_tree_mod
   !> error reporting
   !> @param[out] stack_out - Stack to hold result of simplified stack. Optional,
   !> default is store simplified stack in "stack" variable
-  SUBROUTINE eis_simplify_stack(stack, params, errcode, err_handler, stack_out)
+  SUBROUTINE eis_simplify_stack(stack, params, errcode, err_handler, &
+      stack_out, maths_fail_quickly)
 
     TYPE(eis_stack), INTENT(INOUT) :: stack
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
     TYPE(eis_stack), INTENT(OUT), OPTIONAL, TARGET :: stack_out
+    !> Report maths domain errors during simplification. Optional, default
+    !> .FALSE. which replaces an expression that fails with a maths domain
+    !> error with a function that raises the error when it is evaluated
+    LOGICAL, INTENT(IN), OPTIONAL :: maths_fail_quickly
     TYPE(eis_stack), POINTER :: simplified
     TYPE(eis_stack) :: intermediate
     TYPE(eis_tree_item), POINTER :: root
@@ -82,9 +88,11 @@ MODULE eis_tree_mod
       errcode = eis_err_none
       IF (ALLOCATED(stack%full_line)) THEN
         dummy = eis_simplify_tree(root, params, errcode, err_handler, &
-            stack%filename, stack%line_number, stack%full_line)
+            stack%filename, stack%line_number, stack%full_line, &
+            maths_fail_quickly)
       ELSE
-        dummy = eis_simplify_tree(root, params, errcode, err_handler)
+        dummy = eis_simplify_tree(root, params, errcode, err_handler, &
+            maths_fail_quickly = maths_fail_quickly)
       END IF
       IF (errcode /= eis_err_none) THEN
         DEALLOCATE(root)
@@ -142,7 +150,16 @@ MODULE eis_tree_mod
     INTEGER :: iparam, pcount
 
     curindex = curindex - 1
+    !Jumps are not nodes of the tree
+    DO WHILE (stack%entries(curindex)%ptype == eis_pt_jump_conditional &
+        .OR. stack%entries(curindex)%ptype == eis_pt_jump_unconditional)
+      curindex = curindex - 1
+    END DO
     current%value = stack%entries(curindex)
+    IF (current%value%rtype == eis_pt_control_if_join) THEN
+      current%value%rtype = eis_pt_control_if
+      current%value%eval_fn => eis_if
+    END IF
     IF (ALLOCATED(stack%co_entries)) &
         current%co_value = stack%co_entries(curindex)
 
@@ -176,7 +193,8 @@ MODULE eis_tree_mod
   !> @return can_simplify - Whether simplification is possible when this node
   !> is considered
   RECURSIVE FUNCTION eis_simplify_tree(tree, params, errcode, err_handler, &
-      filename, line_number, full_line) RESULT(can_simplify)
+      filename, line_number, full_line, maths_fail_quickly) &
+      RESULT(can_simplify)
     TYPE(eis_tree_item), INTENT(INOUT) :: tree
     TYPE(C_PTR), INTENT(IN) :: params
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -184,8 +202,12 @@ MODULE eis_tree_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: filename
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: full_line
+    !> Report maths domain errors during simplification. Optional, default
+    !> .FALSE. which replaces an expression that fails with a maths domain
+    !> error with a function that raises the error when it is evaluated
+    LOGICAL, INTENT(IN), OPTIONAL :: maths_fail_quickly
     INTEGER :: inode
-    LOGICAL :: can_simplify, has_nodes, simp1
+    LOGICAL :: can_simplify, has_nodes, simp1, fail_quickly
     REAL(eis_num) :: res
     TYPE(eis_eval_stack) :: eval
     INTEGER(eis_error) :: err
@@ -195,6 +217,9 @@ MODULE eis_tree_mod
 
     status = eis_status_none
 
+    fail_quickly = .FALSE.
+    IF (PRESENT(maths_fail_quickly)) fail_quickly = maths_fail_quickly
+
     has_nodes = ASSOCIATED(tree%nodes)
     IF (has_nodes) has_nodes = has_nodes .AND. (SIZE(tree%nodes) > 0)
     can_simplify = tree%value%can_simplify
@@ -202,7 +227,7 @@ MODULE eis_tree_mod
     IF (has_nodes) THEN
       DO inode = SIZE(tree%nodes), 1, -1
         simp1 = eis_simplify_tree(tree%nodes(inode), params, errcode, &
-            err_handler, filename, line_number, full_line)
+            err_handler, filename, line_number, full_line, maths_fail_quickly)
         can_simplify = can_simplify .AND. simp1
       END DO
     END IF
@@ -262,7 +287,19 @@ MODULE eis_tree_mod
           RETURN
         !Error on divide by zero
         ELSE IF (tree%nodes(1)%value%rtype == eis_pt_zero) THEN
-          errcode = eis_err_maths_domain
+          IF (fail_quickly) THEN
+            errcode = eis_err_maths_domain
+            RETURN
+          END IF
+          tree%value%ptype = eis_pt_function
+          tree%value%rtype = eis_pt_function
+          tree%value%eval_fn => eis_maths_domain_error
+          IF (ALLOCATED(tree%co_value%text)) DEALLOCATE(tree%co_value%text)
+          ALLOCATE(tree%co_value%text, SOURCE = 'MATHS DOMAIN ERROR')
+          tree%value%actual_params = 0
+          tree%value%can_simplify = .FALSE.
+          DEALLOCATE(tree%nodes)
+          can_simplify = .FALSE.
           RETURN
         END IF
       ELSE IF (tree%value%rtype == eis_pt_op_plus) THEN
@@ -320,7 +357,7 @@ MODULE eis_tree_mod
           RETURN
         ELSE IF (tree%nodes(1)%value%rtype == eis_pt_unity) THEN
           !Leave -unity as -unity to allow other simplification
-          can_simplify = .TRUE.
+          can_simplify =.FALSE.
           RETURN
         END IF
       END IF
@@ -356,6 +393,16 @@ MODULE eis_tree_mod
         ELSE
           RETURN
         END IF
+      ELSE IF (.NOT. fail_quickly .AND. err == eis_err_maths_domain) THEN
+        tree%value%ptype = eis_pt_function
+        tree%value%rtype = eis_pt_function
+        tree%value%eval_fn => eis_maths_domain_error
+        IF (ALLOCATED(tree%co_value%text)) DEALLOCATE(tree%co_value%text)
+        ALLOCATE(tree%co_value%text, SOURCE = 'MATHS DOMAIN ERROR')
+        tree%value%actual_params = 0
+        tree%value%can_simplify = .FALSE.
+        IF (has_nodes) DEALLOCATE(tree%nodes)
+        can_simplify = .FALSE.
       ELSE
         errcode = IOR(errcode, err)
         IF (PRESENT(err_handler)) THEN
@@ -386,7 +433,58 @@ MODULE eis_tree_mod
   RECURSIVE SUBROUTINE eis_tree_to_stack(tree, stack_in)
     TYPE(eis_tree_item), INTENT(IN) :: tree
     TYPE(eis_stack), INTENT(INOUT) :: stack_in
-    INTEGER :: inode
+    INTEGER :: inode, jc, ju
+    TYPE(eis_stack_element) :: jump_cond, jump_uncond, join
+    TYPE(eis_stack_co_element) :: jump_cond_co, jump_uncond_co
+    LOGICAL :: is_if
+
+    is_if = .FALSE.
+    IF (tree%value%rtype == eis_pt_control_if .AND. ASSOCIATED(tree%nodes)) &
+        is_if = (SIZE(tree%nodes) == 3)
+
+    IF (is_if) THEN
+      !Condition, jump over the first branch if false, first branch, jump over
+      !the second branch, second branch, join. The parameters are held in
+      !the tree in the reverse of the order that they are in the stack
+      jump_cond%ptype = eis_pt_jump_conditional
+      jump_cond%rtype = eis_pt_jump_conditional
+      jump_cond%actual_params = 0
+      jump_cond%can_simplify = .FALSE.
+      jump_cond_co = tree%co_value
+      IF (ALLOCATED(jump_cond_co%text)) DEALLOCATE(jump_cond_co%text)
+      ALLOCATE(jump_cond_co%text, SOURCE = 'jump_conditional')
+      jump_cond_co%expected_params = 0
+      jump_cond_co%cap_bits = 0_eis_bitmask
+      jump_cond_co%defer = .FALSE.
+
+      jump_uncond%ptype = eis_pt_jump_unconditional
+      jump_uncond%rtype = eis_pt_jump_unconditional
+      jump_uncond%actual_params = 0
+      jump_uncond%can_simplify = .FALSE.
+      jump_uncond_co = tree%co_value
+      IF (ALLOCATED(jump_uncond_co%text)) DEALLOCATE(jump_uncond_co%text)
+      ALLOCATE(jump_uncond_co%text, SOURCE = 'jump_unconditional')
+      jump_uncond_co%expected_params = 0
+      jump_uncond_co%cap_bits = 0_eis_bitmask
+      jump_uncond_co%defer = .FALSE.
+
+      join = tree%value
+      join%rtype = eis_pt_control_if_join
+      join%eval_fn => NULL()
+      join%functor => NULL()
+
+      CALL eis_tree_to_stack(tree%nodes(3), stack_in)
+      CALL push_to_stack(stack_in, jump_cond, jump_cond_co)
+      jc = stack_in%stack_point
+      CALL eis_tree_to_stack(tree%nodes(2), stack_in)
+      CALL push_to_stack(stack_in, jump_uncond, jump_uncond_co)
+      ju = stack_in%stack_point
+      CALL eis_tree_to_stack(tree%nodes(1), stack_in)
+      stack_in%entries(jc)%value = ju - jc
+      stack_in%entries(ju)%value = stack_in%stack_point - ju
+      CALL push_to_stack(stack_in, join, tree%co_value)
+      RETURN
+    END IF
 
     IF (ASSOCIATED(tree%nodes)) THEN
       DO inode = SIZE(tree%nodes), 1, -1
@@ -602,15 +700,19 @@ MODULE eis_tree_mod
           CALL infix_output(node%nodes(2), param1, nformat)
           CALL infix_output(node%nodes(1), param2, nformat)
           IF (node%nodes(2)%value%ptype == eis_pt_operator) THEN
-            IF (node%nodes(2)%co_value%precedence <= node%co_value%precedence) &
-                THEN
+            IF (node%nodes(2)%co_value%precedence < node%co_value%precedence &
+                .OR. (node%nodes(2)%co_value%precedence &
+                == node%co_value%precedence &
+                .AND. node%co_value%associativity == eis_assoc_ra)) THEN
               bb1 = '('
               ab1 = ')'
             END IF
           END IF
           IF (node%nodes(1)%value%ptype == eis_pt_operator) THEN
-            IF (node%nodes(1)%co_value%precedence <= node%co_value%precedence) &
-                THEN
+            IF (node%nodes(1)%co_value%precedence < node%co_value%precedence &
+                .OR. (node%nodes(1)%co_value%precedence &
+                == node%co_value%precedence &
+                .AND. node%co_value%associativity == eis_assoc_la)) THEN
               bb2 = '('
               ab2 = ')'
             END IF

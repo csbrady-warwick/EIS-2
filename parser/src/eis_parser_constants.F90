@@ -100,6 +100,16 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_placed_function = 27 !< Function used in deriv
   INTEGER, PARAMETER :: eis_pt_integer = 28 !< True integer
   INTEGER, PARAMETER :: eis_pt_deriv_fn = 29 !< Derivative function
+  !> Conditional jump. Pops a value and skips the number of elements held in
+  !> the value of the element if the popped value is zero
+  INTEGER, PARAMETER :: eis_pt_jump_conditional = 30
+  !> Unconditional jump. Skips the number of elements held in the value of the
+  !> element
+  INTEGER, PARAMETER :: eis_pt_jump_unconditional = 31
+  !> Conditional function. Only the selected parameter is evaluated
+  INTEGER, PARAMETER :: eis_pt_control_if = 32
+  !> End of a conditional function that has been converted to jumps
+  INTEGER, PARAMETER :: eis_pt_control_if_join = 33
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
 

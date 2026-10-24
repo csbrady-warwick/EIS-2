@@ -32,6 +32,29 @@ MODULE eis_core_functions_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> A function that signals a maths domain error whenever it is evaluated.
+  !> Used by the simplifier in place of an expression that fails
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_maths_domain_error(nparams, params, host_params, status_code, &
+      errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = 1.0_eis_num
+    errcode = IOR(errcode, eis_err_maths_domain)
+
+  END FUNCTION eis_maths_domain_error
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Unary plus
   !> @param[in] nparams
   !> @param[in] params

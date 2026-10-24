@@ -424,6 +424,8 @@ MODULE eis_stack_mod
     IF (.NOT. ALLOCATED(token_list%co_entries)) RETURN
 
     DO i = 1, token_list%stack_point
+      IF (token_list%entries(i)%ptype == eis_pt_jump_conditional &
+          .OR. token_list%entries(i)%ptype == eis_pt_jump_unconditional) CYCLE
       IF (ALLOCATED(token_list%co_entries(i)%text)) THEN
         CALL eis_append_string(str, token_list%co_entries(i)%text // " ", &
             newline = .FALSE.)
