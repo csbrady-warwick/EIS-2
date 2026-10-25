@@ -1025,7 +1025,7 @@ CONTAINS
       CALL global_registry%add_function('logic.if', eis_if, &
           3, err, err_handler = this%err_handler, description = '`if(a,b,c)` - &
           & If a is not equal to zero returns b, otherwise returns c', &
-          can_accept_maths_domain_errors = .TRUE., rtype = eis_pt_control_if)
+          rtype = eis_pt_control_if)
 
       !Unit indepdendent physical constants
       CALL global_registry%add_constant('physics.na', &

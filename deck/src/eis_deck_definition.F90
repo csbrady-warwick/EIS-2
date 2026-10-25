@@ -603,7 +603,7 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(on_block_start)) this%info%on_block_start_fn => on_block_start
     IF (PRESENT(on_block_end)) this%info%on_block_end_fn => on_block_end
     IF (PRESENT(on_block_no_trigger)) this%info%on_block_no_trigger_fn &
-        => on_block_start
+        => on_block_no_trigger
     IF (PRESENT(on_block_failure)) this%info%on_block_failure_fn &
         => on_block_failure
 
@@ -617,7 +617,7 @@ MODULE eis_deck_definition_mod
         => c_on_block_start
     IF (PRESENT(c_on_block_end)) this%info%c_on_block_end_fn => c_on_block_end
     IF (PRESENT(c_on_block_no_trigger)) this%info%c_on_block_no_trigger_fn &
-        => c_on_block_start
+        => c_on_block_no_trigger
     IF (PRESENT(c_on_block_failure)) this%info%c_on_block_failure_fn &
         => c_on_block_failure
 
@@ -626,6 +626,8 @@ MODULE eis_deck_definition_mod
         => on_start_pass
     IF (PRESENT(on_end_pass)) this%info%on_generic_end_pass_fn => on_end_pass
     IF (PRESENT(on_final)) this%info%on_generic_final_fn => on_final
+    IF (PRESENT(on_generic_block_failure)) this%info%on_generic_failure_fn &
+        => on_generic_block_failure
 
     IF (PRESENT(c_on_init)) this%info%c_on_generic_init_fn => c_on_init
     IF (PRESENT(c_on_start_pass)) this%info%c_on_generic_start_pass_fn &
@@ -633,6 +635,8 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(c_on_end_pass)) this%info%c_on_generic_end_pass_fn &
         => c_on_end_pass
     IF (PRESENT(c_on_final)) this%info%c_on_generic_final_fn => c_on_final
+    IF (PRESENT(c_on_generic_block_failure)) &
+        this%info%c_on_generic_failure_fn => c_on_generic_block_failure
 
     ALLOCATE(this%root_definition)
     dummy = this%root_definition%init(this%info, '{ROOT}', 0, -1, init_deck, &
@@ -983,9 +987,7 @@ MODULE eis_deck_definition_mod
       this%pass_le = parent_block%pass_le
       this%use_le = parent_block%use_le
       this%pass_ge = parent_block%pass_ge
-      this%pass_eq = parent_block%pass_eq
-      this%use_eq = parent_block%use_eq
-      this%pass_le = parent_block%pass_le
+      this%use_ge = parent_block%use_ge
     END IF
 
     IF (PRESENT(text_fallback)) THEN

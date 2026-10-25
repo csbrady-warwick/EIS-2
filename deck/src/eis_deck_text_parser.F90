@@ -249,7 +249,7 @@ MODULE eis_string_deck_mod
     IF (.NOT. ALLOCATED(str)) RETURN
 
     i = SCAN(str, "=:")
-    IF (i < 0) RETURN
+    IF (i < 1) RETURN
     ALLOCATE(key, SOURCE = str(:i-1))
     ALLOCATE(value, SOURCE = str(i+1:))
 
@@ -597,6 +597,7 @@ MODULE eis_string_deck_mod
     errcode = IOR(errcode, ierr)
     ranges = this%data%strings%populate(text, errcode, filename = filename)
     CALL this%parse_core(ierr)
+    errcode = IOR(errcode, ierr)
 
   END SUBROUTINE esd_parse_deck_string
 
@@ -623,6 +624,7 @@ MODULE eis_string_deck_mod
     ranges = this%data%strings%deserialise(text, errcode)
 
     CALL this%parse_core(ierr)
+    errcode = IOR(errcode, ierr)
 
   END SUBROUTINE esd_read_parsed_deck
 
@@ -940,7 +942,7 @@ MODULE eis_string_deck_mod
     IF (PRESENT(error_cause_location)) error_cause_location = ecl
     IF (PRESENT(error_phase)) CALL MOVE_ALLOC(eps, error_phase)
     IF (PRESENT(error_type)) CALL MOVE_ALLOC(ets, error_type)
-    IF (PRESENT(error_filename)) CALL MOVE_ALLOC(efn, error_type)
+    IF (PRESENT(error_filename)) CALL MOVE_ALLOC(efn, error_filename)
     IF (PRESENT(error_line_number)) error_line_number = eln
 
     IF (ALLOCATED(ec)) DEALLOCATE(ec)

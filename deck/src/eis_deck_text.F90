@@ -640,9 +640,9 @@ MODULE eis_deck_from_text_mod
     END IF
 
     strip_err = errcode
-    IF (.NOT. ubf) strip_err = IAND(errcode, NOT(eis_err_unknown_block))
-    IF (.NOT. ukf) strip_err = IAND(errcode, NOT(eis_err_unknown_key))
-    IF (.NOT. bkf) strip_err = IAND(errcode, NOT(eis_err_bad_key))
+    IF (.NOT. ubf) strip_err = IAND(strip_err, NOT(eis_err_unknown_block))
+    IF (.NOT. ukf) strip_err = IAND(strip_err, NOT(eis_err_unknown_key))
+    IF (.NOT. bkf) strip_err = IAND(strip_err, NOT(eis_err_bad_key))
 
     IF (strip_err == eis_err_none .OR. epoe) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
