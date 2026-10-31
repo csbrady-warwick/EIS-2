@@ -21,7 +21,7 @@ MODULE eis_error_mod
     INTEGER :: line_number = -1
     !> Context line number. Used if the error is caused by a
     !> different line than defines the text
-    INTEGER :: context_line_number
+    INTEGER :: context_line_number = -1
     !> Context filename
     CHARACTER(LEN=:), ALLOCATABLE :: context_filename
     INTEGER :: full_line_pos = -1
@@ -94,13 +94,14 @@ MODULE eis_error_mod
     PROCEDURE(on_error_callback), OPTIONAL :: on_error
     LOGICAL :: same_language, lang_default
 
+    errcode = eis_err_none
+
     IF (ALLOCATED(this%language_pack)) THEN
       IF (PRESENT(language_pack)) THEN
         same_language = TRIM(language_pack) == TRIM(this%language_pack)
       ELSE
         same_language = .FALSE.
         DEALLOCATE(this%language_pack)
-        ALLOCATE(this%language_pack, SOURCE = language_pack)
       END IF
     ELSE
       IF (PRESENT(language_pack)) THEN
@@ -197,8 +198,10 @@ MODULE eis_error_mod
       CALL this%strings%store('err_stack_params', 'A stack variable that &
           &returns more than one parameter was used in a mathematical &
           &expression')
-      CALL this%strings%store('eis_err_no_deriv', 'A derivative was &
+      CALL this%strings%store('err_no_deriv','A derivative was &
           &requested of a function for which no derivative is defined')
+      CALL this%strings%store('err_invalid_minify', 'An operation was &
+          &requested that is invalid after a stack has been minified')
 
       CALL this%strings%store('err_is_error', '{error} at {errfile}, &
           &line {errline}')
@@ -357,12 +360,12 @@ MODULE eis_error_mod
 
     IF (.NOT. this%is_init) CALL this%init(err)
 
-    cloc_out = -1
+    IF (PRESENT(cloc_out)) cloc_out = -1
     IF (PRESENT(line_number)) line_number = -1
     IF (PRESENT(context_line_number)) context_line_number = -1
     IF (.NOT. ALLOCATED(this%errors)) RETURN
     IF (index < 1 .OR. index > SIZE(this%errors)) RETURN
-    cloc_out = this%errors(index)%charindex
+    IF (PRESENT(cloc_out)) cloc_out = this%errors(index)%charindex
 
     IF (PRESENT(line_number)) line_number = this%errors(index)%line_number
     IF (PRESENT(context_line_number)) context_line_number = &
@@ -522,6 +525,15 @@ MODULE eis_error_mod
     END IF
     IF (IAND(errcode, eis_err_no_deriv) /= 0) THEN
       ok = this%strings%append('err_no_deriv', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_extra_results) /= 0) THEN
+      ok = this%strings%append('err_extra_results', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_bad_deck_definition) /= 0) THEN
+      ok = this%strings%append('err_defn_invalid', err_string)
+    END IF
+    IF (IAND(errcode, eis_err_invalid_minify) /= 0) THEN
+      ok = this%strings%append('err_invalid_minify', err_string)
     END IF
 
     IF (.NOT. ALLOCATED(err_string)) ALLOCATE(err_string, SOURCE = &
@@ -684,8 +696,10 @@ MODULE eis_error_mod
       WRITE(posstr, format_str) charpos
       CALL eis_append_string(report, "")
       spos = MAX(1, this%errors(index)%full_line_pos-10)
+      nchar = 0
+      IF (ALLOCATED(errname)) nchar = LEN(errname)
       epos = MIN(LEN(this%errors(index)%full_line), &
-          this%errors(index)%full_line_pos+MAX(10, LEN(errname)))
+          this%errors(index)%full_line_pos+MAX(10, nchar))
       predots = "" ; postdots = ""
       IF (spos /= 1) predots = "..."
       IF (epos /= LEN(this%errors(index)%full_line)) postdots = "..."
@@ -708,7 +722,7 @@ MODULE eis_error_mod
 
     IF (ALLOCATED(context_filename) .OR. context_line_number > 0) THEN
       has_context = .FALSE.
-      IF (ALLOCATED(filename)) THEN
+      IF (ALLOCATED(filename) .AND. ALLOCATED(context_filename)) THEN
         has_context = TRIM(filename) /= TRIM(context_filename)
       ELSE
         has_context = .TRUE.

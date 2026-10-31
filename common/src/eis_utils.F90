@@ -535,7 +535,7 @@ MODULE eis_utils
     !> Optional. Default remove all instances
     LOGICAL, INTENT(IN), OPTIONAL :: first_only
     LOGICAL :: init_e, final_e, fo, iter_on
-    INTEGER :: ipos, fpos
+    INTEGER :: ipos, fpos, spos, old_len
 
 
     IF (.NOT. ALLOCATED(str)) RETURN
@@ -547,14 +547,15 @@ MODULE eis_utils
     iter_on = .TRUE.
     DO WHILE(iter_on)
       ipos = INDEX(str, init_s)
+      spos = ipos + LEN(init_s)
       IF (ipos > 0) THEN
         IF (init_e) THEN
           ipos = ipos + LEN(init_s)
         END IF
       END IF
-      fpos = INDEX(str(ipos + LEN(init_s):), final_s)
+      fpos = INDEX(str(spos:), final_s)
       IF (fpos > 0) THEN
-        fpos = fpos + ipos + LEN(init_s) - 1
+        fpos = fpos + spos - 1
         IF (final_e) THEN
           fpos = fpos - 1
         ELSE
@@ -566,7 +567,9 @@ MODULE eis_utils
       iter_on = ipos > 0 .AND. fpos > 0
 
       IF (iter_on) THEN
+        old_len = LEN(str)
         CALL eis_remove_string_section_ascii(str, ipos, fpos)
+        iter_on = LEN(str) /= old_len
       END IF
       iter_on = iter_on .AND. .NOT. fo
     END DO
@@ -594,13 +597,13 @@ MODULE eis_utils
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: temp
     INTEGER :: iind, find, rlen
 
-    IF (.NOT. ASSOCIATED(str)) RETURN
+    IF (.NOT. ALLOCATED(str)) RETURN
 
     iind = MAX(1, init)
     find = MIN(LEN(str), final)
     rlen = find - iind + 1
 
-    ALLOCATE(CHARACTER(LEN=rlen) :: temp)
+    ALLOCATE(CHARACTER(LEN=LEN(str) - rlen, KIND=UCS4) :: temp)
     IF (iind > 1) temp(1:iind-1) = str(1:iind-1)
     IF (find < LEN(str)) temp(iind:) = str(find+1:)
     DEALLOCATE(str)

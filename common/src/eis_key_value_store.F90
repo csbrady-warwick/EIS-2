@@ -138,6 +138,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(key)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -191,6 +192,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(key)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)

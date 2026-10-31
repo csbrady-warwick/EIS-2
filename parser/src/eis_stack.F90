@@ -375,7 +375,7 @@ MODULE eis_stack_mod
 
     value = stack%entries(stack%stack_point-offset)
     IF (PRESENT(covalue) .AND. ALLOCATED(stack%co_entries)) THEN
-      covalue = stack%co_entries(stack%stack_point)
+      covalue = stack%co_entries(stack%stack_point-offset)
     END IF
 
   END SUBROUTINE stack_snoop

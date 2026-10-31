@@ -807,9 +807,9 @@ MODULE eis_string_deck_mod
         IF (this%data%blocks(iblock)%get_line_count() < 1 &
             .AND. this%data%blocks(iblock)%get_child_count() < 1) THEN
           errcode = eis_err_deck_empty_block
-          IF (ALLOCATED(src_filename)) THEN
+          IF (ALLOCATED(this%data%blocks(iblock)%filename)) THEN
             CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
-                filename = src_filename, &
+                filename = this%data%blocks(iblock)%filename, &
                 line_number = this%data%blocks(iblock)%line_number)
           ELSE
             CALL this%data%handler%add_error(eis_err_deck_file, errcode)

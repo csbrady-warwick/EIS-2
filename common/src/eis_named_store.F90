@@ -250,6 +250,7 @@ CONTAINS
     iindex = this%get_index(name)
     IF (iindex > 0) THEN
       nsil_delete = .TRUE.
+      CALL this%list(iindex)%cleanup()
       ALLOCATE(list(SIZE(this%list)-1))
       IF (iindex > 1) THEN
         list(1:iindex-1) = this%list(1:iindex-1)
@@ -394,7 +395,7 @@ CONTAINS
         END IF
       END IF
     END DO
-    CALL this%names%enable_disorder()
+    CALL this%names%disable_disorder()
 
   END SUBROUTINE ns_remove_name
 
@@ -719,12 +720,23 @@ CONTAINS
     CLASS(named_store), INTENT(INOUT) :: dest
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     INTEGER(INT64) :: i
+    INTEGER :: j
+    LOGICAL :: ok
+    CLASS(*), POINTER :: gptr
 
     IF (.NOT. this%is_init) RETURN
     IF (dest%is_init) CALL dest%cleanup()
     CALL dest%init(SIZE(this%buckets, KIND=INT64))
     DO i = 1, SIZE(this%buckets, KIND=INT64)
       CALL this%buckets(i)%copy(dest%buckets(i), shallow)
+    END DO
+    ok = dest%names%clear()
+    DO j = 1, this%names%get_size()
+      gptr => this%names%get(j)
+      SELECT TYPE (gptr)
+        TYPE IS (CHARACTER(LEN=*))
+          CALL dest%store_name(gptr)
+      END SELECT
     END DO
     dest%count = this%count
     dest%needs_optimise = this%needs_optimise

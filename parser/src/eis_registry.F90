@@ -307,8 +307,6 @@ CONTAINS
       END SELECT
     END DO
 
-    RETURN
-
     dotloc = SCAN(namespace, '.')
     item => NULL()
 
@@ -1077,14 +1075,17 @@ CONTAINS
 
     IF (.NOT. l_unary) THEN
       temp%expected_parameters = 2
-      CALL this%stored_items%store(name, temp)
     ELSE
       temp%expected_parameters = 1
-      CALL this%uop_table%store(name, temp)
     END IF
 
     CALL this%create_deriv_store(temp)
-    CALL this%stored_items%store(name, temp)
+
+    IF (.NOT. l_unary) THEN
+      CALL this%stored_items%store(name, temp)
+    ELSE
+      CALL this%uop_table%store(name, temp)
+    END IF
 
   END SUBROUTINE eir_add_operator
 

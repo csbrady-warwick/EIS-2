@@ -269,6 +269,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: called_dual
 
     called_dual = .FALSE.
+    this_status = eis_status_none
     this_bitmask = 0_eis_bitmask
     IF (PRESENT(host_state)) this_bitmask = host_state
 
@@ -377,6 +378,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: called_dual
 
     called_dual = .FALSE.
+    this_status = eis_status_none
     this_bitmask = 0_eis_bitmask
     IF (PRESENT(host_state)) this_bitmask = host_state
 
@@ -678,7 +680,7 @@ MODULE eis_deck_definition_mod
     INTEGER :: i
     TYPE(eis_deck_block_definition), POINTER :: block
 
-    DO i = 1, this%info%get_block_count()
+    DO i = 0, this%info%get_block_count()
       block => this%info%get_block(i)
       block%lastinit = 0
     END DO
@@ -1283,6 +1285,12 @@ MODULE eis_deck_definition_mod
 
     CALL this%get_parents(parent_kind)
     this_status = eis_status_none
+    this_err = eis_err_none
+    IF (PRESENT(host_state)) THEN
+      this_bitmask = host_state
+    ELSE
+      this_bitmask = 0_eis_bitmask
+    END IF
 
     run = .NOT. ANY([this%use_eq, this%use_le, this%use_ge])
     IF (this%use_eq) run = run .OR. (pass_number == this%pass_eq)
@@ -1319,12 +1327,6 @@ MODULE eis_deck_definition_mod
       RETURN
     END IF
 
-    IF (PRESENT(host_state)) THEN
-      this_bitmask = host_state
-    ELSE
-      this_bitmask = 0_eis_bitmask
-    END IF
-    this_err = eis_err_none
     !If you are starting a block you may also be initialising the block
     !so try this
     CALL this%initialise_block(pass_number, this_status, this_err, &
@@ -2112,7 +2114,7 @@ MODULE eis_deck_definition_mod
                 host_params = host_params_l)
             parser_error = this_err /= eis_err_none
           ELSE
-            errcode = eis_err_bad_value
+            this_err = eis_err_bad_value
           END IF
         ELSE
           CALL ps%set_result_function(value_function, stack, &
@@ -2123,13 +2125,17 @@ MODULE eis_deck_definition_mod
 
         END IF
         IF (this_err == eis_err_none) THEN
-          CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
-              SIZE(value_array, KIND=C_INT), value_array, &
-              INT(pass_number, C_INT), &
-              INT(cbits, eis_bitmask_c),&
-              interop_parser, SIZE(parents, KIND=C_INT), &
-              INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
-              this_bitmask, this_err)
+          IF (ct == dkd%expected_params .OR. dkd%expected_params < 1) THEN
+            CALL dkd%c_key_numeric_value_fn(C_LOC(c_key), &
+                SIZE(value_array, KIND=C_INT), value_array, &
+                INT(pass_number, C_INT), &
+                INT(cbits, eis_bitmask_c),&
+                interop_parser, SIZE(parents, KIND=C_INT), &
+                INT(parents, C_INT), INT(parent_kind, C_INT), this_stat, &
+                this_bitmask, this_err)
+          ELSE
+            this_err = eis_err_bad_value
+          END IF
           IF (ALLOCATED(value_array)) DEALLOCATE(value_array)
         END IF
         !If the block is flagged handled then you care about the error code
@@ -2141,7 +2147,7 @@ MODULE eis_deck_definition_mod
         handled = handled .OR. (IAND(this_stat, eis_status_not_handled) == 0)
       END IF
       IF ((ASSOCIATED(dkd%key_stack_fn) .OR. ASSOCIATED(dkd%c_key_stack_fn)) &
-          .AND. is_key_stack .AND. .NOT. handled) THEN
+          .AND. ASSOCIATED(ps) .AND. is_key_stack .AND. .NOT. handled) THEN
         IF (.NOT. PRESENT(value_function)) THEN
           IF (is_key_value) THEN
             CALL ps%tokenize(value, stack, stack_err, &
@@ -2196,7 +2202,8 @@ MODULE eis_deck_definition_mod
         END IF
       END IF
 
-      IF (isstackvar .AND. is_key_stack .AND. .NOT. handled) THEN
+      IF (isstackvar .AND. ASSOCIATED(ps) .AND. is_key_stack &
+          .AND. .NOT. handled) THEN
         stack_err = eis_err_none
         stack_ptr => dkd%stackdata
         IF (.NOT. ASSOCIATED(dkd%stackdata)) stack_ptr &
@@ -2223,8 +2230,8 @@ MODULE eis_deck_definition_mod
         END IF
       END IF
 
-      IF ((isscalarvar .OR. isarrayvar) .AND. is_key_stack &
-          .AND. .NOT. handled) THEN
+      IF ((isscalarvar .OR. isarrayvar) .AND. ASSOCIATED(ps) &
+          .AND. is_key_stack .AND. .NOT. handled) THEN
 
         this_err = eis_err_none
         IF (.NOT. PRESENT(value_function)) THEN
@@ -2669,6 +2676,8 @@ MODULE eis_deck_definition_mod
               .OR. (IAND(this_stat, eis_status_not_handled) == 0) &
               .AND. this_err == eis_err_none)
         END IF
+        !If have handled then there is no error
+        IF (handled) errcode = eis_err_none
       END IF
     END IF
 
@@ -2687,6 +2696,10 @@ MODULE eis_deck_definition_mod
         status = IOR(status, this_stat)
       END IF
     END IF
+
+    !A key that fails for any reason other than being unknown is a bad key
+    IF (IAND(errcode, NOT(eis_err_unknown_key)) /= 0) errcode = IOR(errcode, &
+        eis_err_bad_key)
 
     IF (errcode == eis_err_none) THEN
       IF (ASSOCIATED(this%info%on_key_success_fn)) THEN
@@ -2828,11 +2841,13 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(i64value)) this%i64data => i64value
     IF (PRESENT(r32value)) this%r32data => r32value
     IF (PRESENT(r64value)) this%r64data => r64value
+    IF (PRESENT(logicalvalue)) this%logicaldata => logicalvalue
 
     IF (PRESENT(i32array)) this%i32arraydata => i32array
     IF (PRESENT(i64array)) this%i64arraydata => i64array
     IF (PRESENT(r32array)) this%r32arraydata => r32array
     IF (PRESENT(r64array)) this%r64arraydata => r64array
+    IF (PRESENT(logicalarray)) this%logicalarraydata => logicalarray
 
     IF (PRESENT(stackvalue)) this%stackdata => stackvalue
     IF (PRESENT(c_stackvalue)) this%c_stackdata = c_stackvalue

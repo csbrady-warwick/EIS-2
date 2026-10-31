@@ -736,10 +736,9 @@ CONTAINS
         DEALLOCATE(this%err_handler)
 
     !If you specify a error handler then that error handler is used
-    !If you specify a NULL error handler than an error handler is created
-    !If you specify no error handler then an error handler is created
-    !unless there is already an error handler in place in which case it is left
-    !unchanged
+    !If you specify a NULL error handler then an existing error handler that
+    !the parser does not own is kept, otherwise an error handler is created
+    !If you specify no error handler then a new error handler is created
     IF (PRESENT(err_handler)) THEN
       IF (ASSOCIATED(err_handler)) THEN
         this%err_handler => err_handler
@@ -820,8 +819,6 @@ CONTAINS
           err_handler = this%err_handler, description = 'equal to operator')
       CALL global_registry%add_operator('==', eis_eq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler, description = 'equal to operator')
-      CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
-          err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('ne', eis_neq, eis_assoc_la, 1, err, &
           err_handler = this%err_handler, description = 'not equal to operator')
       CALL global_registry%add_operator('/=', eis_neq, eis_assoc_la, 1, err, &
@@ -1233,7 +1230,7 @@ CONTAINS
       CALL this%set_symbol_derivative('math.log10', &
           'dparam(1) / (param(1) * math.loge(10))', &
           errcode, global = .TRUE.)
-      CALL this%set_symbol_derivative('math.logbase', &
+      CALL this%set_symbol_derivative('math.log_base', &
           'dparam(1) / (param(1)*math.loge(param(2))) - math.loge(param(1)) &
           &* dparam(2)/(param(2)*math.loge(param(2))^2)', &
           errcode, global = .TRUE.)
@@ -5347,7 +5344,7 @@ CONTAINS
     !> Title of the document. Optional, default no title
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: title
     !> Built in functions are given descriptions that include the
-    !> name so printing the name is confusing. Specify eis_fsn_none to never 
+    !> name so printing the name is confusing. Specify eis_fsn_never to never 
     !> show the function name, eis_fsn_always to always show the name and
     !> eis_fsn_auto to automatically determine if the first characters of the
     !> description are the name

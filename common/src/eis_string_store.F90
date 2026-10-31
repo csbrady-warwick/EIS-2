@@ -183,8 +183,10 @@ CONTAINS
     changed_fname = .FALSE.
 
     DO istr = line_start, line_end
+      IF (ALLOCATED(fname)) DEALLOCATE(fname)
       ok = this%get(istr, str, filename=fname, line_number = ln, &
           line_number_max = lnm)
+      IF (.NOT. ALLOCATED(fname)) ALLOCATE(CHARACTER(LEN=0, KIND=UCS4) :: fname)
       IF (.NOT. ALLOCATED(fname0)) THEN
         ALLOCATE(fname0, SOURCE = fname)
       ELSE
@@ -225,7 +227,8 @@ CONTAINS
   !> @param[in] default_line_info
   !> @return index_out
   FUNCTION ess_store_string_ucs4(this, text, store_index, filename, &
-      line_number, line_number_max, default_line_info) RESULT(index_out)
+      line_number, line_number_max, default_line_info, &
+      extra_trimmed_white_space_length) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
@@ -246,6 +249,10 @@ CONTAINS
     !> Index of stored string
     !> Optional. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: default_line_info
+    !> Number of white space characters to add to the number of removed white
+    !> space characters
+    !> Optional, default 0
+    INTEGER, INTENT(IN), OPTIONAL :: extra_trimmed_white_space_length
     INTEGER(eis_i4) :: index_out
     TYPE(string_holder) :: temp
     LOGICAL :: ok, recover
@@ -254,7 +261,7 @@ CONTAINS
 
     ALLOCATE(temp%text, SOURCE = text)
     IF (PRESENT(store_index)) THEN
-      recover = .FALSE.
+      recover = .TRUE.
       IF (PRESENT(default_line_info)) recover = .NOT. default_line_info
       IF (recover) THEN
         ok = this%get(store_index, str_old, filename = fname, &
@@ -278,6 +285,8 @@ CONTAINS
       temp%maxline = line_number
     END IF
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
+    IF (PRESENT(extra_trimmed_white_space_length)) temp%whitespace_len = &
+        temp%whitespace_len + extra_trimmed_white_space_length
     index_out = this%strings%store(temp, store_index)
 
   END FUNCTION ess_store_string_ucs4
@@ -407,6 +416,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(get_index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -468,6 +478,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(get_index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -585,7 +596,7 @@ CONTAINS
     !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
     !> Filename associated with line when it was created
-    CHARACTER(LEN=:, KIND=UCS4), INTENT(IN), OPTIONAL :: filename
+    CHARACTER(LEN=*, KIND=UCS4), INTENT(IN), OPTIONAL :: filename
     !> Minimum line number in original source associated with line
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     !> Maximum line number in original source associated with line
@@ -671,9 +682,10 @@ CONTAINS
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN), OPTIONAL :: filename
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: newline_pos, newline_offset, last_pos
-    INTEGER :: min_index, max_index, indx, line
+    INTEGER :: min_index, max_index, indx, line, iret
 
-    errcode = eis_err_none
+    !errcode is not used but is part of the interface
+    errcode = errcode
 
     IF (PRESENT(index_start)) indx = index_start
 
@@ -702,12 +714,30 @@ CONTAINS
           indx = this%store("", filename = filename)
         END IF
       END IF
-      min_index = MIN(indx, min_index)
-      max_index = MAX(indx, max_index)
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
       last_pos = newline_pos + LEN(NEW_LINE(str))
       newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
       newline_pos = newline_offset + (last_pos - 1)
     END DO
+
+    IF (last_pos <= LEN(str)) THEN
+      line = line + 1
+      IF (PRESENT(index_start)) THEN
+        indx = this%insert(indx, str(last_pos:), line_number = line, &
+            filename = filename)
+        indx = indx + 1
+      ELSE
+        indx = this%store(str(last_pos:), line_number = line, &
+            filename = filename)
+      END IF
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
+    END IF
 
     index_range = [min_index, max_index]
 
@@ -734,9 +764,10 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: index_start
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: newline_pos, newline_offset, last_pos
-    INTEGER :: min_index, max_index, indx
+    INTEGER :: min_index, max_index, indx, iret
 
-    errcode = eis_err_none
+    !errcode is not used but is part of the interface
+    errcode = errcode
 
     IF (PRESENT(index_start)) indx = index_start
 
@@ -761,12 +792,27 @@ CONTAINS
           indx = this%store("")
         END IF
       END IF
-      min_index = MIN(indx, min_index)
-      max_index = MAX(indx, max_index)
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
       last_pos = newline_pos + LEN(NEW_LINE(str))
       newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
       newline_pos = newline_offset + (last_pos - 1)
     END DO
+
+    IF (last_pos <= LEN(str)) THEN
+      IF (PRESENT(index_start)) THEN
+        indx = this%insert(indx, str(last_pos:))
+        indx = indx + 1
+      ELSE
+        indx = this%store(str(last_pos:))
+      END IF
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
+    END IF
 
     index_range = [min_index, max_index]
 
@@ -970,7 +1016,7 @@ CONTAINS
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Removes text that appears on a line after a comment character
-  !> Lines that have only a comment on them become blank lines
+  !> Lines that have only a comment on them are removed
   !> @param[inout] this
   !> @param[in] slc_start
   !> @param[in] mlc_start
@@ -985,7 +1031,7 @@ CONTAINS
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN), OPTIONAL :: mlc_end
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str_temp
     INTEGER :: istr, ipos, sindex, ipos2
-    LOGICAL :: ok, in_comment
+    LOGICAL :: ok, in_comment, start_kept
 
     CALL this%strings%enable_disorder()
     !Do single line comments
@@ -1026,6 +1072,9 @@ CONTAINS
             !If we didn't find the end comment section on the same line
             !then we're in a comment field
             in_comment = (ipos2 == 0)
+            !The line holding the mlc start sequence is kept unless the
+            !sequence is at the start of the line
+            start_kept = (INDEX(TRIM(ADJUSTL(str)), mlc_start) /= 1)
             ipos2 = ipos2 + ipos + LEN(mlc_start) - 1
             IF (INDEX(TRIM(ADJUSTL(str)), mlc_start) /= 1) THEN
               !Is the mlc start not at the start of the line?
@@ -1061,12 +1110,24 @@ CONTAINS
           IF (ipos > 0) THEN
             !Found the mlc end sequence
             in_comment = .FALSE.
-            ok = this%get(istr - 1, str_temp)
-            IF (ipos + LEN(mlc_end) < LEN(str)) THEN
-              sindex = this%store(str_temp // str(ipos + LEN(mlc_end):), istr-1)
+            IF (start_kept) THEN
+              !Append anything after the mlc end sequence to the line that
+              !held the mlc start sequence
+              ok = this%get(istr - 1, str_temp)
+              IF (ipos + LEN(mlc_end) < LEN(str)) THEN
+                sindex = this%store(str_temp // str(ipos + LEN(mlc_end):), &
+                    istr-1)
+              END IF
+              ok = this%delete(istr)
+              istr = istr - 1
+            ELSE IF (ipos + LEN(mlc_end) < LEN(str)) THEN
+              !The line holding the start was deleted so what is left of this
+              !line replaces it
+              sindex = this%store(str(ipos + LEN(mlc_end):), istr)
+            ELSE
+              ok = this%delete(istr)
+              istr = istr - 1
             END IF
-            ok = this%delete(istr)
-            istr = istr - 1
           ELSE
             ok = this%delete(istr)
             istr = istr - 1
@@ -1194,9 +1255,14 @@ CONTAINS
     !> Range of indices to which the strings have been stored
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: ln, lnm, lastpos, tpos, fpos, lpos, lmpos, wspos
-    INTEGER :: sindex, imn, imx, ind, wsl
+    INTEGER :: sindex, imn, imx, ind, wsl, ios
 
     errcode = eis_err_none
+    index_range = [HUGE(index_range), -1]
+    IF (LEN(str) < LEN(serial_header)) THEN
+      errcode = eis_err_malformed_file
+      RETURN
+    END IF
     IF (str(1:LEN(serial_header)) /= serial_header) THEN
       errcode = eis_err_malformed_file
       RETURN
@@ -1208,14 +1274,51 @@ CONTAINS
     imx = -1
     DO
       IF (lastpos == LEN(str)) EXIT
-      tpos  = INDEX(str(lastpos+1:), ACHAR(0)) + lastpos
-      fpos  = INDEX(str(tpos+1:), ACHAR(0)) + tpos
-      lpos  = INDEX(str(fpos+1:), ACHAR(0)) + fpos
-      lmpos = INDEX(str(lpos+1:), ACHAR(0)) + lpos
-      wspos = INDEX(str(lmpos+1:), ACHAR(0)) + lmpos
-      READ(str(fpos+1:lpos-1 ),'(I20)') ln
-      READ(str(lpos+1:lmpos-1),'(I20)') lnm
-      READ(str(lmpos+1:wspos-1),'(I20)') wsl
+      tpos  = INDEX(str(lastpos+1:), ACHAR(0))
+      IF (tpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      tpos = tpos + lastpos
+      fpos  = INDEX(str(tpos+1:), ACHAR(0))
+      IF (fpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      fpos = fpos + tpos
+      lpos  = INDEX(str(fpos+1:), ACHAR(0))
+      IF (lpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      lpos = lpos + fpos
+      lmpos = INDEX(str(lpos+1:), ACHAR(0))
+      IF (lmpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      lmpos = lmpos + lpos
+      wspos = INDEX(str(lmpos+1:), ACHAR(0))
+      IF (wspos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      wspos = wspos + lmpos
+      READ(str(fpos+1:lpos-1 ),'(I20)', IOSTAT = ios) ln
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      READ(str(lpos+1:lmpos-1),'(I20)', IOSTAT = ios) lnm
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      READ(str(lmpos+1:wspos-1),'(I20)', IOSTAT = ios) wsl
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
       IF (PRESENT(store_index)) THEN
         ind = this%store(str(lastpos+1:tpos-1), sindex, line_number = ln, &
             line_number_max = lnm, filename = str(tpos+1:fpos-1), &
