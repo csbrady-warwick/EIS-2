@@ -1,6 +1,10 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_string_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
+  USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
   USE eis_ordered_store_mod
   USE eis_utils
@@ -8,6 +12,7 @@ MODULE eis_string_store_mod
   IMPLICIT NONE
 
   CHARACTER(LEN=10), PRIVATE :: serial_header = 'EISDSER001'
+  INTEGER, PARAMETER :: c_processor_buffer_length = 4096
 
   ABSTRACT INTERFACE
     SUBROUTINE filename_processor_proto(filename, errcode)
@@ -24,7 +29,28 @@ MODULE eis_string_store_mod
     END SUBROUTINE file_text_processor_proto
   END INTERFACE
 
+  INTERFACE
+    SUBROUTINE filename_processor_proto_c(filename, buffer_length, errcode) &
+        BIND(C)
+      IMPORT eis_error_c, C_INT, C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: filename
+      INTEGER(C_INT), VALUE, INTENT(IN) :: buffer_length
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+    END SUBROUTINE filename_processor_proto_c
+
+    FUNCTION file_text_processor_proto_c(filename, file_contents, &
+        buffer_length, errcode) BIND(C)
+      IMPORT eis_error_c, C_INT, C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: filename
+      TYPE(C_PTR), VALUE, INTENT(IN) :: file_contents
+      INTEGER(C_INT), VALUE, INTENT(IN) :: buffer_length
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+      INTEGER(C_INT) :: file_text_processor_proto_c
+    END FUNCTION file_text_processor_proto_c
+  END INTERFACE
+
   PUBLIC :: filename_processor_proto, file_text_processor_proto
+  PUBLIC :: filename_processor_proto_c, file_text_processor_proto_c
 
   !>@class
   !>Class holding the string within the string store
@@ -895,9 +921,13 @@ CONTAINS
   !> @param[out] raw_text
   !> @param[out] final_filename
   !> @param[out] index_range
+  !> @param[in] c_filename_processor - C function that processes the filename
+  !> before the file is loaded
+  !> @param[in] c_file_text_processor - C function that processes the contents
+  !> of the file after it is loaded
   SUBROUTINE ess_load_from_ascii_file(this, filename, errcode, index_start, &
       raw_text, filename_processor, file_text_processor, final_filename, &
-      index_range)
+      index_range, c_filename_processor, c_file_text_processor)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -908,6 +938,10 @@ CONTAINS
         file_text_processor
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT), OPTIONAL :: final_filename
     INTEGER, DIMENSION(2), INTENT(OUT), OPTIONAL :: index_range
+    PROCEDURE(filename_processor_proto_c), POINTER, OPTIONAL :: &
+        c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), POINTER, OPTIONAL :: &
+        c_file_text_processor
     INTEGER, DIMENSION(2) :: temp
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
 
@@ -917,6 +951,10 @@ CONTAINS
     IF (PRESENT(filename_processor)) THEN
       IF (ASSOCIATED(filename_processor)) &
           CALL filename_processor(fname, errcode)
+    END IF
+    IF (PRESENT(c_filename_processor)) THEN
+      IF (ASSOCIATED(c_filename_processor)) CALL &
+          ess_apply_c_filename_processor(c_filename_processor, fname, errcode)
     END IF
 
     IF (PRESENT(final_filename)) THEN
@@ -934,6 +972,11 @@ CONTAINS
     IF (PRESENT(file_text_processor)) THEN
       IF (ASSOCIATED(file_text_processor)) CALL file_text_processor(fname, &
           str, errcode)
+    END IF
+    IF (PRESENT(c_file_text_processor)) THEN
+      IF (ASSOCIATED(c_file_text_processor)) CALL &
+          ess_apply_c_file_text_processor(c_file_text_processor, fname, str, &
+          errcode)
     END IF
 
     IF (PRESENT(raw_text)) ALLOCATE(raw_text, SOURCE = str)
@@ -960,8 +1003,8 @@ CONTAINS
     CALL this%strings%enable_disorder()
     DO WHILE (r_index > 0)
       ok = this%get(r_index, str)
-      IF (str == "") THEN
-        ok = this%delete(r_index)
+      IF (ok) THEN
+        IF (str == "") ok = this%delete(r_index)
       END IF
       r_index = r_index - 1
     END DO
@@ -1338,5 +1381,83 @@ CONTAINS
     index_range = [imn, imx]
 
   END FUNCTION ess_deserialise
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Apply a C filename processor to a filename. The filename is passed to the
+  !> processor in a fixed length buffer and the processor edits it in place
+  !> @param[in] processor
+  !> @param[inout] filename
+  !> @param[inout] errcode
+  SUBROUTINE ess_apply_c_filename_processor(processor, filename, errcode)
+    PROCEDURE(filename_processor_proto_c) :: processor
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: filename
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: buffer
+    CHARACTER(LEN=:), ALLOCATABLE :: new_filename
+    INTEGER(eis_error_c) :: err_c
+    INTEGER :: buffer_length
+
+    buffer_length = MAX(LEN(filename) + 1, c_processor_buffer_length)
+    ALLOCATE(buffer(buffer_length))
+    CALL eis_f_c_string(filename, buffer_length, buffer)
+    err_c = INT(errcode, eis_error_c)
+    CALL processor(C_LOC(buffer), INT(buffer_length, C_INT), err_c)
+    errcode = INT(err_c, eis_error)
+    CALL eis_c_f_string(C_LOC(buffer), new_filename)
+    CALL MOVE_ALLOC(new_filename, filename)
+
+  END SUBROUTINE ess_apply_c_filename_processor
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Apply a C file text processor to the contents of a file. The contents are
+  !> passed to the processor in a buffer and the processor edits them in place.
+  !> The processor returns the buffer length that it needs, including the
+  !> terminating null. If that is larger than the buffer then the buffer is
+  !> enlarged and the processor is called again on the original contents
+  !> @param[in] processor
+  !> @param[in] filename
+  !> @param[inout] contents
+  !> @param[inout] errcode
+  SUBROUTINE ess_apply_c_file_text_processor(processor, filename, contents, &
+      errcode)
+    PROCEDURE(file_text_processor_proto_c) :: processor
+    CHARACTER(LEN=*), INTENT(IN) :: filename
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: contents
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: &
+        buffer, c_filename
+    CHARACTER(LEN=:), ALLOCATABLE :: new_contents
+    INTEGER(eis_error_c) :: err_c
+    INTEGER :: buffer_length, needed, attempt
+    INTEGER, PARAMETER :: max_attempts = 10
+
+    ALLOCATE(c_filename(LEN(filename) + 1))
+    CALL eis_f_c_string(filename, LEN(filename) + 1, c_filename)
+
+    buffer_length = MAX(LEN(contents) + 1, c_processor_buffer_length)
+    DO attempt = 1, max_attempts
+      ALLOCATE(buffer(buffer_length))
+      CALL eis_f_c_string(contents, buffer_length, buffer)
+      err_c = INT(errcode, eis_error_c)
+      needed = INT(processor(C_LOC(c_filename), C_LOC(buffer), &
+          INT(buffer_length, C_INT), err_c))
+      IF (needed <= buffer_length) THEN
+        errcode = INT(err_c, eis_error)
+        CALL eis_c_f_string(C_LOC(buffer), new_contents)
+        CALL MOVE_ALLOC(new_contents, contents)
+        RETURN
+      END IF
+      buffer_length = needed
+      DEALLOCATE(buffer)
+    END DO
+    errcode = IOR(errcode, eis_err_bad_value)
+
+  END SUBROUTINE ess_apply_c_file_text_processor
 
 END MODULE eis_string_store_mod

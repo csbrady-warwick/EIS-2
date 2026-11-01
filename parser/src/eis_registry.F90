@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_registry_mod
 
   USE eis_error_mod
@@ -89,6 +92,8 @@ MODULE eis_registry_mod
     LOGICAL :: per_stack_functor = .FALSE.
     LOGICAL :: string_params = .FALSE.
     LOGICAL :: can_accept_maths_domain_errors = .FALSE.
+    LOGICAL :: is_idempotent = .FALSE.
+    INTEGER(eis_bitmask) :: text_param_mask = 0_eis_bitmask
     INTEGER :: deriv_values = -1
   END TYPE eis_function_entry
 
@@ -139,8 +144,11 @@ MODULE eis_registry_mod
     
   END TYPE eis_registry
 
+  !> Registry holding the symbols that are available to all parsers
+  TYPE(eis_registry), SAVE :: global_registry
+
   PRIVATE
-  PUBLIC :: eis_registry
+  PUBLIC :: eis_registry, global_registry
 
 CONTAINS
 
@@ -398,7 +406,7 @@ CONTAINS
   !> @brief
   !> Optimise the stores inside a namespace
   !> @param[inout] this
-  SUBROUTINE ern_optimise(this)
+  RECURSIVE SUBROUTINE ern_optimise(this)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     CLASS(*), POINTER :: gptr
     INTEGER :: i
@@ -453,7 +461,7 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] index
   !> @param[inout] name
-  SUBROUTINE ern_get_name(this, index, name, name_prefix)
+  RECURSIVE SUBROUTINE ern_get_name(this, index, name, name_prefix)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     !> Index of name to get
     INTEGER, INTENT(IN) :: index
@@ -723,7 +731,8 @@ CONTAINS
   !> @param[in] can_accept_maths_domain_errors
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
       can_simplify, cap_bits, defer, err_handler, description, hidden, &
-      can_have_text_params, can_accept_maths_domain_errors, rtype)
+      can_have_text_params, can_accept_maths_domain_errors, rtype, &
+      is_idempotent, text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -757,8 +766,18 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: can_accept_maths_domain_errors
     !> Override the default rtype. Optional, default eis_pt_function
     INTEGER, INTENT(IN), OPTIONAL :: rtype
+    !> Does calling the function a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     temp%fn_ptr => fn
     temp%ptype = eis_pt_function
     temp%rtype = eis_pt_function
@@ -797,7 +816,8 @@ CONTAINS
   !> @param[in] can_have_text_params
   SUBROUTINE eir_add_functor(this, name, functor, expected_parameters, &
       errcode, can_simplify, cap_bits, defer, per_stack, err_handler, &
-      description, hidden, can_have_text_params)
+      description, hidden, can_have_text_params, is_idempotent, &
+      text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -829,10 +849,20 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Does calling the functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
     INTEGER :: index
     CLASS(*), POINTER :: ptr
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     ALLOCATE(temp%functor, SOURCE = functor)
     ptr => temp%functor
     index = this%functor_registry%hold(ptr, owns = .TRUE.)
@@ -877,7 +907,7 @@ CONTAINS
   !> @param[in] can_have_text_params
   SUBROUTINE eir_add_functor_pointer(this, name, functor, expected_parameters, &
       errcode, can_simplify, cap_bits, defer, err_handler, description, &
-      hidden, owns, can_have_text_params)
+      hidden, owns, can_have_text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -909,10 +939,20 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Does calling the functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
     INTEGER :: index
     CLASS(*), POINTER :: ptr
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     temp%functor => functor
     IF (PRESENT(owns)) THEN
       temp%owns_functor = owns
@@ -1026,7 +1066,7 @@ CONTAINS
   !> @param[in] operator_id
   SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
       errcode, can_simplify, unary, cap_bits, err_handler, description, &
-      hidden, operator_id)
+      hidden, operator_id, is_idempotent)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with operator
@@ -1053,9 +1093,15 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Override the default rtype
     INTEGER, INTENT(IN), OPTIONAL :: operator_id
+    !> Does calling the operator a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
     temp%fn_ptr => fn
     temp%ptype = eis_pt_operator
     IF (PRESENT(operator_id)) THEN
@@ -1208,8 +1254,12 @@ CONTAINS
     END IF
 
     IF (ASSOCIATED(temp_ptr)) THEN
-      IF(temp_ptr%index_type == eis_reg_index_emplaced) &
-          index = this%emplaced_registry%store(holder, index = temp_ptr%value)
+      IF (temp_ptr%index_type == eis_reg_index_emplaced) THEN
+        index = this%emplaced_registry%store(holder, index = temp_ptr%value)
+      ELSE
+        temp_ptr => temp
+        index = this%emplaced_registry%store(holder)
+      END IF
     ELSE
       temp_ptr => temp
       index = this%emplaced_registry%store(holder)
@@ -1382,6 +1432,8 @@ CONTAINS
       coblock_in%can_accept_maths_domain_errors = &
           temp%can_accept_maths_domain_errors
       coblock_in%deriv_values = temp%deriv_values
+      coblock_in%is_idempotent = temp%is_idempotent
+      coblock_in%text_param_mask = temp%text_param_mask
       block_in%actual_params = temp%expected_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
@@ -1801,7 +1853,6 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
     LOGICAL, INTENT(OUT), OPTIONAL :: locked
     CLASS(*), POINTER :: gptr
-    TYPE(eis_stack), POINTER :: p
     TYPE(named_store), POINTER :: store
 
     stack => NULL()

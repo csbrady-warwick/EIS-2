@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_utils
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -8,6 +11,7 @@ MODULE eis_utils
 
   PUBLIC :: eis_default_status
   PUBLIC :: eis_append_string, eis_c_f_string, eis_f_c_string
+  PUBLIC :: eis_alloc_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
   PUBLIC :: eis_compare_string, eis_present_and_alloc
@@ -815,6 +819,27 @@ MODULE eis_utils
     CALL eis_f_c_string(f_string, len_c_string, c_string_arr)
 
   END SUBROUTINE f_c_string_ptr
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Allocate a C string as a simple character array exactly large enough to
+  !> hold a Fortran string and its null terminator and copy the Fortran
+  !> string into it
+  !> @param[in] f_string
+  !> @param[out] c_string
+  SUBROUTINE eis_alloc_c_string(f_string, c_string)
+    !> Fortran source string
+    CHARACTER(LEN=*), INTENT(IN) :: f_string
+    !> C output string. Allocated to LEN(f_string)+1 characters
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(:), ALLOCATABLE, &
+        INTENT(OUT) :: c_string
+
+    ALLOCATE(c_string(LEN(f_string)+1))
+    CALL eis_f_c_string(f_string, LEN(f_string)+1, c_string)
+
+  END SUBROUTINE eis_alloc_c_string
 
 
 

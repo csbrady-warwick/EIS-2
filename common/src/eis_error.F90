@@ -1,3 +1,9 @@
+! Copyright (c) 2019-2026, C.S.Brady
+! SPDX-License-Identifier: BSD-3-Clause
+
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_error_mod
 
   USE eis_constants

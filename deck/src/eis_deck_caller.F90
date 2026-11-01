@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_deck_caller_mod
 
   USE eis_parser_constants
@@ -277,14 +280,14 @@ MODULE eis_deck_caller_mod
     this%definition => definition
     IF (.NOT. ASSOCIATED(this%definition)) THEN
       errcode = eis_err_bad_deck_definition
-      CALL this%err_handler%add_error(eis_err_parser, errcode, &
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
           filename = filename, line_number = line_number)
       RETURN
     END IF
 
     IF (.NOT. this%definition%is_init) THEN
       errcode = eis_err_bad_deck_definition
-      CALL this%err_handler%add_error(eis_err_parser, errcode, &
+      CALL this%err_handler%add_error(eis_err_deck_parser, errcode, &
           filename = filename, line_number = line_number)
       RETURN
     END IF
@@ -679,6 +682,7 @@ MODULE eis_deck_caller_mod
     LOGICAL :: release_interop, has_value
     CLASS(*), POINTER :: gptr
     INTEGER(eis_bitmask) :: host_state_l
+    INTEGER(eis_status) :: status_l
     TYPE(eis_deck_caller_event), POINTER :: event
 
     pass_l = this%pass_number
@@ -686,6 +690,7 @@ MODULE eis_deck_caller_mod
 
     host_state_l = 0_eis_bitmask
     IF (PRESENT(host_state)) host_state_l = host_state
+    status_l = eis_status_none
 
     release_interop = .FALSE.
     parser_l => this%parser
@@ -764,8 +769,9 @@ MODULE eis_deck_caller_mod
 
     IF (.NOT. has_value) THEN
       CALL this%current_block%definition%call_key_text(key_text, &
-          this%current_parents(1:this%current_level), pass_l, host_state_l, &
-          errcode, key_filename = key_info%key_filename, &
+          this%current_parents(1:this%current_level), pass_l, status_l, &
+          errcode, host_state = host_state_l, &
+          key_filename = key_info%key_filename, &
           key_line_number = key_info%key_line_number, &
           key_offset = key_info%key_offset, &
           value_function = value_function, parser = parser_l, &
@@ -773,8 +779,9 @@ MODULE eis_deck_caller_mod
           host_params = host_params, trimmed_line_text = trimmed_line_text)
     ELSE
       CALL this%current_block%definition%call_key_text(key_text, &
-          this%current_parents(1:this%current_level), pass_l, host_state_l, &
-          errcode, key_filename = key_info%key_filename, &
+          this%current_parents(1:this%current_level), pass_l, status_l, &
+          errcode, host_state = host_state_l, &
+          key_filename = key_info%key_filename, &
           key_line_number = key_info%key_line_number, &
           key_offset = key_info%key_offset, &
           key_value = value_text, &
@@ -787,6 +794,7 @@ MODULE eis_deck_caller_mod
     END IF
 
     IF (release_interop) CALL eis_release_interop_parser(interop_parser_l)
+    IF (PRESENT(host_state)) host_state = host_state_l
 
     !Create the event
     ALLOCATE(event)
@@ -1153,6 +1161,7 @@ MODULE eis_deck_caller_mod
           this%current_block => sptr%block
         CASE (edce_call)
 
+          status = eis_status_none
           release_interop = .FALSE.
           IF (sptr%key%interop_parser > -1) THEN
             interop_parser_l = sptr%key%interop_parser
@@ -1183,7 +1192,8 @@ MODULE eis_deck_caller_mod
               CALL this%current_block%definition%call_key_text(&
                   sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
-                  host_state_l, errcode, key_filename = sptr%filename, &
+                  status, errcode, host_state = host_state_l, &
+                  key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
                   key_offset = sptr%key%key_offset, &
                   value_function = sptr%key%value_function, &
@@ -1195,7 +1205,8 @@ MODULE eis_deck_caller_mod
               CALL this%current_block%definition%call_key_text(&
                   sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
-                  host_state_l, errcode, key_filename = sptr%filename, &
+                  status, errcode, host_state = host_state_l, &
+                  key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
                   key_offset = sptr%key%key_offset, &
                   value_function = sptr%key%value_function, &
@@ -1208,13 +1219,14 @@ MODULE eis_deck_caller_mod
               CALL this%current_block%definition%call_key_text(&
                   sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
-                  host_state_l, errcode, key_filename = sptr%filename, &
+                  status, errcode, host_state = host_state_l, &
+                  key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
                   key_offset = sptr%key%key_offset, &
                   key_value = sptr%key%value_text, &
                   value_filename = sptr%key%value_filename, &
                   value_line_number = sptr%key%value_line_number, &
-                  value_offset = sptr%key%key_offset, &
+                  value_offset = sptr%key%value_offset, &
                   value_function = sptr%key%value_function, &
                   parser = parser_l, &
                   interop_parser_id = interop_parser_l, &
@@ -1224,13 +1236,14 @@ MODULE eis_deck_caller_mod
               CALL this%current_block%definition%call_key_text(&
                   sptr%key%key_text, &
                   this%current_parents(1:this%current_level), pass_l, &
-                  host_state_l, errcode, key_filename = sptr%filename, &
+                  status, errcode, host_state = host_state_l, &
+                  key_filename = sptr%filename, &
                   key_line_number = sptr%line_number, &
                   key_offset = sptr%key%key_offset, &
                   key_value = sptr%key%value_text, &
                   value_filename = sptr%key%value_filename, &
                   value_line_number = sptr%key%value_line_number, &
-                  value_offset = sptr%key%key_offset, &
+                  value_offset = sptr%key%value_offset, &
                   value_function = sptr%key%value_function, &
                   parser = parser_l, &
                   interop_parser_id = interop_parser_l, &
@@ -1241,9 +1254,9 @@ MODULE eis_deck_caller_mod
           IF (release_interop) CALL eis_release_interop_parser(interop_parser_l)
         CASE (edce_end)
 
-          CALL defn%end_block(this%current_parents(1:this%current_level), &
-              pass_l, status, errcode, host_state_l, &
-              display_name = sptr%block%block_text)
+          CALL this%current_block%definition%end_block(&
+              this%current_parents(1:this%current_level), pass_l, status, &
+              errcode, host_state_l, display_name = sptr%block%block_text)
           CALL this%remove_parent()
           this%current_block => this%current_block%parent
 

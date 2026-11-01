@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE mymod
 
   USE eis_deck_header
@@ -86,7 +89,7 @@ PROGRAM testprog
       key_numeric_value_fn = key_val_sub)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('demo5.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demos/decks/demo5.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE.)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()

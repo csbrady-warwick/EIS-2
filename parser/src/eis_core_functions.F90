@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_core_functions_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -1196,12 +1199,13 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
     END IF
 
-    res = BESSEL_JN(NINT(params(1), INT64), params(2))
+    res = BESSEL_JN(NINT(params(1)), params(2))
 
   END FUNCTION eis_bessel_j
 #endif
@@ -1224,12 +1228,13 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
     END IF
 
-    res = BESSEL_YN(NINT(params(1), INT64), params(2))
+    res = BESSEL_YN(NINT(params(1)), params(2))
 
   END FUNCTION eis_bessel_y
 #endif
@@ -1321,6 +1326,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) <= 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
@@ -1349,6 +1355,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) <= 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN

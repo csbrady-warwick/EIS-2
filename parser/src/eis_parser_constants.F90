@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_parser_constants
 
   USE eis_constants
@@ -143,6 +146,13 @@ MODULE eis_parser_constants
     INTEGER :: expected_params = -1
     LOGICAL :: can_have_string_params = .FALSE.
     LOGICAL :: can_accept_maths_domain_errors = .FALSE.
+    !> Does calling this element a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Elements that have this can be merged when they are repeated
+    LOGICAL :: is_idempotent = .FALSE.
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked
+    INTEGER(eis_bitmask) :: text_param_mask = 0_eis_bitmask
     INTEGER :: charindex = -1
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
@@ -319,6 +329,8 @@ MODULE eis_parser_constants
     dest%deriv_values = src%deriv_values
     dest%can_accept_maths_domain_errors = &
         src%can_accept_maths_domain_errors
+    dest%is_idempotent = src%is_idempotent
+    dest%text_param_mask = src%text_param_mask
 
   END SUBROUTINE eis_co_element_assign
 
@@ -346,6 +358,8 @@ MODULE eis_parser_constants
       dest(i)%deriv_values = src(i)%deriv_values
       dest(i)%can_accept_maths_domain_errors &
           = src(i)%can_accept_maths_domain_errors
+      dest(i)%is_idempotent = src(i)%is_idempotent
+      dest(i)%text_param_mask = src(i)%text_param_mask
     END DO
 
   END SUBROUTINE eis_co_element_assign_array

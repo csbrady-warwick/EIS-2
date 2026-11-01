@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_named_store_mod
 
   USE eis_ordered_store_mod
@@ -70,7 +73,7 @@ MODULE eis_named_store_mod
   END TYPE named_store
 
   PRIVATE
-  PUBLIC :: named_store
+  PUBLIC :: named_store, copy_named_store
 
 CONTAINS
 
@@ -243,7 +246,7 @@ CONTAINS
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name of the item to delete
     LOGICAL :: nsil_delete
-    INTEGER :: iindex
+    INTEGER :: iindex, i, j, sz
     TYPE(named_store_item), DIMENSION(:), POINTER :: list
     nsil_delete = .FALSE.
     IF (.NOT. ASSOCIATED(this%list)) RETURN
@@ -251,13 +254,16 @@ CONTAINS
     IF (iindex > 0) THEN
       nsil_delete = .TRUE.
       CALL this%list(iindex)%cleanup()
-      ALLOCATE(list(SIZE(this%list)-1))
-      IF (iindex > 1) THEN
-        list(1:iindex-1) = this%list(1:iindex-1)
-      END IF
-      IF (iindex < SIZE(this%list)) THEN
-        list(iindex:) = this%list(iindex+1:)
-      END IF
+      sz = SIZE(this%list)
+      ALLOCATE(list(sz-1))
+      DO i = 1, sz - 1
+        j = i
+        IF (i >= iindex) j = i + 1
+        IF (ALLOCATED(this%list(j)%name)) &
+            CALL MOVE_ALLOC(this%list(j)%name, list(i)%name)
+        list(i)%owns = this%list(j)%owns
+        list(i)%item => this%list(j)%item
+      END DO
       CALL this%unlink()
       DEALLOCATE(this%list)
       this%list => list

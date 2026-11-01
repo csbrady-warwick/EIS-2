@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_deck_from_text_mod
 
   USE eis_deck_definition_mod
@@ -728,7 +731,7 @@ MODULE eis_deck_from_text_mod
       state, initialise_all_blocks, unknown_block_is_fatal, &
       unknown_key_is_fatal, non_value_line_is_blank, filename_processor, &
       file_text_processor, end_pass_on_error, finalize_on_error, &
-      bad_key_is_fatal)
+      bad_key_is_fatal, c_filename_processor, c_file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -745,6 +748,8 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
+    PROCEDURE(filename_processor_proto_c), OPTIONAL :: c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), OPTIONAL :: c_file_text_processor
     !> Should pass end events occur if an error was encountered
     LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
     !> Should finalize events occur if an error was encountered
@@ -763,7 +768,9 @@ MODULE eis_deck_from_text_mod
     CALL eis_default_status(errcode = errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
-        file_text_processor = file_text_processor)
+        file_text_processor = file_text_processor, &
+        c_filename_processor = c_filename_processor, &
+        c_file_text_processor = c_file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
@@ -910,8 +917,11 @@ MODULE eis_deck_from_text_mod
   !> @param[in] filename_processor
   !> @param[in] file_text_processor
   !> @param[in] raw_text
+  !> @param[in] c_filename_processor
+  !> @param[in] c_file_text_processor
   SUBROUTINE tdp_get_deck_serialised(this, filename, serial_deck, errcode, &
-      filename_processor, file_text_processor, raw_text)
+      filename_processor, file_text_processor, raw_text, c_filename_processor, &
+      c_file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: serial_deck
@@ -919,6 +929,8 @@ MODULE eis_deck_from_text_mod
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
+    PROCEDURE(filename_processor_proto_c), OPTIONAL :: c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), OPTIONAL :: c_file_text_processor
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
@@ -929,7 +941,9 @@ MODULE eis_deck_from_text_mod
     CALL eis_default_status(errcode =  errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
-        file_text_processor = file_text_processor)
+        file_text_processor = file_text_processor, &
+        c_filename_processor = c_filename_processor, &
+        c_file_text_processor = c_file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 

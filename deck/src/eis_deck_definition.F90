@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_deck_definition_mod
 
   USE :: eis_header
@@ -96,6 +99,7 @@ MODULE eis_deck_definition_mod
     LOGICAL, DIMENSION(:), POINTER :: logicalarraydata => NULL()
 
     LOGICAL, POINTER :: set_variable => NULL()
+    INTEGER(C_INT), POINTER :: c_set_variable => NULL()
     INTEGER(INT32), POINTER :: i32count_variable => NULL()
     INTEGER(INT64), POINTER :: i64count_variable => NULL()
 
@@ -141,6 +145,7 @@ MODULE eis_deck_definition_mod
     LOGICAL :: is_hidden = .FALSE.
 
     LOGICAL, POINTER :: set_variable => NULL()
+    INTEGER(C_INT), POINTER :: c_set_variable => NULL()
     INTEGER(INT32), POINTER :: i32count_variable => NULL()
     INTEGER(INT64), POINTER :: i64count_variable => NULL()
 
@@ -273,8 +278,7 @@ MODULE eis_deck_definition_mod
     this_bitmask = 0_eis_bitmask
     IF (PRESENT(host_state)) this_bitmask = host_state
 
-    ALLOCATE(c_name(LEN(name)))
-    CALL eis_f_c_string(name, LEN(name), c_name)
+    CALL eis_alloc_c_string(name, c_name)
     IF (ASSOCIATED(fn)) THEN
       this_status = eis_status_none
       this_err = eis_err_none
@@ -382,8 +386,7 @@ MODULE eis_deck_definition_mod
     this_bitmask = 0_eis_bitmask
     IF (PRESENT(host_state)) this_bitmask = host_state
 
-    ALLOCATE(c_name(LEN(name)))
-    CALL eis_f_c_string(name, LEN(name), c_name)
+    CALL eis_alloc_c_string(name, c_name)
     IF (ASSOCIATED(fn)) THEN
       this_status = eis_status_none
       this_err = eis_err_none
@@ -849,6 +852,7 @@ MODULE eis_deck_definition_mod
 
   SUBROUTINE dd_destructor(this)
     TYPE(eis_deck_definition), INTENT(INOUT) :: this
+    IF (.NOT. ASSOCIATED(this%info)) RETURN
     IF (ASSOCIATED(this%info%parser) .AND. this%info%owns_parser) &
         DEALLOCATE(this%info%parser)
     IF (this%info%owns_interop) &
@@ -883,7 +887,8 @@ MODULE eis_deck_definition_mod
       c_end_block, c_end_pass, c_final_block, c_any_key_text, &
       c_any_key_value, c_any_key_numeric_value, c_any_key_stack, &
       c_block_remapper, parent_block, pass_eq, pass_le, pass_ge, &
-      init_flag, i32count, i64count, description, hidden, text_fallback)
+      init_flag, i32count, i64count, description, hidden, text_fallback, &
+      c_init_flag)
 
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition_info), POINTER, INTENT(IN) :: info
@@ -923,6 +928,7 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
+    INTEGER(C_INT), POINTER, OPTIONAL :: c_init_flag
 
     INTEGER :: dbd_init
     LOGICAL :: inherit
@@ -963,6 +969,9 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(hidden)) this%is_hidden = hidden
 
     IF (PRESENT(init_flag)) this%set_variable => init_flag
+    IF (PRESENT(c_init_flag)) THEN
+      IF (ASSOCIATED(c_init_flag)) this%c_set_variable => c_init_flag
+    END IF
     IF (PRESENT(i32count)) this%i32count_variable => i32count
     IF (PRESENT(i64count)) this%i64count_variable => i64count
 
@@ -1010,7 +1019,7 @@ MODULE eis_deck_definition_mod
       c_init_block, c_start_pass, c_start_block, c_end_block, c_end_pass, &
       c_final_block, c_any_key_text, c_any_key_value, c_any_key_numeric_value, &
       c_any_key_stack, c_block_remapper, pass_eq, pass_le, pass_ge, init_flag, &
-      i32count, i64count, description, hidden, text_fallback)
+      i32count, i64count, description, hidden, text_fallback, c_init_flag)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: block_name
 
@@ -1046,6 +1055,7 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
+    INTEGER(C_INT), POINTER, OPTIONAL :: c_init_flag
 
     CLASS(eis_deck_block_definition), POINTER :: dbd_add_new_block
     CLASS(*), POINTER :: ptr
@@ -1062,7 +1072,8 @@ MODULE eis_deck_definition_mod
         c_block_remapper, parent_block = this, pass_eq = pass_eq, &
         pass_le = pass_le, pass_ge = pass_ge, description = description, &
         hidden = hidden, init_flag = init_flag, i32count = i32count, &
-        i64count = i64count, text_fallback = text_fallback)
+        i64count = i64count, text_fallback = text_fallback, &
+        c_init_flag = c_init_flag)
 
     ptr => dbd_add_new_block
     CALL this%sub_blocks%hold(block_name, ptr, owns = .FALSE.)
@@ -1135,7 +1146,8 @@ MODULE eis_deck_definition_mod
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
         outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
-      IF (this_errcode == eis_err_none) THEN
+      IF (this_errcode == eis_err_none &
+          .AND. IAND(this_status, eis_status_not_handled) == 0) THEN
         ptr => this%sub_blocks%get(TRIM(ADJUSTL(remap_name)))
       END IF
       DEALLOCATE(remap_name)
@@ -1143,17 +1155,17 @@ MODULE eis_deck_definition_mod
 
     !If that fails, try the C function next
     IF (.NOT. ASSOCIATED(ptr) .AND. ASSOCIATED(this%c_block_remap_fn)) THEN 
-      ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
+      CALL eis_alloc_c_string(block_name, c_block_name)
       ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR):: &
-          c_remap_name(this%info%longest_block_name))
-      CALL eis_f_c_string(block_name, LEN(block_name), c_block_name)
+          c_remap_name(this%info%longest_block_name + 1))
+      c_remap_name = C_NULL_CHAR
       c_block_ptr = C_LOC(c_block_name)
       c_remap_ptr = C_LOC(c_remap_name)
       this_status = eis_status_none
       this_state = 0
       this_errcode = eis_err_none
       CALL this%c_block_remap_fn(c_block_ptr, INT(npass, C_INT), &
-          INT(this%info%longest_block_name, C_INT), c_remap_ptr, &
+          INT(this%info%longest_block_name + 1, C_INT), c_remap_ptr, &
           this_status, this_state, this_errcode)
       CALL eis_c_f_string(c_remap_ptr, remap_name)
       DEALLOCATE(c_remap_name, c_block_name)
@@ -1163,7 +1175,8 @@ MODULE eis_deck_definition_mod
       IF (IAND(this_status, eis_status_not_handled)/=0) THEN
         outer_errcode = IOR(outer_errcode, eis_err_unknown_block)
       END IF
-      IF (this_errcode == eis_err_none) THEN
+      IF (this_errcode == eis_err_none &
+          .AND. IAND(this_status, eis_status_not_handled) == 0) THEN
         ptr => this%sub_blocks%get(TRIM(ADJUSTL(remap_name)))
       END IF
       DEALLOCATE(remap_name)
@@ -1188,8 +1201,7 @@ MODULE eis_deck_definition_mod
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_failure_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_block_name(LEN(block_name)))
-        CALL eis_f_c_string(block_name, LEN(block_name), c_block_name)
+        CALL eis_alloc_c_string(block_name, c_block_name)
         CALL this%info%c_on_block_failure_fn(C_LOC(c_block_name), &
             INT(npass, C_INT), SIZE(dummy, KIND=C_INT), &
             INT(dummy, C_INT), INT(dummy, C_INT), outer_status, &
@@ -1209,8 +1221,17 @@ MODULE eis_deck_definition_mod
   FUNCTION dbd_get_parent(this)
     CLASS(eis_deck_block_definition), INTENT(IN) :: this
     CLASS(eis_deck_block_definition), POINTER :: dbd_get_parent
+    CLASS(*), POINTER :: gptr
 
-    dbd_get_parent => this%info%get_block(this%parent)
+    dbd_get_parent => NULL()
+    IF (this%parent < 0) RETURN
+    gptr => this%info%all_blocks%get(this%parent)
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+
+    SELECT TYPE(gptr)
+      CLASS IS (eis_deck_block_definition)
+        dbd_get_parent => gptr
+    END SELECT
 
   END FUNCTION dbd_get_parent
 
@@ -1311,8 +1332,7 @@ MODULE eis_deck_definition_mod
       END IF
 
       IF (ASSOCIATED(this%info%c_on_block_no_trigger_fn)) THEN
-        ALLOCATE(CHARACTER(LEN=1, KIND=C_CHAR)::c_this_name(LEN(this_name)))
-        CALL eis_f_c_string(this_name, LEN(this_name), c_this_name)
+        CALL eis_alloc_c_string(this_name, c_this_name)
         CALL this%info%c_on_block_no_trigger_fn(C_LOC(c_this_name), &
             INT(pass_number, C_INT), SIZE(parents, KIND=C_INT), &
             INT(parents, C_INT), INT(parent_kind, C_INT), this_status, &
@@ -1342,6 +1362,7 @@ MODULE eis_deck_definition_mod
     END IF
 
     IF (ASSOCIATED(this%set_variable)) this%set_variable = .TRUE.
+    IF (ASSOCIATED(this%c_set_variable)) this%c_set_variable = 1_C_INT
     IF (ASSOCIATED(this%i32count_variable)) this%i32count_variable &
         = this%i32count_variable + 1_INT32
     IF (ASSOCIATED(this%i64count_variable)) this%i64count_variable &
@@ -1485,7 +1506,7 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_optimise(this)
+  RECURSIVE SUBROUTINE dbd_optimise(this)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     INTEGER :: i
     CLASS(*), POINTER :: gptr
@@ -1504,7 +1525,7 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_visualise(this, str, key_id)
+  RECURSIVE SUBROUTINE dbd_visualise(this, str, key_id)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
     INTEGER, INTENT(INOUT) :: key_id
@@ -1546,7 +1567,7 @@ MODULE eis_deck_definition_mod
 
 
 
-  SUBROUTINE dbd_markdown(this, definition, str, key_id)
+  RECURSIVE SUBROUTINE dbd_markdown(this, definition, str, key_id)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_definition), INTENT(INOUT) :: definition
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT) :: str
@@ -1649,7 +1670,7 @@ MODULE eis_deck_definition_mod
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, &
       c_i32len, c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
       expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
-      text_fallback, stackvalue, c_stackvalue)
+      text_fallback, stackvalue, c_stackvalue, c_init_flag)
     CLASS(eis_deck_block_definition), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: key_name
     PROCEDURE(key_text_callback), OPTIONAL :: key_text_fn
@@ -1677,9 +1698,9 @@ MODULE eis_deck_definition_mod
     REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
 
-    LOGICAL, POINTER, OPTIONAL :: init_flag
-    INTEGER(INT32), POINTER, OPTIONAL :: i32count
-    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+    LOGICAL, TARGET, OPTIONAL :: init_flag
+    INTEGER(INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(INT64), TARGET, OPTIONAL :: i64count
 #else
     INTEGER(INT32), POINTER, OPTIONAL :: i32value
     INTEGER(INT64), POINTER, OPTIONAL :: i64value
@@ -1714,6 +1735,7 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
+    INTEGER(C_INT), POINTER, OPTIONAL :: c_init_flag
     TYPE(deck_key_definition), POINTER :: new
     CLASS(*), POINTER :: ptr
 
@@ -1737,7 +1759,7 @@ MODULE eis_deck_definition_mod
         init_flag = init_flag, i32count = i32count, i64count = i64count, &
         description = description, hidden = hidden, &
         text_fallback = text_fallback, stackvalue = stackvalue, &
-        c_stackvalue = c_stackvalue)
+        c_stackvalue = c_stackvalue, c_init_flag = c_init_flag)
 
     ptr => new
     CALL this%keys%hold(key_name, ptr, owns = .TRUE.)
@@ -1862,8 +1884,7 @@ MODULE eis_deck_definition_mod
 
     IF (line_text_present) THEN
       ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(trimmed_line_text)))
-      ALLOCATE(c_line_text(LEN(line_text)))
-      CALL eis_f_c_string(line_text, LEN(line_text), c_line_text)
+      CALL eis_alloc_c_string(line_text, c_line_text)
     ELSE
       IF (PRESENT(key_value)) THEN
         ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(key_text)) // ' = ' &
@@ -1871,8 +1892,7 @@ MODULE eis_deck_definition_mod
       ELSE
         ALLOCATE(line_text, SOURCE = TRIM(ADJUSTL(key_text)))
       END IF
-      ALLOCATE(c_line_text(LEN(line_text)))
-      CALL eis_f_c_string(line_text, LEN(line_text), c_line_text)
+      CALL eis_alloc_c_string(line_text, c_line_text)
     END IF
 
     is_key_value = PRESENT(key_value)
@@ -1890,10 +1910,8 @@ MODULE eis_deck_definition_mod
       ALLOCATE(value, SOURCE = "{Unknown value}")
     END IF
 
-    ALLOCATE(c_key(LEN(key)))
-    CALL eis_f_c_string(key, LEN(key), c_key)
-    ALLOCATE(c_value(LEN(value)))
-    CALL eis_f_c_string(value, LEN(value), c_value)
+    CALL eis_alloc_c_string(key, c_key)
+    CALL eis_alloc_c_string(value, c_value)
 
     IF (is_directive) THEN
       base_stat = eis_status_directive
@@ -1995,6 +2013,7 @@ MODULE eis_deck_definition_mod
       END IF
 
       IF (ASSOCIATED(dkd%set_variable)) dkd%set_variable = .TRUE.
+      IF (ASSOCIATED(dkd%c_set_variable)) dkd%c_set_variable = 1_C_INT
       IF (ASSOCIATED(dkd%i32count_variable)) dkd%i32count_variable &
           = dkd%i32count_variable + 1_INT32
       IF (ASSOCIATED(dkd%i64count_variable)) dkd%i64count_variable &
@@ -2756,7 +2775,7 @@ MODULE eis_deck_definition_mod
       logicalarray, c_i32value, c_i64value, c_r32value, c_r64value, c_i32len, &
       c_i64len, c_r32len, c_r64len, init_flag, i32count, i64count, &
       expected_params, pass_eq, pass_le, pass_ge, description, hidden, &
-      text_fallback, stackvalue, c_stackvalue)
+      text_fallback, stackvalue, c_stackvalue, c_init_flag)
     CLASS(deck_key_definition), INTENT(INOUT) :: this
     CLASS(eis_deck_block_definition), INTENT(IN) :: parent_block
     CHARACTER(LEN=*), INTENT(IN) :: key_name
@@ -2819,6 +2838,7 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL, INTENT(IN), OPTIONAL :: text_fallback
+    INTEGER(C_INT), POINTER, OPTIONAL :: c_init_flag
     LOGICAL :: inherit
 
     ALLOCATE(this%name, SOURCE = key_name)
@@ -2853,6 +2873,9 @@ MODULE eis_deck_definition_mod
     IF (PRESENT(c_stackvalue)) this%c_stackdata = c_stackvalue
 
     IF (PRESENT(init_flag)) this%set_variable => init_flag
+    IF (PRESENT(c_init_flag)) THEN
+      IF (ASSOCIATED(c_init_flag)) this%c_set_variable => c_init_flag
+    END IF
     IF (PRESENT(i32count)) this%i32count_variable => i32count
     IF (PRESENT(i64count)) this%i64count_variable => i64count
 

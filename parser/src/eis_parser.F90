@@ -1,4 +1,4 @@
-!Copyrigh (c) 2019, C.S.Brady
+!Copyright (c) 2019-2026, C.S.Brady and H. Ratcliffe
 
 !All rights reserved.
 
@@ -58,7 +58,6 @@ MODULE eis_parser_mod
   !> character is of unknown type
   INTEGER, PARAMETER :: eis_char_unknown = 1024
 
-  TYPE(eis_registry), SAVE :: global_registry
   LOGICAL, SAVE :: global_setup = .FALSE.
 
   !>Type holding a pointer to a parser for interoperability interface
@@ -257,7 +256,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: wrt
     !> Error code
     INTEGER(eis_error), INTENT(INOUT) :: errcode
-    INTEGER :: istack, sp
+    INTEGER :: sp
     TYPE(eis_tree_item), POINTER :: root, result
     TYPE(eis_stack) :: intermediate
 
@@ -1265,6 +1264,10 @@ CONTAINS
       CALL this%set_symbol_derivative('utility.interpolate', &
           'utility.deriv_interpolate(all_params) * dparam(1)', &
           errcode, global = .TRUE.)
+      CALL this%lock_symbol_derivative('utility.dsemigauss', errcode, &
+          global = .TRUE.)
+      CALL this%lock_symbol_derivative('utility.deriv_interpolate', errcode, &
+          global = .TRUE.)
 
       CALL this%set_symbol_derivative('logic.if', &
           'if(param(1), dparam(2), dparam(3))', &
@@ -1289,6 +1292,9 @@ CONTAINS
           '-2 * dparam(1)/math.sqrt(math.pi) + 2 &
           & * erfc_scaled(param(1)) * param(1) * dparam(1)', &
           errcode, global = .TRUE.)
+      CALL this%lock_symbol_derivative('math.gamma', errcode, global = .TRUE.)
+      CALL this%lock_symbol_derivative('math.log_gamma', errcode, &
+          global = .TRUE.)
 #endif
 
     END IF
@@ -2908,7 +2914,7 @@ CONTAINS
   !> @param[in] text_params
   SUBROUTINE eip_add_function_defer(this, name, errcode,  cap_bits, &
       expected_params, can_simplify, global, description, hidden, &
-      text_params)
+      text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -2932,10 +2938,17 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this functor have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: text_params
+    !> Does calling this function a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> If it does then repeated calls can be merged. Optional, default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
 
     CALL this%add_function(name, eis_dummy, errcode, cap_bits, &
         expected_params, can_simplify, .TRUE., global, description, hidden, &
-        text_params)
+        text_params, is_idempotent, text_param_mask)
 
   END SUBROUTINE eip_add_function_defer
 
@@ -2957,7 +2970,7 @@ CONTAINS
   !> @param[in] text_params
   SUBROUTINE eip_add_function_now(this, name, fn, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global, description, hidden, &
-      text_params)
+      text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -2987,8 +3000,15 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this functor have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: text_params
+    !> Does calling this function a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> If it does then repeated calls can be merged. Optional, default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     INTEGER :: params
-    LOGICAL :: is_global
+    LOGICAL :: is_global, idempotent
 
     IF (PRESENT(expected_params)) THEN
       params = expected_params
@@ -2999,16 +3019,21 @@ CONTAINS
     is_global = .FALSE.
     IF (PRESENT(global)) is_global = global
 
+    idempotent = .FALSE.
+    IF (PRESENT(is_idempotent)) idempotent = is_idempotent
+
     IF (is_global) THEN
       CALL global_registry%add_function(name, fn, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          can_have_text_params = text_params)
+          can_have_text_params = text_params, is_idempotent = idempotent, &
+          text_param_mask = text_param_mask)
     ELSE
       CALL this%registry%add_function(name, fn, params, errcode, can_simplify, &
           cap_bits, err_handler = this%err_handler, defer = defer, &
           description = description, hidden = hidden, &
-          can_have_text_params = text_params)
+          can_have_text_params = text_params, is_idempotent = idempotent, &
+          text_param_mask = text_param_mask)
     END IF
 
   END SUBROUTINE eip_add_function_now
@@ -3037,7 +3062,7 @@ CONTAINS
   !> @param[in] text_params
   SUBROUTINE eip_add_functor(this, name, functor, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global, &
-      description, hidden, text_params)
+      description, hidden, text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -3067,8 +3092,15 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this functor have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: text_params
+    !> Does calling this functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> If it does then repeated calls can be merged. Optional, default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     INTEGER :: params
-    LOGICAL :: is_global
+    LOGICAL :: is_global, idempotent
 
     IF (PRESENT(expected_params)) THEN
       params = expected_params
@@ -3079,16 +3111,21 @@ CONTAINS
     is_global = .FALSE.
     IF (PRESENT(global)) is_global = global
 
+    idempotent = .FALSE.
+    IF (PRESENT(is_idempotent)) idempotent = is_idempotent
+
     IF (is_global) THEN
       CALL global_registry%add_functor(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          can_have_text_params = text_params)
+          can_have_text_params = text_params, is_idempotent = idempotent, &
+          text_param_mask = text_param_mask)
     ELSE
       CALL this%registry%add_functor(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &   
-          can_have_text_params = text_params)
+          can_have_text_params = text_params, is_idempotent = idempotent, &
+          text_param_mask = text_param_mask)
     END IF
 
     CALL this%lock_symbol_derivative(name, errcode)
@@ -3126,7 +3163,7 @@ CONTAINS
   !> @param[in] text_params
   SUBROUTINE eip_add_functor_ptr(this, name, functor, errcode,  cap_bits, &
       expected_params, can_simplify, defer, global, &
-      description, hidden, owns, text_params)
+      description, hidden, owns, text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_parser) :: this
     !> Name to register function with. Will be used in expressions to
@@ -3158,8 +3195,15 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     !> Can this functor have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: text_params
+    !> Does calling this functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> If it does then repeated calls can be merged. Optional, default .FALSE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     INTEGER :: params
-    LOGICAL :: is_global
+    LOGICAL :: is_global, idempotent
 
     IF (.NOT. ASSOCIATED(functor)) RETURN
 
@@ -3172,16 +3216,21 @@ CONTAINS
     is_global = .FALSE.
     IF (PRESENT(global)) is_global = global
 
+    idempotent = .FALSE.
+    IF (PRESENT(is_idempotent)) idempotent = is_idempotent
+
     IF (is_global) THEN
       CALL global_registry%add_functor_pointer(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          owns = owns, can_have_text_params = text_params)
+          owns = owns, can_have_text_params = text_params, &
+          is_idempotent = idempotent, text_param_mask = text_param_mask)
     ELSE
       CALL this%registry%add_functor_pointer(name, functor, params, errcode, &
           can_simplify, cap_bits, err_handler = this%err_handler, &
           defer = defer, description = description, hidden = hidden, &
-          owns = owns, can_have_text_params = text_params)
+          owns = owns, can_have_text_params = text_params, &
+          is_idempotent = idempotent, text_param_mask = text_param_mask)
     END IF
 
     CALL this%lock_symbol_derivative(name, errcode)
@@ -4447,9 +4496,10 @@ CONTAINS
     LOGICAL, INTENT(INOUT), OPTIONAL :: can_accept_maths_domain_errors
     TYPE(eis_stack_element) :: block2
     TYPE(eis_stack_co_element) :: coblock2
-    INTEGER :: istr
-    LOGICAL :: stack_empty, str_handled
+    INTEGER :: istr, position
+    LOGICAL :: stack_empty, str_handled, is_text, supplies_value, marked
     CHARACTER(LEN=:), ALLOCATABLE :: str
+    INTEGER(eis_bitmask) :: mask
 
     cap_bits = 0_eis_bitmask
     IF (ICHAR(current(1:1)) == 0) RETURN
@@ -4515,6 +4565,38 @@ CONTAINS
           charindex, filename = filename, line_number = line_number, &
           full_line = full_line, full_line_pos = trim_charindex)
         RETURN
+      END IF
+    END IF
+
+    !If the function that this token is a parameter of lists the parameter
+    !positions that are text then check that this token is text at those
+    !positions and only at those positions
+    IF (this%stack%stack_point > 1) THEN
+      IF (this%brackets%stack_point > 2) THEN
+        mask = this%stack%co_entries(this%stack%stack_point-1)%text_param_mask
+        is_text = iblock%ptype == eis_pt_constant &
+            .AND. iblock%value == eis_pt_character
+        supplies_value = iblock%ptype == eis_pt_constant &
+            .OR. iblock%ptype == eis_pt_variable &
+            .OR. iblock%ptype == eis_pt_pointer_variable &
+            .OR. iblock%ptype == eis_pt_stored_variable &
+            .OR. iblock%ptype == eis_pt_function &
+            .OR. iblock%ptype == eis_pt_emplaced_function
+        IF (mask /= 0_eis_bitmask .AND. supplies_value) THEN
+          position = this%brackets%entries(this%brackets%stack_point-1)&
+              %actual_params + this%brackets%entries(this%brackets%stack_point)&
+              %actual_params
+          marked = .FALSE.
+          IF (position >= 1 .AND. position <= BIT_SIZE(mask)) &
+              marked = BTEST(mask, position - 1)
+          IF (is_text .NEQV. marked) THEN
+            err = IOR(err, eis_err_wrong_parameters)
+            CALL this%err_handler%add_error(eis_err_parser, err, current, &
+              charindex, filename = filename, line_number = line_number, &
+              full_line = full_line, full_line_pos = trim_charindex)
+            RETURN
+          END IF
+        END IF
       END IF
     END IF
 

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE mymod
 
   USE eis_deck_header
@@ -46,7 +49,7 @@ PROGRAM testprog
   CALL block%add_key('array_value', r32array = array)
 
   CALL deck%init()
-  CALL deck%parse_deck_file('demo10.deck', dfn, errcode)
+  CALL deck%parse_deck_file('demos/decks/demo10.deck', dfn, errcode)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
       CALL deck%get_error_report(ierr, str)

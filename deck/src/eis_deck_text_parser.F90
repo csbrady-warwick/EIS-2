@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_string_deck_mod
 
   USE eis_header
@@ -50,6 +53,10 @@ MODULE eis_string_deck_mod
     LOGICAL :: is_init = .FALSE.
     PROCEDURE(file_text_processor_proto), POINTER, NOPASS :: &
         file_text_processor => NULL()
+    PROCEDURE(filename_processor_proto_c), POINTER, NOPASS :: &
+        c_filename_processor => NULL()
+    PROCEDURE(file_text_processor_proto_c), POINTER, NOPASS :: &
+        c_file_text_processor => NULL()
     PROCEDURE(filename_processor_proto), POINTER, NOPASS :: &
         filename_processor => NULL()
     INTEGER :: max_block_id = -1
@@ -389,12 +396,15 @@ MODULE eis_string_deck_mod
   !> @brief
   !> Routine to initialise this object
   SUBROUTINE esd_init(this, errcode, err_handler, import_prefix, &
-      filename_processor, file_text_processor)
+      filename_processor, file_text_processor, c_filename_processor, &
+      c_file_text_processor)
     CLASS(eis_string_deck), INTENT(INOUT) :: this
     INTEGER(eis_error), INTENT(OUT) :: errcode
     CLASS(eis_error_handler), POINTER, INTENT(IN), OPTIONAL :: err_handler
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
+    PROCEDURE(filename_processor_proto_c), OPTIONAL :: c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), OPTIONAL :: c_file_text_processor
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: import_prefix
 
     errcode = eis_err_none
@@ -411,6 +421,10 @@ MODULE eis_string_deck_mod
         => filename_processor
     IF (PRESENT(file_text_processor)) this%file_text_processor &
         => file_text_processor
+    IF (PRESENT(c_filename_processor)) this%c_filename_processor &
+        => c_filename_processor
+    IF (PRESENT(c_file_text_processor)) this%c_file_text_processor &
+        => c_file_text_processor
 
     IF (PRESENT(err_handler)) THEN
       this%data%handler => err_handler
@@ -452,7 +466,7 @@ MODULE eis_string_deck_mod
     !> Error code
     INTEGER(eis_error), INTENT(OUT) :: errcode
     INTEGER :: iline, cloc, ln, lnm
-    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename, import_filename
+    CHARACTER(LEN=:), ALLOCATABLE :: str, src_filename
     LOGICAL :: found
 
     CALL this%clear_blocklist()
@@ -482,7 +496,9 @@ MODULE eis_string_deck_mod
               this%import_prefix // TRIM(ADJUSTL(str(cloc+1:))), errcode, &
               index_start = iline, &
               filename_processor = this%filename_processor, &
-              file_text_processor = this%file_text_processor)
+              file_text_processor = this%file_text_processor, &
+              c_filename_processor = this%c_filename_processor, &
+              c_file_text_processor = this%c_file_text_processor)
           IF (errcode /= eis_err_none) THEN
             IF (ALLOCATED(src_filename)) THEN
               CALL this%data%handler%add_error(eis_err_deck_file, errcode, &
@@ -534,8 +550,6 @@ MODULE eis_string_deck_mod
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
     INTEGER(eis_error) :: ierr
     CHARACTER(LEN=:), ALLOCATABLE :: ext
-    LOGICAL :: got
-    CHARACTER(LEN=:), ALLOCATABLE :: temp
 
     errcode = eis_err_none
     ierr = eis_err_none
@@ -543,17 +557,9 @@ MODULE eis_string_deck_mod
     errcode = IOR(errcode, ierr)
     CALL this%data%strings%load_from_ascii_file(filename, errcode, &
         filename_processor = this%filename_processor, &
-        file_text_processor = this%file_text_processor, final_filename = ext)
-    got = ALLOCATED(ext)
-    IF (got) got = got .AND. LEN(ext) > 0
-    IF (.NOT. got) THEN
-      IF (ALLOCATED(ext)) DEALLOCATE(ext)
-      ALLOCATE(ext, SOURCE = filename)
-      IF (ASSOCIATED(this%filename_processor)) THEN
-        CALL this%filename_processor(ext, ierr)
-        errcode = IOR(errcode, ierr)
-      END IF
-    END IF
+        file_text_processor = this%file_text_processor, final_filename = ext, &
+        c_filename_processor = this%c_filename_processor, &
+        c_file_text_processor = this%c_file_text_processor)
       
     IF (errcode /= eis_err_none) THEN
       CALL this%data%handler%add_error(eis_err_deck_file, errcode, &

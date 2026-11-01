@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+// SPDX-License-Identifier: BSD-3-Clause
+
 #ifndef EIS_INTEROP_H
 #define EIS_INTEROP_H
 
@@ -34,24 +37,34 @@
   const EIS_ERROR eis_err_bracketed_constant   = 0x8000LL;
   const EIS_ERROR eis_err_extra_bracket        = 0x10000LL;
   const EIS_ERROR eis_err_bad_stack            = 0x20000LL;
-  const EIS_ERROR eis_err_extra_results        = 0x400000LL;
-  const EIS_ERROR eis_err_no_luns              = 0x800000LL;
-  const EIS_ERROR eis_err_no_file              = 0x1000000LL;
-  const EIS_ERROR eis_err_malformed_file       = 0x2000000LL;
-  const EIS_ERROR eis_err_mismatched_begin_end = 0x4000000LL;
-  const EIS_ERROR eis_err_dec_too_deep         = 0x8000000LL;
-  const EIS_ERROR eis_err_deck_empty_block     = 0x10000000LL;
-  const EIS_ERROR eis_err_root_keys            = 0x20000000LL;
-  const EIS_ERROR eis_err_bad_deck_definition  = 0x40000000LL;
-  const EIS_ERROR eis_err_unknown_block        = 0x80000000LL;
-  const EIS_ERROR eis_err_unknown_key          = 0x100000000LL;
-  const EIS_ERROR eis_err_bad_key              = 0x200000000LL;
-  const EIS_ERROR eis_err_host                 = 0x400000000LL;
-  const EIS_ERROR eis_err_text                 = 0x800000000LL;
-  const EIS_ERROR eis_err_interop              = 0x1000000000LL;
-  const EIS_ERROR eis_err_out_of_range         = 0x2000000000LL;
-  const EIS_ERROR eis_err_stack_params         = 0x4000000000LL;
-  const EIS_ERROR eis_err_invalid_minify       = 0x8000000000LL;
+  const EIS_ERROR eis_err_extra_results        = 0x40000LL;
+  const EIS_ERROR eis_err_no_luns              = 0x80000LL;
+  const EIS_ERROR eis_err_no_file              = 0x100000LL;
+  const EIS_ERROR eis_err_malformed_file       = 0x200000LL;
+  const EIS_ERROR eis_err_mismatched_begin_end = 0x400000LL;
+  const EIS_ERROR eis_err_deck_too_deep        = 0x800000LL;
+  const EIS_ERROR eis_err_deck_empty_block     = 0x1000000LL;
+  const EIS_ERROR eis_err_root_keys            = 0x2000000LL;
+  const EIS_ERROR eis_err_bad_deck_definition  = 0x4000000LL;
+  const EIS_ERROR eis_err_unknown_block        = 0x8000000LL;
+  const EIS_ERROR eis_err_unknown_key          = 0x10000000LL;
+  const EIS_ERROR eis_err_bad_key              = 0x20000000LL;
+  const EIS_ERROR eis_err_host                 = 0x40000000LL;
+  const EIS_ERROR eis_err_text                 = 0x80000000LL;
+  const EIS_ERROR eis_err_interop              = 0x100000000LL;
+  const EIS_ERROR eis_err_out_of_range         = 0x200000000LL;
+  const EIS_ERROR eis_err_stack_params         = 0x400000000LL;
+  const EIS_ERROR eis_err_invalid_minify       = 0x800000000LL;
   const EIS_ERROR eis_err_bad_parser           = 0x1000000000LL;
+  const EIS_ERROR eis_err_no_deriv             = 0x2000000000LL;
+
+  /*Status constants*/
+  const EIS_STATUS eis_status_none             = 0x0LL;
+  const EIS_STATUS eis_status_terminate        = 0x1LL;
+  const EIS_STATUS eis_status_delete_stack     = 0x2LL;
+  const EIS_STATUS eis_status_no_simplify      = 0x4LL;
+  const EIS_STATUS eis_status_no_emplace       = 0x8LL;
+  const EIS_STATUS eis_status_directive        = 0x10LL;
+  const EIS_STATUS eis_status_not_handled      = 0x20LL;
 
 #endif

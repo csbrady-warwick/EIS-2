@@ -1,9 +1,12 @@
+// Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+// SPDX-License-Identifier: BSD-3-Clause
+
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
 #include <math.h>
-#include "./parser/include/eis_parser.h"
+#include "eis_parser.h"
 
 #define PI 3.14159
 
@@ -25,11 +28,11 @@ bool success(int parser, EIS_ERROR errcode){
   char txt[10000];
   int actual_chars;
   if (errcode == eis_err_none) return true;
-  for (int i=1; i<=eis_parser_get_error_count(parser); ++i){
-    actual_chars = eis_parser_get_error_report(parser, i, 10000, txt);
+  for (int i=1; i<=eis_parser_get_error_count(parser, NULL); ++i){
+    actual_chars = eis_parser_get_error_report(parser, i, 10000, txt, NULL);
     printf("%s\n", txt);
   }
-  eis_parser_flush_errors(parser);
+  eis_parser_flush_errors(parser, NULL);
   return false;
 }
 
@@ -44,11 +47,11 @@ int main(int argc, char** argv)
   EIS_BITMASK bm;
   FILE *f;
 
-  parser = eis_create_parser(&errcode, 1, 0, 0, eis_physics_si, 1);
+  parser = eis_create_parser(eis_physics_si, &errcode, NULL);
   if (!success(parser, errcode)) exit(1);
 
-  stack = eis_create_stack(parser, txt, &bm, &errcode);
-  eis_bind_result_to_stack(stack, get_values, &errcode, NULL, 0, 0, 0, 0);
+  stack = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+  eis_bind_result_to_stack(stack, get_values, &errcode, NULL);
 
   printf("This example makes use of a result function to show how to have\n");
   printf("EIS return a stack with a value that is returned by a host code\n");
@@ -70,7 +73,7 @@ fopen command */
     mydata.y = (float)iy/99.0;
     for (ix = 0; ix < 100; ++ix) {
       mydata.x = (float)ix/99.0;
-      ct = eis_evaluate_stack(stack, 1, &res, &errcode, &mydata);
+      ct = eis_evaluate_stack(stack, 1, &res, &mydata, &errcode, NULL);
       fprintf(f,"%g ", res);
     }
     fprintf(f,"\n");
@@ -78,6 +81,6 @@ fopen command */
   fclose(f);
 /* These are not necessary but this is how you release stacks and parsers
 when you are done with them.*/
-  eis_stack_dec_ref(stack);
-  eis_parser_dec_ref(parser);
+  eis_stack_dec_ref(stack, NULL);
+  eis_parser_dec_ref(parser, NULL);
 }

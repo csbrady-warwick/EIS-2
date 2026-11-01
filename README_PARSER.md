@@ -791,6 +791,73 @@ The Fortran 2008 version using TARGET variables is less susceptible to this type
 
 As a final note developers are reminded that TARGET and POINTER variables may reduce the compiler's scope for optimising code.
 
+## Derivatives
+
+EIS can differentiate a stack symbolically. You give the `get_deriv_stack` method of the parser object a stack, a name to differentiate with respect to and a second stack to fill. The second stack holds a new expression for the derivative. It is an ordinary stack, so you evaluate it with `evaluate` in the usual way and can use it as a stack variable. The derivative is built from rules that are registered against each symbol. If the parser is set to simplify then the derivative stack is simplified.
+
+```fortran
+CALL parser%get_deriv_stack(stack, deriv_stack, 'x', errcode)
+```
+
+The third argument is the name of the symbol that you are differentiating with respect to. Stack variables and stack functions are expanded when an expression is tokenized, so the derivative is taken of the fully expanded expression.
+
+### Built in derivatives
+
+The operators and many of the built in mathematical functions have derivatives registered for them, so expressions that only use built in symbols can be differentiated straight away. The built in functions `gamma`, `log_gamma`, `dsemigauss` and `deriv_interpolate` have locked derivatives, so differentiating through one is an error. Functions that you add yourself can be differentiated once you have registered a derivative for them, as described below.
+
+### Symbols with no derivative
+
+A symbol that has no derivative registered is treated as having a derivative of zero. That is correct for constants but is silently wrong for a function or variable that does depend on the variable that you are differentiating with respect to. Functors are the exception. A functor is automatically locked when it is added (see below), so differentiating through one is an error until you register a derivative for it.
+
+### Registering a derivative
+
+You register a derivative with the `set_symbol_derivative` method of the parser object. It takes the name of the symbol, an expression for its derivative as a string, and the error code. The symbol must already have been added to the parser.
+
+```fortran
+CALL parser%set_symbol_derivative(symbol, deriv, errcode, wrt = wrt, global = global)
+```
+
+The derivative expression is a normal parser expression that can also use four special items
+
+* `param(n)` - The nth parameter that the function was called with. `n` is 1 for the first parameter
+* `dparam(n)` - The derivative of the nth parameter with respect to the variable being differentiated. This is what applies the chain rule, so the derivative expression for a function normally multiplies by `dparam` of the parameter that it differentiates
+* `func(...)` - The original function, called with the parameters that you give it. This lets a derivative refer to the function that it is the derivative of
+* `all_params` and `all_dparams` - Every parameter, or every derivative of a parameter, passed on as a list. These can only be given to a variadic function. This is how the built in `interpolate` function passes all of its parameters to its derivative function
+
+For example, a function `cube` that returns the cube of its single parameter has the derivative `3 * param(1)^2 * dparam(1)`. A variable has no parameters, so its derivative with respect to itself is simply 1. The optional `wrt` argument says which variable a registered derivative applies to. If you leave it out then the derivative applies with respect to any variable, which is the usual choice for a function. A variable normally needs `wrt` set to its own name, because its derivative with respect to a different variable is zero. The following snippet assumes the getter `get_x` and the `data_item` host parameters from the earlier example and a getter `cube_fn` that returns `params(1)**3`.
+
+```fortran
+CALL parser%add_variable('x', get_x, errcode)
+CALL parser%set_symbol_derivative('x', '1', errcode, wrt = 'x')
+
+CALL parser%add_function('cube', cube_fn, errcode, expected_params = 1)
+CALL parser%set_symbol_derivative('cube', '3 * param(1)^2 * dparam(1)', errcode)
+
+CALL parser%tokenize('cube(x) + 2 * x', stack, errcode)
+CALL parser%get_deriv_stack(stack, deriv_stack, 'x', errcode)
+ct = parser%evaluate(deriv_stack, result, errcode, host_params = C_LOC(item))
+```
+
+The expression is tokenized by the same parser, so every name that it uses must already be known. If the expression cannot be tokenized then the error is returned in `errcode`. As with any other parser item, set `global = .TRUE.` to register the derivative of a symbol in the global list shared by all parsers.
+
+### Locking a derivative
+
+Some symbols have no meaningful derivative, for example a function that returns a rounded value from a table lookup. To stop these from being treated as having a derivative of zero you can lock them with the `lock_symbol_derivative` method of the parser object.
+
+```fortran
+CALL parser%lock_symbol_derivative('mytable', errcode)
+```
+
+It takes the same optional `wrt` and `global` arguments as `set_symbol_derivative`. Taking the derivative of a stack that contains a locked symbol fails with the error `eis_err_no_deriv`. Registering a derivative for a locked symbol replaces the lock for the same `wrt`.
+
+### Changing a symbol
+
+Adding a constant, variable or function again with the same name replaces the whole entry for that name, which includes its derivatives, so register the derivative again after changing one. Stacks that were tokenized before the change are not affected.
+
+### From C
+
+The same operations are available through the C interface as `eis_get_deriv_stack`, `eis_set_symbol_derivative` and `eis_lock_symbol_derivative`. They take the parameter structures described for the rest of the C interface, and passing `NULL` for the parameters gives the defaults. `eis_get_deriv_stack` writes its result into a stack that must already exist, and its previous contents are replaced.
+
 ## Descriptions
 
 When adding any symbol to the parser you can optionally provide a description to go with it. This is done by providing a string variable or literal as the optional parameter `description` when adding any key. Descriptions are not persistent and if a symbol is redefined then it's description is lost unless it is resupplied. Descriptions are retreived in various ways but mainly through the use of the `get_structure_as_markdown` method of the parser object. This method takes an allocatable string and an optional title and returns a sectioned common markdown document detailing all of the symbols that the parser understands as a string.
