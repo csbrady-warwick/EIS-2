@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE mymod
 
   USE eis_deck_header
@@ -105,7 +108,7 @@ PROGRAM testprog
 
   CALL deck%init()
   PRINT *,'*** First pass through deck ***'
-  CALL deck%parse_deck_file('demo8.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demos/decks/demo8.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE., max_passes = 2, pass_number = 1)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()
@@ -115,7 +118,7 @@ PROGRAM testprog
   END IF
 
   PRINT *,'*** Second pass through deck ***'
-  CALL deck%parse_deck_file('demo8.deck', dfn, errcode, &
+  CALL deck%parse_deck_file('demos/decks/demo8.deck', dfn, errcode, &
       allow_empty_blocks = .TRUE., max_passes = 2, pass_number = 2)
   IF (errcode /= eis_err_none) THEN
     DO ierr = 1, deck%get_error_count()

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_core_functions_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -29,6 +32,29 @@ MODULE eis_core_functions_mod
     errcode = eis_err_bad_value
 
   END FUNCTION eis_dummy
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> A function that signals a maths domain error whenever it is evaluated.
+  !> Used by the simplifier in place of an expression that fails
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_maths_domain_error(nparams, params, host_params, status_code, &
+      errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+
+    res = 1.0_eis_num
+    errcode = IOR(errcode, eis_err_maths_domain)
+
+  END FUNCTION eis_maths_domain_error
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -878,6 +904,45 @@ MODULE eis_core_functions_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Derivative of semiGaussian function
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_dsemigauss(nparams, params, host_params, status_code, errcode) &
+      RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res, t0
+
+    !Params(1:4) are parameters, Params(5:8) are derivates of 1:4
+
+    IF (params(3) > 0.0_eis_num .AND. ABS(params(2)) > 0.0_eis_num &
+        .AND. params(2) > 0.0_eis_num) THEN
+      t0 = SQRT(-LOG(params(3)/params(2)))
+      res = (-2.0_eis_num * t0 * params(1) * params(2) * params(3) * params(4) &
+          * params(5) &
+          + t0 * params(2) * params(4)**3 * params(7) &
+          + params(1)*params(4)**2 &
+          * (params(3)*params(6) - params(2) * params(7)) + 2.0_eis_num * t0 &
+          * params(1) **2 * params(2) * params(3) * params(8) &
+          + 2.0_eis_num * LOG(params(3)/params(2)) * params(2) * params(3) &
+          * params(4) * (params(1)*params(8) - params(4)*params(5))) &
+          / (params(3) * params(4)**3 * t0 &
+          * EXP(((params(1) - params(4) * t0)/params(4))**2))
+    ELSE
+      res = 1.0_eis_num
+      errcode = IOR(errcode, eis_err_maths_domain)
+    END IF
+
+  END FUNCTION eis_dsemigauss
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Super-Gaussian function. Gaussian with a power greater than 2
   !> @param[in] nparams
   !> @param[in] params
@@ -1072,6 +1137,50 @@ MODULE eis_core_functions_mod
 
   END FUNCTION eis_interpol
 
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Piecewise constant gradient of the reconstruction from interpol
+  !> @param[in] nparams
+  !> @param[in] params
+  !> @param[in] host_params
+  !> @param[inout] status_code
+  !> @param[inout] errcode
+  FUNCTION eis_deriv_interpol(nparams, params, host_params, status_code, &
+      errcode) RESULT(res) BIND(C)
+    INTEGER(eis_i4), VALUE, INTENT(IN) :: nparams
+    REAL(eis_num), DIMENSION(nparams), INTENT(IN) :: params
+    TYPE(C_PTR), VALUE, INTENT(IN) :: host_params
+    INTEGER(eis_status), INTENT(INOUT) :: status_code
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    REAL(eis_num) :: res
+    INTEGER :: n_items, i
+    REAL(eis_num), DIMENSION(:), ALLOCATABLE :: x, y
+
+    IF (MOD(nparams,2) == 0) THEN
+      !EPOCH style interpolate
+      n_items = (nparams-2)/2
+      IF (n_items /= NINT(params(nparams))) THEN
+        res = 0
+        errcode = eis_err_wrong_parameters
+        RETURN
+      END IF
+    ELSE
+      !EIS style interpolate
+      n_items = (nparams-1)/2
+    END IF
+    ALLOCATE(x(n_items), y(n_items))
+    DO i = 1, n_items
+      x(i) = params(i*2)
+      y(i) = params(i*2+1)
+    END DO
+    res = eis_deriv_interpolate1d(params(1), x, y, errcode)
+
+  END FUNCTION eis_deriv_interpol
+
+
+
 #ifdef F2008
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -1090,12 +1199,13 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
     END IF
 
-    res = BESSEL_JN(NINT(params(1), INT64), params(2))
+    res = BESSEL_JN(NINT(params(1)), params(2))
 
   END FUNCTION eis_bessel_j
 #endif
@@ -1118,12 +1228,13 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) < 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
     END IF
 
-    res = BESSEL_YN(NINT(params(1), INT64), params(2))
+    res = BESSEL_YN(NINT(params(1)), params(2))
 
   END FUNCTION eis_bessel_y
 #endif
@@ -1215,6 +1326,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) <= 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN
@@ -1243,6 +1355,7 @@ MODULE eis_core_functions_mod
     INTEGER(eis_error), INTENT(INOUT) :: errcode
     REAL(eis_num) :: res
 
+    res = 0.0_eis_num
     IF (params(1) <= 0.0_eis_num) THEN
       errcode = IOR(errcode, eis_err_maths_domain)
       RETURN

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE mymod
 
   USE ISO_C_BINDING
@@ -55,7 +58,7 @@ PROGRAM test
   CHARACTER(LEN=1000) :: input
   INTEGER(eis_error) :: errcode
   REAL(eis_num), DIMENSION(:), ALLOCATABLE :: result
-  INTEGER :: ct, ix, iy, it
+  INTEGER :: ct, ix, iy, it, ios
   TYPE(data_item), TARGET :: item
   CHARACTER(LEN=:), ALLOCATABLE :: str
 
@@ -67,23 +70,26 @@ PROGRAM test
   CALL parser%add_variable('x', get_x, errcode)
   CALL parser%add_variable('y', get_y, errcode)
 
-  WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
-  READ(*,'(A)') input
-  CALL parser%tokenize(input, stack, errcode)
-  IF (errcode /= eis_err_none) THEN
+  DO
+    WRITE(*,'(A)', ADVANCE = 'NO') "Please input a mathematical expression :"
+    READ(*,'(A)', IOSTAT = ios) input
+    IF (ios /= 0 .OR. LEN_TRIM(input) == 0) STOP
+    errcode = eis_err_none
+    CALL parser%tokenize(input, stack, errcode)
+    IF (errcode == eis_err_none) &
+        ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
+    IF (errcode == eis_err_none) EXIT
     CALL parser%print_errors()
-    STOP
-  END IF
-  ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
-  IF (errcode /= eis_err_none) THEN
-    CALL parser%print_errors()
-    STOP
-  END IF
+  END DO
   DO iy = 1, 100
     item%y = REAL(iy-1, eis_num)/99.0_eis_num
     DO ix = 1 , 100
       item%x = REAL(ix-1, eis_num)/99.0_eis_num
       ct = parser%evaluate(stack, result, errcode, host_params = C_LOC(item))
+      IF (errcode /= eis_err_none) THEN
+        CALL parser%print_errors()
+        STOP
+      END IF
       WRITE(10,*) result(1)
     END DO
   END DO

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_stack_mod
 
   USE eis_header
@@ -375,7 +378,7 @@ MODULE eis_stack_mod
 
     value = stack%entries(stack%stack_point-offset)
     IF (PRESENT(covalue) .AND. ALLOCATED(stack%co_entries)) THEN
-      covalue = stack%co_entries(stack%stack_point)
+      covalue = stack%co_entries(stack%stack_point-offset)
     END IF
 
   END SUBROUTINE stack_snoop
@@ -424,6 +427,8 @@ MODULE eis_stack_mod
     IF (.NOT. ALLOCATED(token_list%co_entries)) RETURN
 
     DO i = 1, token_list%stack_point
+      IF (token_list%entries(i)%ptype == eis_pt_jump_conditional &
+          .OR. token_list%entries(i)%ptype == eis_pt_jump_unconditional) CYCLE
       IF (ALLOCATED(token_list%co_entries(i)%text)) THEN
         CALL eis_append_string(str, token_list%co_entries(i)%text // " ", &
             newline = .FALSE.)

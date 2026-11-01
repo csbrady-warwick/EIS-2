@@ -1,4 +1,8 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_eval_stack_mod
+!      ALLOCATE(root)
 
   USE, INTRINSIC :: ISO_C_BINDING
   USE eis_header
@@ -47,16 +51,27 @@ MODULE eis_eval_stack_mod
   !> @param[in] host_params
   !> @param[inout] status_code
   !> @param[inout] errcode
-  SUBROUTINE ees_eval_element(this, element, host_params, status_code, errcode)
+  !> @param[in] force_trip_maths_domain
+  SUBROUTINE ees_eval_element(this, element, host_params, status_code, &
+      errcode, force_trip_maths_domain)
     CLASS(eis_eval_stack), INTENT(INOUT) :: this
     TYPE(eis_stack_element), INTENT(IN) :: element !< Element to be evaluated
     TYPE(C_PTR), INTENT(IN) :: host_params !< Host code supplied parameters
     INTEGER(eis_status), INTENT(INOUT) :: status_code !< Status code information
     INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
+    !> Should maths domain errors always trigger
+    LOGICAL, INTENT(IN), OPTIONAL :: force_trip_maths_domain
+    LOGICAL :: maths_domain_trip
 
+    maths_domain_trip = .FALSE.
+    IF (PRESENT(force_trip_maths_domain)) maths_domain_trip &
+        = force_trip_maths_domain
+
+    !If a ptype constant has made it this far it should be evaluated as a
+    !constant
     IF (element%ptype == eis_pt_constant) THEN
       CALL ees_push(this, element%numerical_data, errcode)
-    ELSE IF (element%ptype == eis_pt_pointer_variable) THEN
+    ELSE IF (element%rtype == eis_pt_pointer_variable) THEN
       IF (ASSOCIATED(element%i32data)) &
           CALL ees_push(this, REAL(element%i32data, eis_num), errcode)
       IF (ASSOCIATED(element%i64data)) &
@@ -193,6 +208,32 @@ MODULE eis_eval_stack_mod
 
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
+  !> Get the number of stack elements to skip after a jump element. A
+  !> conditional jump pops the condition from the stack and does not skip
+  !> any elements if it is non zero
+  !> @param[inout] this
+  !> @param[in] element
+  !> @param[inout] errcode
+  !> @return offset
+  FUNCTION ees_jump_offset(this, element, errcode) RESULT(offset)
+    TYPE(eis_eval_stack), INTENT(INOUT) :: this
+    TYPE(eis_stack_element), INTENT(IN) :: element !< Jump element
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code information
+    INTEGER :: offset
+    REAL(eis_num) :: condition
+
+    offset = element%value
+    IF (element%ptype == eis_pt_jump_conditional) THEN
+      CALL ees_pop_scalar(this, condition, errcode)
+      IF (ABS(condition) > TINY(1.0_eis_num)) offset = 0
+    END IF
+
+  END FUNCTION ees_jump_offset
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
   !> Evaluate a stack to a set of results. Output array will must be allocatable
   !> and if it is too small to hold the results then it will be reallocated to
   !> be large enough to hold them
@@ -246,13 +287,22 @@ MODULE eis_eval_stack_mod
       RETURN
     END IF
 
-    DO istack = 1, stack%stack_point
+    istack = 1
+    DO WHILE (istack <= stack%stack_point)
       err = eis_err_none
+      IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+          .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) THEN
+        istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+            + 1
+        CYCLE
+      END IF
       stat_in = status
       CALL ees_eval_element(this, stack%entries(istack), host_params, &
           stat_in, err)
       status = IOR(status, stat_in)
-      IF (err /= eis_err_none .AND. PRESENT(err_handler)) THEN
+      IF (err /= eis_err_none .AND. .NOT. (err == eis_err_maths_domain &
+          .AND. stack%can_accept_maths_domain_errors) &
+          .AND. PRESENT(err_handler)) THEN
         IF (ALLOCATED(stack%co_entries)) THEN
           IF (ALLOCATED(stack%co_entries(istack)%full_line)) THEN
             IF (.NOT. ALLOCATED(stack%filename)) THEN
@@ -284,7 +334,11 @@ MODULE eis_eval_stack_mod
         END IF
       END IF
       errcode = IOR(errcode, err)
+      istack = istack + 1
     END DO
+
+    IF (stack%can_accept_maths_domain_errors) errcode = IAND(errcode, &
+        NOT(eis_err_maths_domain))
 
     IF (.NOT. ALLOCATED(result_vals)) THEN
       ALLOCATE(result_vals(1:this%stack_point))
@@ -342,10 +396,17 @@ MODULE eis_eval_stack_mod
     END IF
 
     this%stack_point = 0
-    DO istack = 1, stack%stack_point
+    istack = 1
+    DO WHILE (istack <= stack%stack_point)
       IF (this%stack_point == SIZE(this%entries)) &
           CALL ees_resize(this, this%stack_point * 2, err)
       err = eis_err_none
+      IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+          .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) THEN
+        istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+            + 1
+        CYCLE
+      END IF
       stat_in = status
       CALL ees_eval_element(this, stack%entries(istack), host_params, &
           stat_in, err)
@@ -355,6 +416,7 @@ MODULE eis_eval_stack_mod
         result_count = 0
         RETURN
       END IF
+      istack = istack + 1
     END DO
 
     result_count = this%stack_point
@@ -418,15 +480,24 @@ MODULE eis_eval_stack_mod
 
     !At this point know that you have a conventional stack
     DO WHILE(run)
-      DO istack = 1, stack%stack_point
+      istack = 1
+      DO WHILE (istack <= stack%stack_point)
         IF (this%stack_point == SIZE(this%entries)) &
             CALL ees_resize(this, this%stack_point * 2, errcode)
         err = eis_err_none
+        IF (stack%entries(istack)%ptype == eis_pt_jump_conditional &
+            .OR. stack%entries(istack)%ptype == eis_pt_jump_unconditional) &
+            THEN
+          istack = istack + ees_jump_offset(this, stack%entries(istack), err) &
+              + 1
+          CYCLE
+        END IF
         stat_in = status
         CALL ees_eval_element(this, stack%entries(istack), host_params, &
             stat_in, err)
         status = IOR(status, stat_in)
         errcode = IOR(errcode, err)
+        istack = istack + 1
       END DO
 
       result_count = this%stack_point

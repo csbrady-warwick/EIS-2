@@ -1,6 +1,10 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_parser_constants
 
   USE eis_constants
+  USE eis_named_store_mod
   USE ISO_C_BINDING
   IMPLICIT NONE
 
@@ -58,9 +62,10 @@ MODULE eis_parser_constants
     END SUBROUTINE
   END INTERFACE
 
-  PRIVATE :: eis_element_assign, eis_element_array_assign
+  PRIVATE :: eis_element_assign, eis_element_array_assign, eis_co_element_assign
   INTERFACE ASSIGNMENT(=)
     MODULE PROCEDURE eis_element_assign, eis_element_array_assign
+    MODULE PROCEDURE eis_co_element_assign
   END INTERFACE
 
   INTEGER, PARAMETER :: eis_physics_none = 0 !< No physical units specified
@@ -82,8 +87,35 @@ MODULE eis_parser_constants
   INTEGER, PARAMETER :: eis_pt_emplaced_variable = 11 !< Type emplaced variable
   INTEGER, PARAMETER :: eis_pt_emplaced_function = 12 !< Type emplaced function
   INTEGER, PARAMETER :: eis_pt_pointer_variable = 13 !< Type pointer variable
+  INTEGER, PARAMETER :: eis_pt_functor = 14 !< Type functor
+  INTEGER, PARAMETER :: eis_pt_param = 15 !< Parameter to a deck function
+  INTEGER, PARAMETER :: eis_pt_dparam = 16 !< Derivative parameter to a function
+  INTEGER, PARAMETER :: eis_pt_stack_function = 17 !< Stack specified function
+  INTEGER, PARAMETER :: eis_pt_zero = 18 !< Actual zero
+  INTEGER, PARAMETER :: eis_pt_unity = 19 !< Actual unity
+  INTEGER, PARAMETER :: eis_pt_op_plus = 20 !< Addition operator
+  INTEGER, PARAMETER :: eis_pt_op_minus = 21 !< Subtraction operator
+  INTEGER, PARAMETER :: eis_pt_op_multiply = 22 !< Multiplication operator
+  INTEGER, PARAMETER :: eis_pt_op_divide = 23 !< Division operator
+  INTEGER, PARAMETER :: eis_pt_op_power = 24 !< Raise to the power of operator
+  INTEGER, PARAMETER :: eis_pt_op_unary_plus = 25 !< Unitary plus
+  INTEGER, PARAMETER :: eis_pt_op_unary_minus = 26 !< Unitary minus
+  INTEGER, PARAMETER :: eis_pt_placed_function = 27 !< Function used in deriv
+  INTEGER, PARAMETER :: eis_pt_integer = 28 !< True integer
+  INTEGER, PARAMETER :: eis_pt_deriv_fn = 29 !< Derivative function
+  !> Conditional jump. Pops a value and skips the number of elements held in
+  !> the value of the element if the popped value is zero
+  INTEGER, PARAMETER :: eis_pt_jump_conditional = 30
+  !> Unconditional jump. Skips the number of elements held in the value of the
+  !> element
+  INTEGER, PARAMETER :: eis_pt_jump_unconditional = 31
+  !> Conditional function. Only the selected parameter is evaluated
+  INTEGER, PARAMETER :: eis_pt_control_if = 32
+  !> End of a conditional function that has been converted to jumps
+  INTEGER, PARAMETER :: eis_pt_control_if_join = 33
   INTEGER, PARAMETER :: eis_pt_bad = 1024 !< Block is of bad type (invalid)
   INTEGER, PARAMETER :: eis_pt_null = 1025 !< Block is of null (empty) type
+
 
   ! Associativity constants
   INTEGER, PARAMETER :: eis_assoc_null = 0 !< No associativity specified
@@ -96,10 +128,16 @@ MODULE eis_parser_constants
   !> Parenthesis is right bracket
   INTEGER, PARAMETER :: eis_paren_right_bracket = 2
 
+  INTEGER, PARAMETER :: eis_registry_none = 0
+  INTEGER, PARAMETER :: eis_registry_global = 1
+  INTEGER, PARAMETER :: eis_registry_local = 2
+
   !> Symbol display information
   INTEGER, PARAMETER :: eis_fsn_auto = 0
   INTEGER, PARAMETER :: eis_fsn_always = 1
   INTEGER, PARAMETER :: eis_fsn_never = 2
+
+  INTEGER, PARAMETER :: eis_deriv_forbidden = -1
 
   !> Information about a stack element that is needed during parsing but is
   !> not essential for evaluation
@@ -107,19 +145,29 @@ MODULE eis_parser_constants
     INTEGER :: associativity, precedence
     INTEGER :: expected_params = -1
     LOGICAL :: can_have_string_params = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
+    !> Does calling this element a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Elements that have this can be merged when they are repeated
+    LOGICAL :: is_idempotent = .FALSE.
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked
+    INTEGER(eis_bitmask) :: text_param_mask = 0_eis_bitmask
     INTEGER :: charindex = -1
     INTEGER :: full_line_pos = -1
     LOGICAL :: defer = .FALSE.
     INTEGER(eis_bitmask) :: cap_bits = 0_eis_bitmask
     CHARACTER(LEN=:), ALLOCATABLE :: text, full_line, filename
     INTEGER :: line_number = -1
-    TYPE(eis_stack), POINTER :: origin => NULL()
+    INTEGER :: registry_type = eis_registry_none
+    INTEGER :: deriv_values = -1
   END TYPE eis_stack_co_element
 
   !> Information about a stack element that is always needed for the entire
   !> stack lifetime
   TYPE eis_stack_element
     INTEGER :: ptype
+    INTEGER :: rtype
     INTEGER :: value
     INTEGER :: actual_params = -1
     LOGICAL :: has_string_params = .FALSE.
@@ -151,6 +199,7 @@ MODULE eis_parser_constants
     LOGICAL :: sanity_checked = .FALSE.
     LOGICAL :: has_emplaced = .FALSE.
     LOGICAL :: has_deferred = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
   END TYPE eis_stack
 
   INTERFACE
@@ -213,6 +262,7 @@ MODULE eis_parser_constants
     TYPE(eis_stack_element), INTENT(IN) :: src
 
     dest%ptype = src%ptype
+    dest%rtype = src%rtype
     dest%value = src%value
     dest%actual_params = src%actual_params
     dest%numerical_data = src%numerical_data
@@ -235,6 +285,7 @@ MODULE eis_parser_constants
 
     DO i = 1, SIZE(dest)
       dest(i)%ptype = src(i)%ptype
+      dest(i)%rtype = src(i)%rtype
       dest(i)%value = src(i)%value
       dest(i)%actual_params = src(i)%actual_params
       dest(i)%numerical_data = src(i)%numerical_data
@@ -255,5 +306,63 @@ MODULE eis_parser_constants
     END DO
 
   END SUBROUTINE eis_element_array_assign
+
+
+
+  SUBROUTINE eis_co_element_assign(dest, src)
+    TYPE(eis_stack_co_element), INTENT(OUT) :: dest
+    TYPE(eis_stack_co_element), INTENT(IN) :: src
+
+    dest%associativity = src%associativity
+    dest%precedence = src%precedence
+    dest%expected_params = src%expected_params
+    dest%can_have_string_params = src%can_have_string_params
+    dest%charindex = src%charindex
+    dest%full_line_pos = src%full_line_pos
+    dest%defer = src%defer
+    dest%cap_bits = src%cap_bits
+    dest%text = src%text
+    dest%full_line = src%full_line
+    dest%filename = src%filename
+    dest%line_number = src%line_number
+    dest%registry_type = src%registry_type
+    dest%deriv_values = src%deriv_values
+    dest%can_accept_maths_domain_errors = &
+        src%can_accept_maths_domain_errors
+    dest%is_idempotent = src%is_idempotent
+    dest%text_param_mask = src%text_param_mask
+
+  END SUBROUTINE eis_co_element_assign
+
+
+
+  SUBROUTINE eis_co_element_assign_array(dest, src)
+    TYPE(eis_stack_co_element), DIMENSION(:), INTENT(OUT) :: dest
+    TYPE(eis_stack_co_element), DIMENSION(:), INTENT(IN) :: src
+    INTEGER :: i
+
+    DO i = 1, SIZE(dest)
+      dest(i)%associativity = src(i)%associativity
+      dest(i)%precedence = src(i)%precedence
+      dest(i)%expected_params = src(i)%expected_params
+      dest(i)%can_have_string_params = src(i)%can_have_string_params
+      dest(i)%charindex = src(i)%charindex
+      dest(i)%full_line_pos = src(i)%full_line_pos
+      dest(i)%defer = src(i)%defer
+      dest(i)%cap_bits = src(i)%cap_bits
+      dest(i)%text = src(i)%text
+      dest(i)%full_line = src(i)%full_line
+      dest(i)%filename = src(i)%filename
+      dest(i)%line_number = src(i)%line_number
+      dest(i)%registry_type = src(i)%registry_type
+      dest(i)%deriv_values = src(i)%deriv_values
+      dest(i)%can_accept_maths_domain_errors &
+          = src(i)%can_accept_maths_domain_errors
+      dest(i)%is_idempotent = src(i)%is_idempotent
+      dest(i)%text_param_mask = src(i)%text_param_mask
+    END DO
+
+  END SUBROUTINE eis_co_element_assign_array
+
 
 END MODULE eis_parser_constants

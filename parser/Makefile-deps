@@ -6,7 +6,8 @@ eis_parser.o: eis_parser.F90 eis_core_functions.o eis_eval_stack.o \
 eis_parser_constants.o: eis_parser_constants.F90
 eis_parser_header.o: eis_parser_header.F90 eis_parser.o eis_parser_constants.o
 eis_raw_parser.o: eis_raw_parser.F90
-eis_registry.o: eis_registry.F90 eis_parser_constants.o eis_stack.o
+eis_registry.o: eis_registry.F90 eis_parser_constants.o eis_stack.o \
+  eis_core_functions.o
 eis_stack.o: eis_stack.F90 eis_parser_constants.o
 eis_tree.o: eis_tree.F90 eis_eval_stack.o \
-  eis_parser_constants.o eis_stack.o
+  eis_parser_constants.o eis_stack.o eis_registry.o

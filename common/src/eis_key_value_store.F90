@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_key_value_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
@@ -138,6 +141,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(key)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -191,6 +195,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(key)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)

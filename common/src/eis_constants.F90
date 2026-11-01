@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_constants
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -145,6 +148,9 @@ MODULE eis_constants
   !> Requested a bad parser through the interoperability interface
   INTEGER(eis_error), PARAMETER :: eis_err_bad_parser &
       = 2_eis_error**36_eis_error
+  !> No valid derivative has been found
+  INTEGER(eis_error), PARAMETER :: eis_err_no_deriv &
+      = 2_eis_error**37_eis_error
 
   !> No status specified
   INTEGER(eis_status), PARAMETER :: eis_status_none = 0

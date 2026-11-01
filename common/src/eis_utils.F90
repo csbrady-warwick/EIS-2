@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_utils
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -8,11 +11,12 @@ MODULE eis_utils
 
   PUBLIC :: eis_default_status
   PUBLIC :: eis_append_string, eis_c_f_string, eis_f_c_string
+  PUBLIC :: eis_alloc_c_string
   PUBLIC :: eis_get_lun, eis_load_file_to_string
   PUBLIC :: eis_remove_string_section, eis_copy_string
   PUBLIC :: eis_compare_string, eis_present_and_alloc
   PUBLIC :: eis_integer_as_string, eis_uid_generator
-  PUBLIC :: eis_allocate_string
+  PUBLIC :: eis_allocate_string, eis_prepend_string
 
   INTERFACE eis_copy_string
     MODULE PROCEDURE eis_copy_string_aa
@@ -31,6 +35,10 @@ MODULE eis_utils
     MODULE PROCEDURE  eis_append_string_au
 #endif
   END INTERFACE eis_append_string
+
+  INTERFACE eis_prepend_string
+    MODULE PROCEDURE  eis_prepend_string_aa
+  END INTERFACE eis_prepend_string
 
   INTERFACE eis_remove_string_section
     MODULE PROCEDURE eis_remove_string_section_ascii
@@ -285,6 +293,49 @@ MODULE eis_utils
 
 
 
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Function to prepend a new string to the start of an existing string
+  !> optionally with a suitable newline sequence between between them.
+  !> Both strings must be ASCII kind
+  !> @details
+  !> The old string is reallocated to be exactly as LEN(str_old) + LEN(str_new)
+  !> If str_old is not allocated then it becomes a copy of str_new.
+  !> @param[inout] str_old
+  !> @param[in] str_new
+  !> @param[in] newline
+  SUBROUTINE eis_prepend_string_aa(str_old, str_new, newline)
+    !> Existing string. Must be ALLOCATABLE, but can be non-allocated
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: str_old
+    !> New string to append to the existing string
+    CHARACTER(LEN=*, KIND=ASCII), INTENT(IN) :: str_new
+    !> Logical flag. If .TRUE. then the strings are combined with a newline
+    !> sequence between them. If .FALSE. then they are directly combined.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: newline
+    CHARACTER(KIND=ASCII) :: prototype
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: temp
+    LOGICAL :: use_newline
+
+    use_newline = .TRUE.
+    IF (PRESENT(newline)) use_newline = newline
+
+    IF (ALLOCATED(str_old)) THEN
+      ALLOCATE(temp, SOURCE = str_old)
+      DEALLOCATE(str_old)
+      IF (use_newline) THEN
+        ALLOCATE(str_old, SOURCE = str_new // NEW_LINE(prototype) // temp)
+      ELSE
+        ALLOCATE(str_old, SOURCE = str_new // temp)
+      END IF
+      DEALLOCATE(temp)
+    ELSE
+      ALLOCATE(str_old, SOURCE = str_new)
+    END IF
+
+  END SUBROUTINE eis_prepend_string_aa
+
+
 #ifdef UNICODE
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
@@ -488,7 +539,7 @@ MODULE eis_utils
     !> Optional. Default remove all instances
     LOGICAL, INTENT(IN), OPTIONAL :: first_only
     LOGICAL :: init_e, final_e, fo, iter_on
-    INTEGER :: ipos, fpos
+    INTEGER :: ipos, fpos, spos, old_len
 
 
     IF (.NOT. ALLOCATED(str)) RETURN
@@ -500,14 +551,15 @@ MODULE eis_utils
     iter_on = .TRUE.
     DO WHILE(iter_on)
       ipos = INDEX(str, init_s)
+      spos = ipos + LEN(init_s)
       IF (ipos > 0) THEN
         IF (init_e) THEN
           ipos = ipos + LEN(init_s)
         END IF
       END IF
-      fpos = INDEX(str(ipos + LEN(init_s):), final_s)
+      fpos = INDEX(str(spos:), final_s)
       IF (fpos > 0) THEN
-        fpos = fpos + ipos + LEN(init_s) - 1
+        fpos = fpos + spos - 1
         IF (final_e) THEN
           fpos = fpos - 1
         ELSE
@@ -519,7 +571,9 @@ MODULE eis_utils
       iter_on = ipos > 0 .AND. fpos > 0
 
       IF (iter_on) THEN
+        old_len = LEN(str)
         CALL eis_remove_string_section_ascii(str, ipos, fpos)
+        iter_on = LEN(str) /= old_len
       END IF
       iter_on = iter_on .AND. .NOT. fo
     END DO
@@ -547,13 +601,13 @@ MODULE eis_utils
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: temp
     INTEGER :: iind, find, rlen
 
-    IF (.NOT. ASSOCIATED(str)) RETURN
+    IF (.NOT. ALLOCATED(str)) RETURN
 
     iind = MAX(1, init)
     find = MIN(LEN(str), final)
     rlen = find - iind + 1
 
-    ALLOCATE(CHARACTER(LEN=rlen) :: temp)
+    ALLOCATE(CHARACTER(LEN=LEN(str) - rlen, KIND=UCS4) :: temp)
     IF (iind > 1) temp(1:iind-1) = str(1:iind-1)
     IF (find < LEN(str)) temp(iind:) = str(find+1:)
     DEALLOCATE(str)
@@ -765,6 +819,27 @@ MODULE eis_utils
     CALL eis_f_c_string(f_string, len_c_string, c_string_arr)
 
   END SUBROUTINE f_c_string_ptr
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Allocate a C string as a simple character array exactly large enough to
+  !> hold a Fortran string and its null terminator and copy the Fortran
+  !> string into it
+  !> @param[in] f_string
+  !> @param[out] c_string
+  SUBROUTINE eis_alloc_c_string(f_string, c_string)
+    !> Fortran source string
+    CHARACTER(LEN=*), INTENT(IN) :: f_string
+    !> C output string. Allocated to LEN(f_string)+1 characters
+    CHARACTER(LEN=1, KIND = C_CHAR), DIMENSION(:), ALLOCATABLE, &
+        INTENT(OUT) :: c_string
+
+    ALLOCATE(c_string(LEN(f_string)+1))
+    CALL eis_f_c_string(f_string, LEN(f_string)+1, c_string)
+
+  END SUBROUTINE eis_alloc_c_string
 
 
 

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_deck_from_text_mod
 
   USE eis_deck_definition_mod
@@ -16,9 +19,9 @@ MODULE eis_deck_from_text_mod
     CLASS(eis_parser), POINTER :: parser => NULL()
     LOGICAL :: owns_parser = .TRUE.
     INTEGER :: interop_parser = -1
-    LOGICAL :: owns_interop = .TRUE.
+    LOGICAL :: owns_interop = .FALSE.
     TYPE(eis_string_deck), ALLOCATABLE :: sdeck
-    TYPE(C_PTR) :: host_params
+    TYPE(C_PTR) :: host_params = C_NULL_PTR
 
     LOGICAL :: unknown_block_is_fatal = .TRUE.
     LOGICAL :: unknown_key_is_fatal = .TRUE.
@@ -185,7 +188,8 @@ MODULE eis_deck_from_text_mod
       errcode = IOR(errcode, this_errcode)
       status = IOR(status, this_status)
       host_state = IOR(host_state, this_host)
-      IF (errcode /= eis_err_none .AND. errcode /= eis_err_unknown_key) THEN
+      IF (errcode /= eis_err_none .AND. errcode /= eis_err_unknown_key &
+          .AND. bad_key_is_fatal) THEN
         status = IOR(status, eis_status_terminate)
       END IF
       IF (IAND(errcode, eis_err_unknown_key) /= 0 &
@@ -194,7 +198,6 @@ MODULE eis_deck_from_text_mod
     END DO
     IF (ALLOCATED(line)) DEALLOCATE(line)
     IF (ALLOCATED(fn)) DEALLOCATE(fn)
-    DEALLOCATE(block_parents)
 
     DO i = 1, block%get_child_count()
       cblock => block%get_child(i)
@@ -228,7 +231,7 @@ MODULE eis_deck_from_text_mod
       END IF
     END DO
 
-    this_errcode = eis_err_none
+    CALL eis_default_status(this_errcode, this_status, this_host)
     CALL definition%end_block(block_parents, pass_number, this_status, &
         this_errcode, host_state = this_host, display_name=block%block_name)
 
@@ -238,6 +241,9 @@ MODULE eis_deck_from_text_mod
     END IF
 
     errcode = IOR(errcode, this_errcode)
+    status = IOR(status, this_status)
+    host_state = IOR(host_state, this_host)
+    DEALLOCATE(block_parents)
 
   END SUBROUTINE tdp_call_blocks
 
@@ -287,7 +293,7 @@ MODULE eis_deck_from_text_mod
     IF (PRESENT(include_keys)) THEN
       do_keys = include_keys
       IF (PRESENT(max_key_depth)) THEN
-        do_keys = (SIZE(block_parents) - 1 > max_key_depth)
+        do_keys = (SIZE(block_parents) - 1 <= max_key_depth)
       END IF
     END IF
 
@@ -342,6 +348,8 @@ MODULE eis_deck_from_text_mod
         DEALLOCATE(this%err_handler)
     IF (this%owns_parser .AND. ASSOCIATED(this%parser)) &
         DEALLOCATE(this%parser)
+    IF (this%owns_interop) &
+        CALL eis_release_interop_parser(this%interop_parser, gone = .TRUE.)
 
   END SUBROUTINE tdp_destructor
 
@@ -366,7 +374,7 @@ MODULE eis_deck_from_text_mod
       host_params)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     !> Error code from initialisation
-    INTEGER, INTENT(INOUT), OPTIONAL :: errcode
+    INTEGER(eis_error), INTENT(INOUT), OPTIONAL :: errcode
     !> Optional error handler supplied from host code. Default is create
     !> own error handler
     CLASS(eis_error_handler), INTENT(IN), POINTER, OPTIONAL :: err_handler
@@ -429,12 +437,15 @@ MODULE eis_deck_from_text_mod
       IF (ASSOCIATED(parser)) THEN
         IF (parser%interop_id > -1) THEN
           this%interop_parser = parser%interop_id
+          this%owns_interop = .FALSE.
         ELSE
           this%interop_parser = eis_add_interop_parser(this%parser, &
               owns = .FALSE.)
+          this%owns_interop = .TRUE.
         END IF
       ELSE
         this%interop_parser = -1
+        this%owns_interop = .FALSE.
       END IF
     ELSE
       IF (.NOT. ASSOCIATED(this%parser)) THEN
@@ -442,6 +453,7 @@ MODULE eis_deck_from_text_mod
         this%owns_interop = .TRUE.
         ALLOCATE(this%parser)
         CALL this%parser%init(err, err_handler = this%err_handler)
+        IF (PRESENT(errcode)) errcode = IOR(errcode, err)
         this%interop_parser = eis_add_interop_parser(this%parser, &
             owns = .FALSE.)
       END IF
@@ -640,9 +652,9 @@ MODULE eis_deck_from_text_mod
     END IF
 
     strip_err = errcode
-    IF (.NOT. ubf) strip_err = IAND(errcode, NOT(eis_err_unknown_block))
-    IF (.NOT. ukf) strip_err = IAND(errcode, NOT(eis_err_unknown_key))
-    IF (.NOT. bkf) strip_err = IAND(errcode, NOT(eis_err_bad_key))
+    IF (.NOT. ubf) strip_err = IAND(strip_err, NOT(eis_err_unknown_block))
+    IF (.NOT. ukf) strip_err = IAND(strip_err, NOT(eis_err_unknown_key))
+    IF (.NOT. bkf) strip_err = IAND(strip_err, NOT(eis_err_bad_key))
 
     IF (strip_err == eis_err_none .OR. epoe) THEN
       CALL eis_default_status(errcode = err, bitmask = host_state)
@@ -690,10 +702,11 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
     INTEGER(eis_error) :: err
 
-    IF (.NOT. this%is_init) RETURN
-
     CALL eis_default_status(errcode = err)
     CALL eis_default_status(errcode = errcode)
+
+    IF (.NOT. this%is_init) RETURN
+
     CALL sdeck%generate_blocklist(err, max_level, allow_root_keys, &
         allow_empty_blocks)
     errcode = IOR(errcode, err)
@@ -717,7 +730,8 @@ MODULE eis_deck_from_text_mod
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
       unknown_key_is_fatal, non_value_line_is_blank, filename_processor, &
-      file_text_processor, end_pass_on_error, finalize_on_error)
+      file_text_processor, end_pass_on_error, finalize_on_error, &
+      bad_key_is_fatal, c_filename_processor, c_file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -734,10 +748,15 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: non_value_line_is_blank
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
+    PROCEDURE(filename_processor_proto_c), OPTIONAL :: c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), OPTIONAL :: c_file_text_processor
     !> Should pass end events occur if an error was encountered
     LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
     !> Should finalize events occur if an error was encountered
     LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
+    !> Should parsing terminate if an unparseable key is found
+    !> in a deck? Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
 
     INTEGER(eis_error) :: err
 
@@ -749,7 +768,9 @@ MODULE eis_deck_from_text_mod
     CALL eis_default_status(errcode = errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
-        file_text_processor = file_text_processor)
+        file_text_processor = file_text_processor, &
+        c_filename_processor = c_filename_processor, &
+        c_file_text_processor = c_file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
@@ -759,13 +780,15 @@ MODULE eis_deck_from_text_mod
     IF (err /= eis_err_none) RETURN
 
     CALL this%generate_and_parse(this%sdeck, definition, err, &
-        pass_number = pass_number, max_passes = max_passes, state = state, &
+        pass_number = pass_number, max_passes = max_passes, &
+        max_level = max_level, state = state, &
         initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
         allow_root_keys = allow_root_keys, non_value_line_is_blank &
         = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
-        finalize_on_error = finalize_on_error)
+        finalize_on_error = finalize_on_error, &
+        bad_key_is_fatal = bad_key_is_fatal)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_file
@@ -776,7 +799,7 @@ MODULE eis_deck_from_text_mod
       pass_number, max_passes, max_level, allow_root_keys, allow_empty_blocks, &
       state, initialise_all_blocks, unknown_block_is_fatal, &
       unknown_key_is_fatal, non_value_line_is_blank, filename, &
-      end_pass_on_error, finalize_on_error)
+      end_pass_on_error, finalize_on_error, bad_key_is_fatal)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: text
     TYPE(eis_deck_definition), INTENT(INOUT) :: definition
@@ -796,6 +819,9 @@ MODULE eis_deck_from_text_mod
     LOGICAL, INTENT(IN), OPTIONAL :: end_pass_on_error
     !> Should finalize events occur if an error was encountered
     LOGICAL, INTENT(IN), OPTIONAL :: finalize_on_error
+    !> Should parsing terminate if an unparseable key is found
+    !> in a deck? Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: bad_key_is_fatal
 
     INTEGER(eis_error) :: err
 
@@ -815,13 +841,15 @@ MODULE eis_deck_from_text_mod
     IF (err /= eis_err_none) RETURN
 
     CALL this%generate_and_parse(this%sdeck, definition, err, &
-        pass_number = pass_number, max_passes = max_passes, state = state, &
+        pass_number = pass_number, max_passes = max_passes, &
+        max_level = max_level, state = state, &
         initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
         allow_root_keys = allow_root_keys, non_value_line_is_blank &
         = non_value_line_is_blank, end_pass_on_error = end_pass_on_error, &
-        finalize_on_error = finalize_on_error)
+        finalize_on_error = finalize_on_error, &
+        bad_key_is_fatal = bad_key_is_fatal)
     errcode = IOR(errcode, err)
 
   END SUBROUTINE tdp_parse_deck_string
@@ -854,15 +882,17 @@ MODULE eis_deck_from_text_mod
 
     INTEGER(eis_error) :: err
 
-    IF (.NOT. this%is_init) RETURN
-    IF (.NOT. ALLOCATED(this%sdeck)) RETURN
-    IF (.NOT. this%sdeck%is_init) RETURN
     errcode = eis_err_none
     err = eis_err_none
 
+    IF (.NOT. this%is_init) RETURN
+    IF (.NOT. ALLOCATED(this%sdeck)) RETURN
+    IF (.NOT. this%sdeck%is_init) RETURN
+
     CALL eis_default_status(errcode = err)
     CALL this%generate_and_parse(this%sdeck, definition, err, &
-        pass_number = pass_number, max_passes = max_passes, state = state, &
+        pass_number = pass_number, max_passes = max_passes, &
+        max_level = max_level, state = state, &
         initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_empty_blocks = allow_empty_blocks, &
@@ -887,8 +917,11 @@ MODULE eis_deck_from_text_mod
   !> @param[in] filename_processor
   !> @param[in] file_text_processor
   !> @param[in] raw_text
+  !> @param[in] c_filename_processor
+  !> @param[in] c_file_text_processor
   SUBROUTINE tdp_get_deck_serialised(this, filename, serial_deck, errcode, &
-      filename_processor, file_text_processor, raw_text)
+      filename_processor, file_text_processor, raw_text, c_filename_processor, &
+      c_file_text_processor)
     CLASS(eis_text_deck_parser), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: serial_deck
@@ -896,6 +929,8 @@ MODULE eis_deck_from_text_mod
     PROCEDURE(filename_processor_proto), OPTIONAL :: filename_processor
     PROCEDURE(file_text_processor_proto), OPTIONAL :: file_text_processor
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT), OPTIONAL :: raw_text
+    PROCEDURE(filename_processor_proto_c), OPTIONAL :: c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), OPTIONAL :: c_file_text_processor
     INTEGER(eis_error) :: err
 
     IF (.NOT. this%is_init) CALL this%init()
@@ -906,7 +941,9 @@ MODULE eis_deck_from_text_mod
     CALL eis_default_status(errcode =  errcode)
     CALL this%sdeck%init(err, this%err_handler, &
         filename_processor = filename_processor, &
-        file_text_processor = file_text_processor)
+        file_text_processor = file_text_processor, &
+        c_filename_processor = c_filename_processor, &
+        c_file_text_processor = c_file_text_processor)
     errcode = IOR(errcode, err)
     IF (err /= eis_err_none) RETURN
 
@@ -964,7 +1001,8 @@ MODULE eis_deck_from_text_mod
     IF (err /= eis_err_none) RETURN
 
     CALL this%generate_and_parse(this%sdeck, definition, err, &
-        pass_number = pass_number, max_passes = max_passes, state = state, &
+        pass_number = pass_number, max_passes = max_passes, &
+        max_level = max_level, state = state, &
         initialise_all_blocks = initialise_all_blocks, unknown_block_is_fatal &
         = unknown_block_is_fatal, unknown_key_is_fatal &
         = unknown_key_is_fatal, allow_root_keys = allow_root_keys, &

@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_deck_function_mod
 
   USE, INTRINSIC :: ISO_C_BINDING
@@ -137,7 +140,7 @@ MODULE eis_deck_function_mod
 
   INTERFACE
     SUBROUTINE block_generic_callback_c(block_text, pass_number, nparents, &
-        parent_kind, status_code, host_state, errcode)
+        parent_kind, status_code, host_state, errcode) BIND(C)
       IMPORT eis_error_c, eis_status_c, eis_bitmask_c, C_INT, C_PTR
       TYPE(C_PTR), VALUE, INTENT(IN) :: block_text
       INTEGER(C_INT), INTENT(IN) :: pass_number

@@ -1,6 +1,6 @@
 # Choose compiler (intel, pgi or gfortran) using COMPILER= when
-# invoking make or get the default of pgi
-COMPILER ?= pgi
+# invoking make or get the default of gfortran
+COMPILER ?= gfortran
 
 # Architecture... (default 64 bit, use ARCH=linux-ix86 on command line
 # for 32 bit)
@@ -20,6 +20,10 @@ ifeq (linux-ix86_64,$(ARCH))
 else
    M64_FLAG =
 endif
+
+# Standard to build against (default f2018, use STANDARD=f2008 or
+# STANDARD=f2003 on command line for f2008 or f2003)
+STANDARD ?= f2018
 
 # Support for multiple compiler flags
 
@@ -76,6 +80,13 @@ ifeq ($(strip $(COMPILER)),intel)
   MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
   MODULEFLAG := $(MODFLAG) -module $(MODDIR)
   FC = ifort
+  ifeq (f2018,$(findstring f2018,$(STANDARD)))
+    FFLAGS += -stand f18
+  else ifeq (f2008,$(findstring f2008,$(STANDARD)))
+    FFLAGS += -stand f08
+  else
+    FFLAGS += -stand f03
+  endif
  ifeq ($(strip $(TYPE)), library)
    FFLAGS += -fPIC
  endif
@@ -136,6 +147,56 @@ ifeq ($(strip $(COMPILER)),gfortran)
   MODULEFLAG := $(MODFLAG) -J$(MODDIR)
   INFO_FLAGS = -Wno-conversion -fno-range-check
   FC = gfortran
+endif
+
+# Intel (oneAPI)
+# ==============
+ifeq ($(strip $(COMPILER)),intel_ifx)
+  FFLAGS = -O3 -g
+  ifeq (debug,$(findstring debug,$(MODE)))
+    FFLAGS = -O0 -g -u -check all -warn all -traceback -ftrapuv -fpic
+  endif
+  ifeq (prof,$(findstring prof,$(MODE)))
+    FFLAGS += -p
+  endif
+  FFLAGS += -fpe0 -mcmodel=medium -heap-arrays 64
+  MODFLAG := -I/usr/include -I$(MODDIR) -I$(OBJDIR)
+  MODULEFLAG := $(MODFLAG) -module $(MODDIR)
+  FC = ifx
+  ifeq (f2018,$(findstring f2018,$(STANDARD)))
+    FFLAGS += -stand f18
+  else ifeq (f2008,$(findstring f2008,$(STANDARD)))
+    FFLAGS += -stand f08
+  else
+    FFLAGS += -stand f03
+  endif
+ ifeq ($(strip $(TYPE)), library)
+   FFLAGS += -fPIC
+ endif
+endif
+
+# flang
+# =====
+ifeq ($(strip $(COMPILER)),flang)
+  FFLAGS = -O3 -g
+  ifeq (debug,$(findstring debug,$(MODE)))
+    FFLAGS = -O0 -g
+  endif
+  ifeq (prof,$(findstring prof,$(MODE)))
+    FFLAGS += -p
+  endif
+  ifeq ($(strip $(TYPE)), library)
+    FFLAGS += -fPIC
+  endif
+  MODFLAG := -I$(MODDIR) -I$(OBJDIR)
+  ifneq ($(wildcard /usr/include/.),)
+    MODFLAG := -I/usr/include $(MODFLAG)
+  endif
+  MODULEFLAG := $(MODFLAG) -J$(MODDIR)
+  FC = flang
+  ifeq (f2018,$(findstring f2018,$(STANDARD)))
+    FFLAGS += -std=f2018
+  endif
 endif
 
 # IBM Bluegene

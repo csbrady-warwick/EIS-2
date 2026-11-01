@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_ordered_store_mod
 
   IMPLICIT NONE
@@ -238,19 +241,27 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     LOGICAL :: success
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz
+    INTEGER(INT32) :: sz, i
 
     success = this%disorder_level > 0 .AND. ALLOCATED(this%items)
     IF (.NOT. success) RETURN
 
-    IF (index >=1 .AND. index <= SIZE(this%items)) THEN
-      CALL this%items(index)%cleanup()
-    END IF
-
     sz = SIZE(this%items)
+    success = index >= 1 .AND. index <= sz
+    IF (.NOT. success) RETURN
+
+    CALL this%items(index)%cleanup()
+
     ALLOCATE(temp(1:sz-1))
-    temp(1:index-1) = this%items(1:index-1)
-    temp(index:) = this%items(index+1:)
+    DO i = 1, sz - 1
+      IF (i < index) THEN
+        temp(i)%item => this%items(i)%item
+        temp(i)%owns_item = this%items(i)%owns_item
+      ELSE
+        temp(i)%item => this%items(i+1)%item
+        temp(i)%owns_item = this%items(i+1)%owns_item
+      END IF
+    END DO
     CALL unlink_items(this%items)
     DEALLOCATE(this%items)
     CALL MOVE_ALLOC(temp, this%items)
@@ -321,17 +332,20 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     INTEGER(INT32) :: os_insert !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz, old_count
+    INTEGER(INT32) :: sz, i, j
 
     os_insert = -1
     IF (.NOT. ALLOCATED(this%items)) RETURN
     IF (index < 1 .OR. index > SIZE(this%items) + 1) RETURN
 
     sz = SIZE(this%items)
-    old_count = MIN(sz, index-1)
-    ALLOCATE(temp(1:MAX(sz+1, index)))
-    temp(1:old_count) = this%items(1:old_count)
-    IF (index <= sz) temp(index+1:sz+1) = this%items(index:)
+    ALLOCATE(temp(1:sz+1))
+    DO i = 1, sz
+      j = i
+      IF (i >= index) j = i + 1
+      temp(j)%item => this%items(i)%item
+      temp(j)%owns_item = this%items(i)%owns_item
+    END DO
     CALL unlink_items(this%items)
     DEALLOCATE(this%items)
     CALL MOVE_ALLOC(temp, this%items)

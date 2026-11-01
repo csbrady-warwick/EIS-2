@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_registry_mod
 
   USE eis_error_mod
@@ -6,6 +9,7 @@ MODULE eis_registry_mod
   USE eis_named_store_mod
   USE eis_ordered_store_mod
   USE eis_stack_mod
+  USE eis_core_functions_mod
 
   IMPLICIT NONE
 
@@ -63,6 +67,7 @@ MODULE eis_registry_mod
   !>@class
   !> Type holding the information needed to construct an instance of a 
   !> function, constant or variable
+  !> @todo Update this to use derived classes rather than this approach
   TYPE :: eis_function_entry
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: fn_ptr => NULL()
     CHARACTER(LEN=:), ALLOCATABLE :: description
@@ -77,6 +82,7 @@ MODULE eis_registry_mod
     REAL(REAL64), POINTER :: r64data => NULL()
     CLASS(eis_functor), POINTER :: functor => NULL()
     INTEGER :: ptype = eis_pt_null
+    INTEGER :: rtype = eis_pt_null
     INTEGER :: associativity = eis_assoc_null
     INTEGER :: precedence = 0
     INTEGER :: expected_parameters = 0
@@ -85,6 +91,10 @@ MODULE eis_registry_mod
     LOGICAL :: owns_functor = .TRUE.
     LOGICAL :: per_stack_functor = .FALSE.
     LOGICAL :: string_params = .FALSE.
+    LOGICAL :: can_accept_maths_domain_errors = .FALSE.
+    LOGICAL :: is_idempotent = .FALSE.
+    INTEGER(eis_bitmask) :: text_param_mask = 0_eis_bitmask
+    INTEGER :: deriv_values = -1
   END TYPE eis_function_entry
 
   !> Registry for all valid functions, constants and variables for a given
@@ -96,10 +106,13 @@ MODULE eis_registry_mod
     TYPE(ordered_store) :: stack_variable_registry
     TYPE(ordered_store) :: emplaced_registry !< Contains deferred stacks
     TYPE(ordered_store) :: functor_registry !< Contains functors
+    TYPE(ordered_store) :: stack_function_registry !< Contains stack functions
+    TYPE(ordered_store) :: deriv_function_registry !< Contains derivatives
 
     CONTAINS
 
     PROCEDURE :: add_emplaced_func_holder => eir_add_emplaced_func_holder
+    PROCEDURE :: create_deriv_store => eir_create_deriv_store
 
     PROCEDURE, PUBLIC :: include_namespace => eir_include_namespace
     PROCEDURE, PUBLIC :: is_included => eir_is_included 
@@ -110,6 +123,8 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: add_functor_pointer => eir_add_functor_pointer
     PROCEDURE, PUBLIC :: add_operator => eir_add_operator
     PROCEDURE, PUBLIC :: add_stack_variable => eir_add_stack_var
+    PROCEDURE, PUBLIC :: add_stack_function => eir_add_stack_function
+    PROCEDURE, PUBLIC :: get_stack_function => eir_get_stack_function
     PROCEDURE, PUBLIC :: add_emplaced_function => eir_add_emplaced_function
     PROCEDURE, PUBLIC :: add_emplaced_function_c => eir_add_emplaced_function_c
     PROCEDURE, PUBLIC :: fill_block => eir_fill_block
@@ -120,15 +135,27 @@ MODULE eis_registry_mod
     PROCEDURE, PUBLIC :: get_name_count => eir_get_name_count
     PROCEDURE, PUBLIC :: get_name => eir_get_name
     PROCEDURE, PUBLIC :: result_function_to_functor_stack => eir_rf_to_fs
+    PROCEDURE, PUBLIC :: set_symbol_derivative_value &
+        => eir_set_symbol_derivative_value
+    PROCEDURE, PUBLIC :: lock_symbol_derivative &
+        => eir_lock_symbol_derivative
+    PROCEDURE, PUBLIC :: get_symbol_derivative_value &
+        => eir_get_symbol_derivative_value
     
   END TYPE eis_registry
 
+  !> Registry holding the symbols that are available to all parsers
+  TYPE(eis_registry), SAVE :: global_registry
+
   PRIVATE
-  PUBLIC :: eis_registry
+  PUBLIC :: eis_registry, global_registry
 
 CONTAINS
 
-
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Operation function for functor that is used to encapsulate an
+  !> evaluation function
   FUNCTION prf_operate(this, nparams, params, host_params, status_code, &
       errcode)
     CLASS(parser_result_functor), INTENT(INOUT) :: this
@@ -219,6 +246,7 @@ CONTAINS
   END SUBROUTINE ern_add_item
 
 
+
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Include a namespace in the list of namespaces to search
@@ -286,8 +314,6 @@ CONTAINS
           END IF
       END SELECT
     END DO
-
-    RETURN
 
     dotloc = SCAN(namespace, '.')
     item => NULL()
@@ -380,7 +406,7 @@ CONTAINS
   !> @brief
   !> Optimise the stores inside a namespace
   !> @param[inout] this
-  SUBROUTINE ern_optimise(this)
+  RECURSIVE SUBROUTINE ern_optimise(this)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     CLASS(*), POINTER :: gptr
     INTEGER :: i
@@ -435,7 +461,7 @@ CONTAINS
   !> @param[inout] this
   !> @param[in] index
   !> @param[inout] name
-  SUBROUTINE ern_get_name(this, index, name, name_prefix)
+  RECURSIVE SUBROUTINE ern_get_name(this, index, name, name_prefix)
     CLASS(eis_namespace), INTENT(INOUT) :: this
     !> Index of name to get
     INTEGER, INTENT(IN) :: index
@@ -560,6 +586,7 @@ CONTAINS
     TYPE(eis_function_entry) :: temp
     
     temp%ptype = eis_pt_constant
+    temp%rtype = eis_pt_constant
     temp%numerical_data = value
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
     IF (PRESENT(cap_bits)) temp%cap_bits = cap_bits
@@ -639,7 +666,8 @@ CONTAINS
 
     IF (ANY([PRESENT(i32data), PRESENT(i64data), PRESENT(r32data), &
         PRESENT(r64data)])) THEN
-      temp%ptype = eis_pt_pointer_variable
+      temp%ptype = eis_pt_variable
+      temp%rtype = eis_pt_pointer_variable
       temp%fn_ptr => NULL()
 
       IF (PRESENT(i32data)) temp%i32data => i32data
@@ -648,6 +676,7 @@ CONTAINS
       IF (PRESENT(r64data)) temp%r64data => r64data
     ELSE
       temp%ptype = eis_pt_variable
+      temp%rtype = eis_pt_variable
       temp%fn_ptr => fn
     END IF
 
@@ -661,6 +690,26 @@ CONTAINS
 
   END SUBROUTINE eir_add_variable
 
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Add a \glos{function} to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[inout] fn_entry
+  SUBROUTINE eir_create_deriv_store(this, fn_entry)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    !> Function entry to set the derivative store for
+    CLASS(eis_function_entry), INTENT(INOUT) :: fn_entry
+    TYPE(named_store), POINTER :: store
+    CLASS(*), POINTER :: gptr
+
+    ALLOCATE(store)
+    gptr => store
+    fn_entry%deriv_values = this%deriv_function_registry%hold(gptr, &
+        owns = .TRUE.)
+
+  END SUBROUTINE eir_create_deriv_store
 
 
 
@@ -679,9 +728,11 @@ CONTAINS
   !> @param[in] description
   !> @param[in] hidden
   !> @param[in] can_have_text_params
+  !> @param[in] can_accept_maths_domain_errors
   SUBROUTINE eir_add_function(this, name, fn, expected_parameters, errcode, &
       can_simplify, cap_bits, defer, err_handler, description, hidden, &
-      can_have_text_params)
+      can_have_text_params, can_accept_maths_domain_errors, rtype, &
+      is_idempotent, text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -711,10 +762,26 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Can this function give a valid result if one of the parameters has
+    LOGICAL, INTENT(IN), OPTIONAL :: can_accept_maths_domain_errors
+    !> Override the default rtype. Optional, default eis_pt_function
+    INTEGER, INTENT(IN), OPTIONAL :: rtype
+    !> Does calling the function a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     temp%fn_ptr => fn
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_function
+    IF (PRESENT(rtype)) temp%rtype = rtype
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -723,7 +790,9 @@ CONTAINS
     IF (PRESENT(defer)) temp%defer = defer
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
-
+    IF (PRESENT(can_accept_maths_domain_errors)) &
+        temp%can_accept_maths_domain_errors = can_accept_maths_domain_errors
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_function
@@ -747,7 +816,8 @@ CONTAINS
   !> @param[in] can_have_text_params
   SUBROUTINE eir_add_functor(this, name, functor, expected_parameters, &
       errcode, can_simplify, cap_bits, defer, per_stack, err_handler, &
-      description, hidden, can_have_text_params)
+      description, hidden, can_have_text_params, is_idempotent, &
+      text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -779,10 +849,20 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Does calling the functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
     INTEGER :: index
     CLASS(*), POINTER :: ptr
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     ALLOCATE(temp%functor, SOURCE = functor)
     ptr => temp%functor
     index = this%functor_registry%hold(ptr, owns = .TRUE.)
@@ -793,6 +873,7 @@ CONTAINS
       temp%per_stack_functor = .FALSE.
     END IF
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_functor
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -802,6 +883,7 @@ CONTAINS
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
 
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_functor
@@ -825,7 +907,7 @@ CONTAINS
   !> @param[in] can_have_text_params
   SUBROUTINE eir_add_functor_pointer(this, name, functor, expected_parameters, &
       errcode, can_simplify, cap_bits, defer, err_handler, description, &
-      hidden, owns, can_have_text_params)
+      hidden, owns, can_have_text_params, is_idempotent, text_param_mask)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
@@ -857,10 +939,20 @@ CONTAINS
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     !> Can this function have text parameters
     LOGICAL, INTENT(IN), OPTIONAL :: can_have_text_params
+    !> Does calling the functor a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
+    !> Parameter positions that must be text. Bit 0 is the first parameter. 0
+    !> means that positions are not checked. Optional, default 0
+    INTEGER(eis_bitmask), INTENT(IN), OPTIONAL :: text_param_mask
     TYPE(eis_function_entry) :: temp
     INTEGER :: index
     CLASS(*), POINTER :: ptr
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
+    IF (PRESENT(text_param_mask)) temp%text_param_mask = text_param_mask
     temp%functor => functor
     IF (PRESENT(owns)) THEN
       temp%owns_functor = owns
@@ -872,6 +964,7 @@ CONTAINS
       index = this%functor_registry%hold(ptr, owns = .TRUE.)
     END IF
     temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_functor
     temp%expected_parameters = expected_parameters
     IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
     IF (PRESENT(hidden)) temp%is_hidden = hidden
@@ -881,9 +974,76 @@ CONTAINS
     IF (PRESENT(can_have_text_params)) &
         temp%string_params = can_have_text_params
 
+    CALL this%create_deriv_store(temp)
     CALL this%stored_items%store(name, temp)
 
   END SUBROUTINE eir_add_functor_pointer
+
+
+
+  !> @brief
+  !> Add a stack function to the list of known names for this registry
+  !> @param[inout] this
+  !> @param[in] name
+  !> @param[in] fn
+  !> @param[in] expected_parameters
+  !> @param[inout] errcode
+  !> @param[inout] err_handler
+  !> @param[in] description
+  !> @param[in] hidden
+  SUBROUTINE eir_add_stack_function(this, name, stack, expected_parameters, &
+      errcode, err_handler, description, hidden)
+    CLASS(eis_registry) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with function
+    TYPE(eis_stack), INTENT(IN) :: stack !< Stack defining the function
+    INTEGER, INTENT(IN) :: expected_parameters !< Number of expected parameters
+    INTEGER(eis_error), INTENT(INOUT) :: errcode !< Error code
+    !> Error handler for reporting errors. Optional, default no error handling
+    TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
+    LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    INTEGER :: index
+    TYPE(eis_function_entry) :: temp
+
+    index = this%stack_function_registry%store(stack)
+    temp%ptype = eis_pt_function
+    temp%rtype = eis_pt_stack_function
+    temp%expected_parameters = expected_parameters
+    IF (PRESENT(description)) ALLOCATE(temp%description, SOURCE = description)
+    IF (PRESENT(hidden)) temp%is_hidden = hidden
+    temp%can_simplify = .FALSE.
+    temp%cap_bits = stack%cap_bits
+    temp%value = index
+
+    CALL this%stored_items%store(name, temp)
+
+  END SUBROUTINE eir_add_stack_function
+
+
+
+  SUBROUTINE eir_get_stack_function(this, id, stack, errcode)
+    CLASS(eis_registry) :: this
+    INTEGER, INTENT(IN) :: id
+    TYPE(eis_stack), INTENT(INOUT) :: stack
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_stack), POINTER :: sptr
+
+    errcode = eis_err_bad_value
+    gptr => this%stack_function_registry%get(id)
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+    errcode = eis_err_none
+
+    SELECT TYPE(gptr)
+      CLASS IS (eis_stack)
+        sptr => gptr
+    END SELECT
+
+    CALL deallocate_stack(stack)
+    CALL initialise_stack(stack)
+    stack = sptr
+
+  END SUBROUTINE eir_get_stack_function
 
 
 
@@ -903,9 +1063,10 @@ CONTAINS
   !> @param[inout] err_handler
   !> @param[in] description
   !> @param[in] hidden
+  !> @param[in] operator_id
   SUBROUTINE eir_add_operator(this, name, fn, associativity, precedence, &
       errcode, can_simplify, unary, cap_bits, err_handler, description, &
-      hidden)
+      hidden, operator_id, is_idempotent)
 
     CLASS(eis_registry) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name to associate with operator
@@ -930,11 +1091,24 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     !> Should this be hidden from autogenerated docs
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
+    !> Override the default rtype
+    INTEGER, INTENT(IN), OPTIONAL :: operator_id
+    !> Does calling the operator a second time with the same parameters in the
+    !> same evaluation have no further effect and return the same result.
+    !> Optional, default .TRUE.
+    LOGICAL, INTENT(IN), OPTIONAL :: is_idempotent
     TYPE(eis_function_entry) :: temp
     LOGICAL :: l_unary
 
+    temp%is_idempotent = .TRUE.
+    IF (PRESENT(is_idempotent)) temp%is_idempotent = is_idempotent
     temp%fn_ptr => fn
     temp%ptype = eis_pt_operator
+    IF (PRESENT(operator_id)) THEN
+      temp%rtype = operator_id
+    ELSE
+      temp%rtype = eis_pt_operator
+    END IF
     temp%associativity = associativity
     temp%precedence = precedence
     IF (PRESENT(can_simplify)) temp%can_simplify = can_simplify
@@ -947,9 +1121,15 @@ CONTAINS
 
     IF (.NOT. l_unary) THEN
       temp%expected_parameters = 2
-      CALL this%stored_items%store(name, temp)
     ELSE
       temp%expected_parameters = 1
+    END IF
+
+    CALL this%create_deriv_store(temp)
+
+    IF (.NOT. l_unary) THEN
+      CALL this%stored_items%store(name, temp)
+    ELSE
       CALL this%uop_table%store(name, temp)
     END IF
 
@@ -1016,6 +1196,7 @@ CONTAINS
     END IF
 
     temp_ptr%ptype = eis_pt_stored_variable
+    temp_ptr%rtype = eis_pt_stored_variable
     temp_ptr%index_type = eis_reg_index_stack
     temp_ptr%value = index
     temp_ptr%cap_bits = stack%cap_bits
@@ -1073,8 +1254,12 @@ CONTAINS
     END IF
 
     IF (ASSOCIATED(temp_ptr)) THEN
-      IF(temp_ptr%index_type == eis_reg_index_emplaced) &
-          index = this%emplaced_registry%store(holder, index = temp_ptr%value)
+      IF (temp_ptr%index_type == eis_reg_index_emplaced) THEN
+        index = this%emplaced_registry%store(holder, index = temp_ptr%value)
+      ELSE
+        temp_ptr => temp
+        index = this%emplaced_registry%store(holder)
+      END IF
     ELSE
       temp_ptr => temp
       index = this%emplaced_registry%store(holder)
@@ -1087,11 +1272,13 @@ CONTAINS
         SOURCE = description)
     IF (PRESENT(hidden)) temp_ptr%is_hidden = hidden
     temp_ptr%ptype = eis_pt_emplaced_function
+    temp_ptr%rtype = eis_pt_emplaced_function
     temp_ptr%index_type = eis_reg_index_emplaced
     temp_ptr%value = index
     temp_ptr%can_simplify = .FALSE.
 
-    CALL this%stored_items%store(name, temp)
+    CALL this%create_deriv_store(temp_ptr)
+    CALL this%stored_items%store(name, temp_ptr)
 
   END SUBROUTINE eir_add_emplaced_func_holder
 
@@ -1235,12 +1422,18 @@ CONTAINS
 
     IF (ASSOCIATED(temp)) THEN
       block_in%ptype = temp%ptype
+      block_in%rtype = temp%rtype
       coblock_in%cap_bits = temp%cap_bits
       coblock_in%associativity = temp%associativity
       coblock_in%precedence = temp%precedence
       coblock_in%expected_params = temp%expected_parameters
       coblock_in%defer = temp%defer
       coblock_in%can_have_string_params = temp%string_params
+      coblock_in%can_accept_maths_domain_errors = &
+          temp%can_accept_maths_domain_errors
+      coblock_in%deriv_values = temp%deriv_values
+      coblock_in%is_idempotent = temp%is_idempotent
+      coblock_in%text_param_mask = temp%text_param_mask
       block_in%actual_params = temp%expected_parameters
       block_in%can_simplify = temp%can_simplify
       block_in%eval_fn => temp%fn_ptr
@@ -1257,6 +1450,7 @@ CONTAINS
       IF (PRESENT(hidden)) hidden = temp%is_hidden
     ELSE
       block_in%ptype = eis_pt_bad
+      block_in%rtype = eis_pt_bad
     END IF
 
   END SUBROUTINE eir_fill_block
@@ -1394,6 +1588,7 @@ CONTAINS
       dummy = this%functor_registry%hold(gptr, owns = .TRUE.)
     END IF
     iblock%ptype = eis_pt_function
+    iblock%rtype = eis_pt_functor
     iblock%functor => eval_functor
     iblock%actual_params = 0
     iblock%can_simplify = .FALSE.
@@ -1501,5 +1696,190 @@ CONTAINS
     CALL this%stored_items%get_name(index, name)
 
   END SUBROUTINE eir_get_name
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Set the derivative for a symbol
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] wrt
+  !> @param[in] stack
+  !> @param[in] unary_ops 
+  !> @param[inout] errcode
+  SUBROUTINE eir_set_symbol_derivative_value(this, symbol, wrt, stack, &
+      unary_ops, errcode)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    CLASS(eis_stack), INTENT(IN) :: stack
+    LOGICAL, INTENT(IN) :: unary_ops
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_function_entry), POINTER :: temp
+    TYPE(eis_stack), POINTER :: p
+    TYPE(named_store), POINTER :: store
+
+    errcode = eis_err_none
+
+    temp => NULL()
+    gptr => NULL()
+    IF (unary_ops) THEN
+      gptr => this%uop_table%get(symbol)
+    END IF
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_items%get(symbol)
+
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp => co
+      END SELECT
+    END IF
+
+    IF (.NOT. ASSOCIATED(temp)) THEN
+      errcode = eis_err_not_found
+      RETURN
+    END IF
+
+    store => NULL()
+    IF (temp%deriv_values > 0) THEN
+      gptr => this%deriv_function_registry%get(temp%deriv_values)
+      IF (ASSOCIATED(gptr)) THEN
+        SELECT TYPE (co => gptr)
+          CLASS IS (named_store)
+            store => co
+        END SELECT
+      END IF
+    END IF
+
+    IF (.NOT. ASSOCIATED(store)) THEN
+      ALLOCATE(store)
+      gptr => store
+      temp%deriv_values = this%deriv_function_registry%hold(gptr, owns = .TRUE.)
+    END IF
+
+    !This seems to be unnecessary but without it gfortran multiplies required
+    !required memory by orders of magnitude
+    ALLOCATE(p, SOURCE = stack)
+    gptr => p
+
+    CALL store%hold(wrt, gptr, owns = .TRUE.)
+
+  END SUBROUTINE eir_set_symbol_derivative_value
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Lock the derivative for a symbol
+  !> @param[inout] this
+  !> @param[inout] symbol
+  !> @param[in] wrt
+  !> @param[in] unary_ops 
+  !> @param[inout] errcode
+  SUBROUTINE eir_lock_symbol_derivative(this, symbol, wrt, unary_ops, errcode)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    CHARACTER(LEN=*), INTENT(IN) :: symbol
+    CHARACTER(LEN=*), INTENT(IN) :: wrt
+    LOGICAL, INTENT(IN) :: unary_ops
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CLASS(*), POINTER :: gptr
+    TYPE(eis_function_entry), POINTER :: temp
+    TYPE(named_store), POINTER :: store
+    INTEGER, POINTER :: iptr
+
+    errcode = eis_err_none
+
+    temp => NULL()
+    gptr => NULL()
+    IF (unary_ops) THEN
+      gptr => this%uop_table%get(symbol)
+    END IF
+    IF (.NOT. ASSOCIATED(gptr)) gptr => this%stored_items%get(symbol)
+
+    IF (ASSOCIATED(gptr)) THEN
+      SELECT TYPE(co => gptr)
+        CLASS IS (eis_function_entry)
+          temp => co
+      END SELECT
+    END IF
+
+    IF (.NOT. ASSOCIATED(temp)) THEN
+      errcode = eis_err_not_found
+      RETURN
+    END IF
+
+    store => NULL()
+    IF (temp%deriv_values > 0) THEN
+      gptr => this%deriv_function_registry%get(temp%deriv_values)
+      IF (ASSOCIATED(gptr)) THEN
+        SELECT TYPE (co => gptr)
+          CLASS IS (named_store)
+            store => co
+        END SELECT
+      END IF
+    END IF
+
+    IF (.NOT. ASSOCIATED(store)) THEN
+      ALLOCATE(store)
+      gptr => store
+      temp%deriv_values = this%deriv_function_registry%hold(gptr, owns = .TRUE.)
+    END IF
+
+    ALLOCATE(iptr, SOURCE = eis_deriv_forbidden)
+    gptr => iptr
+
+    CALL store%hold(wrt, gptr, owns = .TRUE.)
+
+  END SUBROUTINE eir_lock_symbol_derivative
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Get the derivative for a symbol
+  !> @param[inout] this
+  !> @param[in] index
+  !> @param[out] stack
+  !> @param[inout] errcode
+  !> @param[in] wrt
+  !> @param[out] locked
+  SUBROUTINE eir_get_symbol_derivative_value(this, index, stack, errcode, wrt, &
+      locked)
+    CLASS(eis_registry), INTENT(INOUT) :: this
+    INTEGER, INTENT(IN) :: index
+    CLASS(eis_stack), POINTER, INTENT(OUT) :: stack
+    INTEGER(eis_error), INTENT(IN) :: errcode
+    CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: wrt
+    LOGICAL, INTENT(OUT), OPTIONAL :: locked
+    CLASS(*), POINTER :: gptr
+    TYPE(named_store), POINTER :: store
+
+    stack => NULL()
+
+    IF (PRESENT(locked)) locked = .FALSE.
+
+    gptr => this%deriv_function_registry%get(index)
+    store => NULL()
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+
+    SELECT TYPE (co => gptr)
+      CLASS IS (named_store)
+        store => co
+      TYPE IS (INTEGER)
+        locked = (co == eis_deriv_forbidden)
+    END SELECT
+    IF (.NOT. ASSOCIATED(store)) RETURN
+
+    gptr => NULL()
+    IF (PRESENT(wrt)) gptr => store%get(wrt)
+    IF (.NOT. ASSOCIATED(gptr)) gptr => store%get('[***]')
+    IF (.NOT. ASSOCIATED(gptr)) RETURN
+    SELECT TYPE (co => gptr)
+      CLASS IS (eis_stack)
+        stack => co
+    END SELECT
+
+  END SUBROUTINE eir_get_symbol_derivative_value
 
 END MODULE eis_registry_mod

@@ -1,4 +1,5 @@
 SRCFILES := eis_deck_text_parser.F90 eis_deck_functions.F90 \
   eis_deck_definition.F90 eis_deck_header.F90 eis_deck_text.F90 \
-  eis_deck_caller.F90
+  eis_deck_caller.F90 eis_deck_definition_interop.F90 \
+  eis_deck_text_interop.F90
 OBJS := $(SRCFILES:.F90=.o)

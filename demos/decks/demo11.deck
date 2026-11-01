@@ -1,0 +1,11 @@
+begin:block1
+  key2 = mykey
+end:block1
+
+import: demos/decks/demo11a.deck
+
+begin:block1
+  key1 = test_key
+end:block1
+
+import: demos/decks/demo11b.deck

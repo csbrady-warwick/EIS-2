@@ -1,6 +1,10 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_string_store_mod
 
   USE, INTRINSIC :: ISO_FORTRAN_ENV
+  USE, INTRINSIC :: ISO_C_BINDING
   USE eis_constants
   USE eis_ordered_store_mod
   USE eis_utils
@@ -8,6 +12,7 @@ MODULE eis_string_store_mod
   IMPLICIT NONE
 
   CHARACTER(LEN=10), PRIVATE :: serial_header = 'EISDSER001'
+  INTEGER, PARAMETER :: c_processor_buffer_length = 4096
 
   ABSTRACT INTERFACE
     SUBROUTINE filename_processor_proto(filename, errcode)
@@ -24,7 +29,28 @@ MODULE eis_string_store_mod
     END SUBROUTINE file_text_processor_proto
   END INTERFACE
 
+  INTERFACE
+    SUBROUTINE filename_processor_proto_c(filename, buffer_length, errcode) &
+        BIND(C)
+      IMPORT eis_error_c, C_INT, C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: filename
+      INTEGER(C_INT), VALUE, INTENT(IN) :: buffer_length
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+    END SUBROUTINE filename_processor_proto_c
+
+    FUNCTION file_text_processor_proto_c(filename, file_contents, &
+        buffer_length, errcode) BIND(C)
+      IMPORT eis_error_c, C_INT, C_PTR
+      TYPE(C_PTR), VALUE, INTENT(IN) :: filename
+      TYPE(C_PTR), VALUE, INTENT(IN) :: file_contents
+      INTEGER(C_INT), VALUE, INTENT(IN) :: buffer_length
+      INTEGER(eis_error_c), INTENT(INOUT) :: errcode
+      INTEGER(C_INT) :: file_text_processor_proto_c
+    END FUNCTION file_text_processor_proto_c
+  END INTERFACE
+
   PUBLIC :: filename_processor_proto, file_text_processor_proto
+  PUBLIC :: filename_processor_proto_c, file_text_processor_proto_c
 
   !>@class
   !>Class holding the string within the string store
@@ -183,8 +209,10 @@ CONTAINS
     changed_fname = .FALSE.
 
     DO istr = line_start, line_end
+      IF (ALLOCATED(fname)) DEALLOCATE(fname)
       ok = this%get(istr, str, filename=fname, line_number = ln, &
           line_number_max = lnm)
+      IF (.NOT. ALLOCATED(fname)) ALLOCATE(CHARACTER(LEN=0, KIND=UCS4) :: fname)
       IF (.NOT. ALLOCATED(fname0)) THEN
         ALLOCATE(fname0, SOURCE = fname)
       ELSE
@@ -225,7 +253,8 @@ CONTAINS
   !> @param[in] default_line_info
   !> @return index_out
   FUNCTION ess_store_string_ucs4(this, text, store_index, filename, &
-      line_number, line_number_max, default_line_info) RESULT(index_out)
+      line_number, line_number_max, default_line_info, &
+      extra_trimmed_white_space_length) RESULT(index_out)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
@@ -246,6 +275,10 @@ CONTAINS
     !> Index of stored string
     !> Optional. Default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: default_line_info
+    !> Number of white space characters to add to the number of removed white
+    !> space characters
+    !> Optional, default 0
+    INTEGER, INTENT(IN), OPTIONAL :: extra_trimmed_white_space_length
     INTEGER(eis_i4) :: index_out
     TYPE(string_holder) :: temp
     LOGICAL :: ok, recover
@@ -254,7 +287,7 @@ CONTAINS
 
     ALLOCATE(temp%text, SOURCE = text)
     IF (PRESENT(store_index)) THEN
-      recover = .FALSE.
+      recover = .TRUE.
       IF (PRESENT(default_line_info)) recover = .NOT. default_line_info
       IF (recover) THEN
         ok = this%get(store_index, str_old, filename = fname, &
@@ -278,6 +311,8 @@ CONTAINS
       temp%maxline = line_number
     END IF
     IF (PRESENT(line_number_max)) temp%maxline = line_number_max
+    IF (PRESENT(extra_trimmed_white_space_length)) temp%whitespace_len = &
+        temp%whitespace_len + extra_trimmed_white_space_length
     index_out = this%strings%store(temp, store_index)
 
   END FUNCTION ess_store_string_ucs4
@@ -407,6 +442,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(get_index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -468,6 +504,7 @@ CONTAINS
     CLASS(*), POINTER :: gptr
     TYPE(string_holder), POINTER :: temp
 
+    temp => NULL()
     gptr => this%strings%get(get_index)
     IF (ASSOCIATED(gptr)) THEN
       SELECT TYPE (co=>gptr)
@@ -585,7 +622,7 @@ CONTAINS
     !> String to store
     CHARACTER(LEN=*, KIND=UCS4), INTENT(IN) :: text
     !> Filename associated with line when it was created
-    CHARACTER(LEN=:, KIND=UCS4), INTENT(IN), OPTIONAL :: filename
+    CHARACTER(LEN=*, KIND=UCS4), INTENT(IN), OPTIONAL :: filename
     !> Minimum line number in original source associated with line
     INTEGER, INTENT(IN), OPTIONAL :: line_number
     !> Maximum line number in original source associated with line
@@ -671,9 +708,10 @@ CONTAINS
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN), OPTIONAL :: filename
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: newline_pos, newline_offset, last_pos
-    INTEGER :: min_index, max_index, indx, line
+    INTEGER :: min_index, max_index, indx, line, iret
 
-    errcode = eis_err_none
+    !errcode is not used but is part of the interface
+    errcode = errcode
 
     IF (PRESENT(index_start)) indx = index_start
 
@@ -702,12 +740,30 @@ CONTAINS
           indx = this%store("", filename = filename)
         END IF
       END IF
-      min_index = MIN(indx, min_index)
-      max_index = MAX(indx, max_index)
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
       last_pos = newline_pos + LEN(NEW_LINE(str))
       newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
       newline_pos = newline_offset + (last_pos - 1)
     END DO
+
+    IF (last_pos <= LEN(str)) THEN
+      line = line + 1
+      IF (PRESENT(index_start)) THEN
+        indx = this%insert(indx, str(last_pos:), line_number = line, &
+            filename = filename)
+        indx = indx + 1
+      ELSE
+        indx = this%store(str(last_pos:), line_number = line, &
+            filename = filename)
+      END IF
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
+    END IF
 
     index_range = [min_index, max_index]
 
@@ -734,9 +790,10 @@ CONTAINS
     INTEGER, INTENT(IN), OPTIONAL :: index_start
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: newline_pos, newline_offset, last_pos
-    INTEGER :: min_index, max_index, indx
+    INTEGER :: min_index, max_index, indx, iret
 
-    errcode = eis_err_none
+    !errcode is not used but is part of the interface
+    errcode = errcode
 
     IF (PRESENT(index_start)) indx = index_start
 
@@ -761,12 +818,27 @@ CONTAINS
           indx = this%store("")
         END IF
       END IF
-      min_index = MIN(indx, min_index)
-      max_index = MAX(indx, max_index)
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
       last_pos = newline_pos + LEN(NEW_LINE(str))
       newline_offset = INDEX(str(last_pos:), NEW_LINE(str))
       newline_pos = newline_offset + (last_pos - 1)
     END DO
+
+    IF (last_pos <= LEN(str)) THEN
+      IF (PRESENT(index_start)) THEN
+        indx = this%insert(indx, str(last_pos:))
+        indx = indx + 1
+      ELSE
+        indx = this%store(str(last_pos:))
+      END IF
+      iret = indx
+      IF (PRESENT(index_start)) iret = indx - 1
+      min_index = MIN(iret, min_index)
+      max_index = MAX(iret, max_index)
+    END IF
 
     index_range = [min_index, max_index]
 
@@ -849,9 +921,13 @@ CONTAINS
   !> @param[out] raw_text
   !> @param[out] final_filename
   !> @param[out] index_range
+  !> @param[in] c_filename_processor - C function that processes the filename
+  !> before the file is loaded
+  !> @param[in] c_file_text_processor - C function that processes the contents
+  !> of the file after it is loaded
   SUBROUTINE ess_load_from_ascii_file(this, filename, errcode, index_start, &
       raw_text, filename_processor, file_text_processor, final_filename, &
-      index_range)
+      index_range, c_filename_processor, c_file_text_processor)
     CLASS(eis_string_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: filename
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -862,6 +938,10 @@ CONTAINS
         file_text_processor
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(INOUT), OPTIONAL :: final_filename
     INTEGER, DIMENSION(2), INTENT(OUT), OPTIONAL :: index_range
+    PROCEDURE(filename_processor_proto_c), POINTER, OPTIONAL :: &
+        c_filename_processor
+    PROCEDURE(file_text_processor_proto_c), POINTER, OPTIONAL :: &
+        c_file_text_processor
     INTEGER, DIMENSION(2) :: temp
     CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE :: str, fname
 
@@ -871,6 +951,10 @@ CONTAINS
     IF (PRESENT(filename_processor)) THEN
       IF (ASSOCIATED(filename_processor)) &
           CALL filename_processor(fname, errcode)
+    END IF
+    IF (PRESENT(c_filename_processor)) THEN
+      IF (ASSOCIATED(c_filename_processor)) CALL &
+          ess_apply_c_filename_processor(c_filename_processor, fname, errcode)
     END IF
 
     IF (PRESENT(final_filename)) THEN
@@ -888,6 +972,11 @@ CONTAINS
     IF (PRESENT(file_text_processor)) THEN
       IF (ASSOCIATED(file_text_processor)) CALL file_text_processor(fname, &
           str, errcode)
+    END IF
+    IF (PRESENT(c_file_text_processor)) THEN
+      IF (ASSOCIATED(c_file_text_processor)) CALL &
+          ess_apply_c_file_text_processor(c_file_text_processor, fname, str, &
+          errcode)
     END IF
 
     IF (PRESENT(raw_text)) ALLOCATE(raw_text, SOURCE = str)
@@ -914,8 +1003,8 @@ CONTAINS
     CALL this%strings%enable_disorder()
     DO WHILE (r_index > 0)
       ok = this%get(r_index, str)
-      IF (str == "") THEN
-        ok = this%delete(r_index)
+      IF (ok) THEN
+        IF (str == "") ok = this%delete(r_index)
       END IF
       r_index = r_index - 1
     END DO
@@ -970,7 +1059,7 @@ CONTAINS
   !> @author C.S.Brady@warwick.ac.uk
   !> @brief
   !> Removes text that appears on a line after a comment character
-  !> Lines that have only a comment on them become blank lines
+  !> Lines that have only a comment on them are removed
   !> @param[inout] this
   !> @param[in] slc_start
   !> @param[in] mlc_start
@@ -985,7 +1074,7 @@ CONTAINS
     CHARACTER(LEN=*, KIND=ASCII), INTENT(IN), OPTIONAL :: mlc_end
     CHARACTER(LEN=:, KIND=UCS4), ALLOCATABLE :: str, str_temp
     INTEGER :: istr, ipos, sindex, ipos2
-    LOGICAL :: ok, in_comment
+    LOGICAL :: ok, in_comment, start_kept
 
     CALL this%strings%enable_disorder()
     !Do single line comments
@@ -1026,6 +1115,9 @@ CONTAINS
             !If we didn't find the end comment section on the same line
             !then we're in a comment field
             in_comment = (ipos2 == 0)
+            !The line holding the mlc start sequence is kept unless the
+            !sequence is at the start of the line
+            start_kept = (INDEX(TRIM(ADJUSTL(str)), mlc_start) /= 1)
             ipos2 = ipos2 + ipos + LEN(mlc_start) - 1
             IF (INDEX(TRIM(ADJUSTL(str)), mlc_start) /= 1) THEN
               !Is the mlc start not at the start of the line?
@@ -1061,12 +1153,24 @@ CONTAINS
           IF (ipos > 0) THEN
             !Found the mlc end sequence
             in_comment = .FALSE.
-            ok = this%get(istr - 1, str_temp)
-            IF (ipos + LEN(mlc_end) < LEN(str)) THEN
-              sindex = this%store(str_temp // str(ipos + LEN(mlc_end):), istr-1)
+            IF (start_kept) THEN
+              !Append anything after the mlc end sequence to the line that
+              !held the mlc start sequence
+              ok = this%get(istr - 1, str_temp)
+              IF (ipos + LEN(mlc_end) < LEN(str)) THEN
+                sindex = this%store(str_temp // str(ipos + LEN(mlc_end):), &
+                    istr-1)
+              END IF
+              ok = this%delete(istr)
+              istr = istr - 1
+            ELSE IF (ipos + LEN(mlc_end) < LEN(str)) THEN
+              !The line holding the start was deleted so what is left of this
+              !line replaces it
+              sindex = this%store(str(ipos + LEN(mlc_end):), istr)
+            ELSE
+              ok = this%delete(istr)
+              istr = istr - 1
             END IF
-            ok = this%delete(istr)
-            istr = istr - 1
           ELSE
             ok = this%delete(istr)
             istr = istr - 1
@@ -1194,9 +1298,14 @@ CONTAINS
     !> Range of indices to which the strings have been stored
     INTEGER, DIMENSION(2) :: index_range
     INTEGER :: ln, lnm, lastpos, tpos, fpos, lpos, lmpos, wspos
-    INTEGER :: sindex, imn, imx, ind, wsl
+    INTEGER :: sindex, imn, imx, ind, wsl, ios
 
     errcode = eis_err_none
+    index_range = [HUGE(index_range), -1]
+    IF (LEN(str) < LEN(serial_header)) THEN
+      errcode = eis_err_malformed_file
+      RETURN
+    END IF
     IF (str(1:LEN(serial_header)) /= serial_header) THEN
       errcode = eis_err_malformed_file
       RETURN
@@ -1208,14 +1317,51 @@ CONTAINS
     imx = -1
     DO
       IF (lastpos == LEN(str)) EXIT
-      tpos  = INDEX(str(lastpos+1:), ACHAR(0)) + lastpos
-      fpos  = INDEX(str(tpos+1:), ACHAR(0)) + tpos
-      lpos  = INDEX(str(fpos+1:), ACHAR(0)) + fpos
-      lmpos = INDEX(str(lpos+1:), ACHAR(0)) + lpos
-      wspos = INDEX(str(lmpos+1:), ACHAR(0)) + lmpos
-      READ(str(fpos+1:lpos-1 ),'(I20)') ln
-      READ(str(lpos+1:lmpos-1),'(I20)') lnm
-      READ(str(lmpos+1:wspos-1),'(I20)') wsl
+      tpos  = INDEX(str(lastpos+1:), ACHAR(0))
+      IF (tpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      tpos = tpos + lastpos
+      fpos  = INDEX(str(tpos+1:), ACHAR(0))
+      IF (fpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      fpos = fpos + tpos
+      lpos  = INDEX(str(fpos+1:), ACHAR(0))
+      IF (lpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      lpos = lpos + fpos
+      lmpos = INDEX(str(lpos+1:), ACHAR(0))
+      IF (lmpos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      lmpos = lmpos + lpos
+      wspos = INDEX(str(lmpos+1:), ACHAR(0))
+      IF (wspos == 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      wspos = wspos + lmpos
+      READ(str(fpos+1:lpos-1 ),'(I20)', IOSTAT = ios) ln
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      READ(str(lpos+1:lmpos-1),'(I20)', IOSTAT = ios) lnm
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
+      READ(str(lmpos+1:wspos-1),'(I20)', IOSTAT = ios) wsl
+      IF (ios /= 0) THEN
+        errcode = eis_err_malformed_file
+        RETURN
+      END IF
       IF (PRESENT(store_index)) THEN
         ind = this%store(str(lastpos+1:tpos-1), sindex, line_number = ln, &
             line_number_max = lnm, filename = str(tpos+1:fpos-1), &
@@ -1235,5 +1381,83 @@ CONTAINS
     index_range = [imn, imx]
 
   END FUNCTION ess_deserialise
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Apply a C filename processor to a filename. The filename is passed to the
+  !> processor in a fixed length buffer and the processor edits it in place
+  !> @param[in] processor
+  !> @param[inout] filename
+  !> @param[inout] errcode
+  SUBROUTINE ess_apply_c_filename_processor(processor, filename, errcode)
+    PROCEDURE(filename_processor_proto_c) :: processor
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: filename
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: buffer
+    CHARACTER(LEN=:), ALLOCATABLE :: new_filename
+    INTEGER(eis_error_c) :: err_c
+    INTEGER :: buffer_length
+
+    buffer_length = MAX(LEN(filename) + 1, c_processor_buffer_length)
+    ALLOCATE(buffer(buffer_length))
+    CALL eis_f_c_string(filename, buffer_length, buffer)
+    err_c = INT(errcode, eis_error_c)
+    CALL processor(C_LOC(buffer), INT(buffer_length, C_INT), err_c)
+    errcode = INT(err_c, eis_error)
+    CALL eis_c_f_string(C_LOC(buffer), new_filename)
+    CALL MOVE_ALLOC(new_filename, filename)
+
+  END SUBROUTINE ess_apply_c_filename_processor
+
+
+
+  !> @author C.S.Brady@warwick.ac.uk
+  !> @brief
+  !> Apply a C file text processor to the contents of a file. The contents are
+  !> passed to the processor in a buffer and the processor edits them in place.
+  !> The processor returns the buffer length that it needs, including the
+  !> terminating null. If that is larger than the buffer then the buffer is
+  !> enlarged and the processor is called again on the original contents
+  !> @param[in] processor
+  !> @param[in] filename
+  !> @param[inout] contents
+  !> @param[inout] errcode
+  SUBROUTINE ess_apply_c_file_text_processor(processor, filename, contents, &
+      errcode)
+    PROCEDURE(file_text_processor_proto_c) :: processor
+    CHARACTER(LEN=*), INTENT(IN) :: filename
+    CHARACTER(LEN=:, KIND=ASCII), ALLOCATABLE, INTENT(INOUT) :: contents
+    INTEGER(eis_error), INTENT(INOUT) :: errcode
+    CHARACTER(LEN=1, KIND=C_CHAR), DIMENSION(:), ALLOCATABLE, TARGET :: &
+        buffer, c_filename
+    CHARACTER(LEN=:), ALLOCATABLE :: new_contents
+    INTEGER(eis_error_c) :: err_c
+    INTEGER :: buffer_length, needed, attempt
+    INTEGER, PARAMETER :: max_attempts = 10
+
+    ALLOCATE(c_filename(LEN(filename) + 1))
+    CALL eis_f_c_string(filename, LEN(filename) + 1, c_filename)
+
+    buffer_length = MAX(LEN(contents) + 1, c_processor_buffer_length)
+    DO attempt = 1, max_attempts
+      ALLOCATE(buffer(buffer_length))
+      CALL eis_f_c_string(contents, buffer_length, buffer)
+      err_c = INT(errcode, eis_error_c)
+      needed = INT(processor(C_LOC(c_filename), C_LOC(buffer), &
+          INT(buffer_length, C_INT), err_c))
+      IF (needed <= buffer_length) THEN
+        errcode = INT(err_c, eis_error)
+        CALL eis_c_f_string(C_LOC(buffer), new_contents)
+        CALL MOVE_ALLOC(new_contents, contents)
+        RETURN
+      END IF
+      buffer_length = needed
+      DEALLOCATE(buffer)
+    END DO
+    errcode = IOR(errcode, eis_err_bad_value)
+
+  END SUBROUTINE ess_apply_c_file_text_processor
 
 END MODULE eis_string_store_mod

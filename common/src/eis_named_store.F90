@@ -1,3 +1,6 @@
+! Copyright (c) 2019-2026, C. S. Brady and H. Ratcliffe
+! SPDX-License-Identifier: BSD-3-Clause
+
 MODULE eis_named_store_mod
 
   USE eis_ordered_store_mod
@@ -7,6 +10,10 @@ MODULE eis_named_store_mod
   INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
   INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
   INTEGER(INT64), PARAMETER :: default_bucket_count = 100
+
+  INTERFACE ASSIGNMENT(=)
+    MODULE PROCEDURE copy_named_store
+  END INTERFACE
 
   !>Item stored in a named store
   TYPE :: named_store_item
@@ -66,7 +73,7 @@ MODULE eis_named_store_mod
   END TYPE named_store
 
   PRIVATE
-  PUBLIC :: named_store
+  PUBLIC :: named_store, copy_named_store
 
 CONTAINS
 
@@ -239,20 +246,24 @@ CONTAINS
     CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
     CHARACTER(LEN=*), INTENT(IN) :: name !< Name of the item to delete
     LOGICAL :: nsil_delete
-    INTEGER :: iindex
+    INTEGER :: iindex, i, j, sz
     TYPE(named_store_item), DIMENSION(:), POINTER :: list
     nsil_delete = .FALSE.
     IF (.NOT. ASSOCIATED(this%list)) RETURN
     iindex = this%get_index(name)
     IF (iindex > 0) THEN
       nsil_delete = .TRUE.
-      ALLOCATE(list(SIZE(this%list)-1))
-      IF (iindex > 1) THEN
-        list(1:iindex-1) = this%list(1:iindex-1)
-      END IF
-      IF (iindex < SIZE(this%list)) THEN
-        list(iindex:) = this%list(iindex+1:)
-      END IF
+      CALL this%list(iindex)%cleanup()
+      sz = SIZE(this%list)
+      ALLOCATE(list(sz-1))
+      DO i = 1, sz - 1
+        j = i
+        IF (i >= iindex) j = i + 1
+        IF (ALLOCATED(this%list(j)%name)) &
+            CALL MOVE_ALLOC(this%list(j)%name, list(i)%name)
+        list(i)%owns = this%list(j)%owns
+        list(i)%item => this%list(j)%item
+      END DO
       CALL this%unlink()
       DEALLOCATE(this%list)
       this%list => list
@@ -270,7 +281,7 @@ CONTAINS
   !> @param[in] shallow
   !> @return nsil_delete
   SUBROUTINE nsil_copy(this, dest, shallow)
-    CLASS(named_store_inner_list), INTENT(INOUT) :: this !< self pointer
+    CLASS(named_store_inner_list), INTENT(IN) :: this !< self pointer
     CLASS(named_store_inner_list), INTENT(INOUT) :: dest !< Destination
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     LOGICAL :: do_shallow
@@ -390,7 +401,7 @@ CONTAINS
         END IF
       END IF
     END DO
-    CALL this%names%enable_disorder()
+    CALL this%names%disable_disorder()
 
   END SUBROUTINE ns_remove_name
 
@@ -711,16 +722,27 @@ CONTAINS
   !> @param[in] dest
   SUBROUTINE ns_copy(this, dest, shallow)
 
-    CLASS(named_store), INTENT(INOUT) :: this
+    CLASS(named_store), INTENT(IN) :: this
     CLASS(named_store), INTENT(INOUT) :: dest
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     INTEGER(INT64) :: i
+    INTEGER :: j
+    LOGICAL :: ok
+    CLASS(*), POINTER :: gptr
 
     IF (.NOT. this%is_init) RETURN
     IF (dest%is_init) CALL dest%cleanup()
     CALL dest%init(SIZE(this%buckets, KIND=INT64))
     DO i = 1, SIZE(this%buckets, KIND=INT64)
       CALL this%buckets(i)%copy(dest%buckets(i), shallow)
+    END DO
+    ok = dest%names%clear()
+    DO j = 1, this%names%get_size()
+      gptr => this%names%get(j)
+      SELECT TYPE (gptr)
+        TYPE IS (CHARACTER(LEN=*))
+          CALL dest%store_name(gptr)
+      END SELECT
     END DO
     dest%count = this%count
     dest%needs_optimise = this%needs_optimise
@@ -750,5 +772,15 @@ CONTAINS
     CALL this%cleanup()
 
   END SUBROUTINE ns_destructor
+
+
+
+  SUBROUTINE copy_named_store(dest, source)
+    CLASS(named_store), INTENT(INOUT) :: dest
+    CLASS(named_store), INTENT(IN) :: source
+
+    CALL source%copy(dest, .FALSE.)
+
+  END SUBROUTINE copy_named_store
 
 END MODULE eis_named_store_mod

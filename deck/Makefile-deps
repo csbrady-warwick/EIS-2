@@ -5,3 +5,7 @@ eis_deck_text.o: eis_deck_text.F90 eis_deck_definition.o
 eis_deck_header.o:eis_deck_header.F90 eis_deck_definition.o eis_deck_text.o \
   eis_deck_caller.o
 eis_deck_caller.o:eis_deck_caller.F90 eis_deck_definition.o
+eis_deck_definition_interop.o:eis_deck_definition_interop.F90 \
+  eis_deck_definition.o
+eis_deck_text_interop.o:eis_deck_text_interop.F90 eis_deck_text.o \
+  eis_deck_definition_interop.o
