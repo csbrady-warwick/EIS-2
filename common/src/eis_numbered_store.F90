@@ -3,15 +3,15 @@
 
 MODULE eis_numbered_store_mod
 
+  USE eis_constants
+
   IMPLICIT NONE
 
-  INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9)
-  INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
-  INTEGER(INT64), PARAMETER :: default_bucket_count = 100
+  INTEGER(EIS_INT64), PARAMETER :: default_bucket_count = 100
 
   !>Item stored in a numbered store
   TYPE :: numbered_store_item
-    INTEGER(INT64) :: key
+    INTEGER(EIS_INT64) :: key
     LOGICAL :: owns = .TRUE.
     CLASS(*), POINTER :: item => NULL()
     CONTAINS
@@ -34,7 +34,7 @@ MODULE eis_numbered_store_mod
   TYPE :: numbered_store
     PRIVATE
     TYPE(numbered_store_inner_list), DIMENSION(:), ALLOCATABLE :: buckets
-    INTEGER(INT64) :: count, hash_gr
+    INTEGER(EIS_INT64) :: count, hash_gr
     LOGICAL, PUBLIC :: is_init = .FALSE.
     CONTAINS
     PRIVATE
@@ -108,7 +108,7 @@ CONTAINS
   FUNCTION nsil_get_index(this, key) RESULT(item)
 
     CLASS(numbered_store_inner_list), INTENT(IN) :: this !< self pointer
-    INTEGER(INT64), INTENT(IN) :: key !< Key to look up
+    INTEGER(EIS_INT64), INTENT(IN) :: key !< Key to look up
     INTEGER :: ifn, sz, item
 
     item = 0
@@ -151,7 +151,7 @@ CONTAINS
   FUNCTION nsil_get(this, key) RESULT(item)
 
     CLASS(numbered_store_inner_list), INTENT(IN) :: this !< self pointer
-    INTEGER(INT64), INTENT(IN) :: key !< Key to look up
+    INTEGER(EIS_INT64), INTENT(IN) :: key !< Key to look up
     CLASS(*), POINTER :: item
     INTEGER :: iindex
 
@@ -173,7 +173,7 @@ CONTAINS
   SUBROUTINE nsil_store(this, key, item, owns)
 
     CLASS(numbered_store_inner_list), INTENT(INOUT) :: this !< self pointer
-    INTEGER(INT64), INTENT(IN) :: key !< Name to add item under
+    INTEGER(EIS_INT64), INTENT(IN) :: key !< Name to add item under
     CLASS(*), POINTER, INTENT(IN) :: item !< Item to add
     LOGICAL, INTENT(IN), OPTIONAL :: owns
     TYPE(numbered_store_item), DIMENSION(:), ALLOCATABLE :: temp
@@ -239,12 +239,12 @@ CONTAINS
   FUNCTION ns_hash(this, id) RESULT(hash)
 
     CLASS(numbered_store), INTENT(IN) :: this !< self pointer
-    INTEGER(INT64), INTENT(IN) :: id !< Value to hash
-    INTEGER(INT64) :: hash
+    INTEGER(EIS_INT64), INTENT(IN) :: id !< Value to hash
+    INTEGER(EIS_INT64) :: hash
 
     ! Knuth's multiplicative method (sort of)
-    hash = INT(MODULO(id * INT(this%hash_gr, INT64), &
-        SIZE(this%buckets, KIND=INT64)), INT64) + 1_INT64
+    hash = INT(MODULO(id * INT(this%hash_gr, EIS_INT64), &
+        SIZE(this%buckets, KIND=EIS_INT64)), EIS_INT64) + 1_EIS_INT64
 
   END FUNCTION ns_hash
 
@@ -260,9 +260,9 @@ CONTAINS
   FUNCTION ns_get_i8(this, id) RESULT (item)
 
     CLASS(numbered_store), INTENT(IN) :: this
-    INTEGER(INT64), INTENT(IN) :: id !< Value to hash
+    INTEGER(EIS_INT64), INTENT(IN) :: id !< Value to hash
     CLASS(*), POINTER :: item
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     item => NULL()
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
@@ -284,10 +284,10 @@ CONTAINS
   FUNCTION ns_get_i4(this, id) RESULT (item)
 
     CLASS(numbered_store), INTENT(IN) :: this
-    INTEGER(INT32), INTENT(IN) :: id !< Value to hash
+    INTEGER(EIS_INT32), INTENT(IN) :: id !< Value to hash
     CLASS(*), POINTER :: item
 
-    item => this%get(INT(id,INT64))
+    item => this%get(INT(id,EIS_INT64))
 
   END FUNCTION ns_get_i4
 
@@ -303,10 +303,10 @@ CONTAINS
   SUBROUTINE ns_store_i8(this, key, item)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT64), INTENT(IN) :: key
+    INTEGER(EIS_INT64), INTENT(IN) :: key
     CLASS(*), INTENT(IN) :: item
     CLASS(*), POINTER :: copy
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)
@@ -330,10 +330,10 @@ CONTAINS
   SUBROUTINE ns_store_i4(this, key, item)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT32), INTENT(IN) :: key
+    INTEGER(EIS_INT32), INTENT(IN) :: key
     CLASS(*), INTENT(IN) :: item
 
-    CALL this%store(INT(key, INT64), item)
+    CALL this%store(INT(key, EIS_INT64), item)
 
   END SUBROUTINE ns_store_i4
 
@@ -353,10 +353,10 @@ CONTAINS
   SUBROUTINE ns_hold_i8(this, key, item, owns)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT64), INTENT(IN) :: key
+    INTEGER(EIS_INT64), INTENT(IN) :: key
     CLASS(*), POINTER, INTENT(IN) :: item
     LOGICAL, INTENT(IN), OPTIONAL :: owns
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)
@@ -382,11 +382,11 @@ CONTAINS
   SUBROUTINE ns_hold_i4(this, key, item, owns)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT32), INTENT(IN) :: key
+    INTEGER(EIS_INT32), INTENT(IN) :: key
     CLASS(*), POINTER, INTENT(IN) :: item
     LOGICAL, INTENT(IN), OPTIONAL :: owns
 
-    CALL this%hold(INT(key, INT64), item, owns)
+    CALL this%hold(INT(key, EIS_INT64), item, owns)
 
   END SUBROUTINE ns_hold_i4
 
@@ -420,14 +420,14 @@ CONTAINS
   SUBROUTINE ns_init_i8(this, bucket_count)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT64), INTENT(IN) :: bucket_count
-    INTEGER(INT64) :: local_count
+    INTEGER(EIS_INT64), INTENT(IN) :: bucket_count
+    INTEGER(EIS_INT64) :: local_count
 
     local_count = MAX(bucket_count, default_bucket_count)
     this%is_init = .TRUE.
 
     this%hash_gr = &
-        INT(0.5 * (SQRT(5.0) - 1.0) * REAL(local_count), INT64)
+        INT(0.5 * (SQRT(5.0) - 1.0) * REAL(local_count), EIS_INT64)
 
     IF (.NOT. ALLOCATED(this%buckets)) THEN
       this%count = 0
@@ -447,9 +447,9 @@ CONTAINS
   SUBROUTINE ns_init_i4(this, bucket_count)
 
     CLASS(numbered_store), INTENT(INOUT) :: this
-    INTEGER(INT32), INTENT(IN) :: bucket_count
+    INTEGER(EIS_INT32), INTENT(IN) :: bucket_count
 
-    CALL this%init(INT(bucket_count,INT64))
+    CALL this%init(INT(bucket_count,EIS_INT64))
 
   END SUBROUTINE ns_init_i4
 

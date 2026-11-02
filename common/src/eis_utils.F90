@@ -921,7 +921,7 @@ MODULE eis_utils
   !> @param[out] string
   SUBROUTINE integer4_as_string(int_in, string)
 
-    INTEGER(INT32), INTENT(IN) :: int_in
+    INTEGER(EIS_INT32), INTENT(IN) :: int_in
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: string
 
     INTEGER :: n_nums
@@ -949,7 +949,7 @@ MODULE eis_utils
   !> @param[out] string
   SUBROUTINE integer8_as_string(int_in, string)
 
-    INTEGER(INT64), INTENT(IN) :: int_in
+    INTEGER(EIS_INT64), INTENT(IN) :: int_in
     CHARACTER(LEN=:), ALLOCATABLE, INTENT(OUT) :: string
 
     INTEGER :: n_nums

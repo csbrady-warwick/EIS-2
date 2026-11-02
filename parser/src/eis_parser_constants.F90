@@ -172,10 +172,10 @@ MODULE eis_parser_constants
     INTEGER :: actual_params = -1
     LOGICAL :: has_string_params = .FALSE.
     REAL(eis_num) :: numerical_data
-    INTEGER(INT32), POINTER :: i32data => NULL()
-    INTEGER(INT64), POINTER :: i64data => NULL()
-    REAL(REAL32), POINTER :: r32data => NULL()
-    REAL(REAL64), POINTER :: r64data => NULL()
+    INTEGER(EIS_INT32), POINTER :: i32data => NULL()
+    INTEGER(EIS_INT64), POINTER :: i64data => NULL()
+    REAL(EIS_REAL32), POINTER :: r32data => NULL()
+    REAL(EIS_REAL64), POINTER :: r64data => NULL()
     LOGICAL :: can_simplify = .TRUE.
     PROCEDURE(parser_eval_fn), POINTER, NOPASS :: eval_fn => NULL()
     LOGICAL :: per_stack_functor = .FALSE.

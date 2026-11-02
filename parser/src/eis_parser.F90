@@ -3507,9 +3507,9 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name
     !> Variable to be associated with the variable
 #ifdef F2008
-    INTEGER(INT32), TARGET :: ptr
+    INTEGER(EIS_INT32), TARGET :: ptr
 #else
-    INTEGER(INT32), POINTER :: ptr
+    INTEGER(EIS_INT32), POINTER :: ptr
 #endif
     !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -3571,9 +3571,9 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name
     !> Variable to be associated with the variable
 #ifdef F2008
-    INTEGER(INT64), TARGET :: ptr
+    INTEGER(EIS_INT64), TARGET :: ptr
 #else
-    INTEGER(INT64), POINTER :: ptr
+    INTEGER(EIS_INT64), POINTER :: ptr
 #endif
     !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -3636,9 +3636,9 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name
     !> Variable to be associated with the variable
 #ifdef F2008
-    REAL(REAL32), TARGET :: ptr
+    REAL(EIS_REAL32), TARGET :: ptr
 #else
-    REAL(REAL32), POINTER :: ptr
+    REAL(EIS_REAL32), POINTER :: ptr
 #endif
     !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -3701,9 +3701,9 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name      
     !> Variable to be associated with the variable
 #ifdef F2008
-    REAL(REAL64), TARGET :: ptr
+    REAL(EIS_REAL64), TARGET :: ptr
 #else
-    REAL(REAL64), POINTER :: ptr
+    REAL(EIS_REAL64), POINTER :: ptr
 #endif
     !> Error code from storing the variable
     INTEGER(eis_error), INTENT(INOUT) :: errcode
@@ -3789,10 +3789,10 @@ CONTAINS
     !> Is this symbol hidden in document generation
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
     LOGICAL :: is_global, simplify
-    INTEGER(INT32), POINTER :: i32p
-    INTEGER(INT64), POINTER :: i64p
-    REAL(REAL32), POINTER :: r32p
-    REAL(REAL64), POINTER :: r64p
+    INTEGER(EIS_INT32), POINTER :: i32p
+    INTEGER(EIS_INT64), POINTER :: i64p
+    REAL(EIS_REAL32), POINTER :: r32p
+    REAL(EIS_REAL64), POINTER :: r64p
 
     is_global = .FALSE.
     IF (PRESENT(global)) is_global = global
