@@ -7,8 +7,7 @@ all:
 	$(MAKE) -C common
 	$(MAKE) -C parser
 	$(MAKE) -C deck
-# build the demos. Needs the libraries to have been built already
-demo:
+demo: all
 	$(MAKE) -C demos demo
 # remove the built demos
 democlean:
