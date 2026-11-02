@@ -117,7 +117,7 @@ PROGRAM test
     CALL parser%print_errors()
       STOP
   END IF
-  CALL parser%get_infix(dstackdy, str)
+  CALL parser%get_infix(dstackdy2, str)
   PRINT *, 'df2/dy2 : ', str
 
   CALL parser%get_deriv_stack(dstackdx, dstackdxdy, 'y', errcode)

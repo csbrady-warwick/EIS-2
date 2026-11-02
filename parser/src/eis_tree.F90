@@ -1484,12 +1484,25 @@ MODULE eis_tree_mod
         IF (IAND(status, eis_status_no_simplify) == 0) THEN
           tree%value%ptype = eis_pt_constant
           tree%value%rtype = eis_pt_constant
+          !A result that is exactly 0 or 1 is flagged as such so that the
+          !simplifications for 0 and 1 apply to it
+          IF (res == 0.0_eis_num) THEN
+            tree%value%rtype = eis_pt_zero
+          ELSE IF (res == 1.0_eis_num) THEN
+            tree%value%rtype = eis_pt_unity
+          END IF
           tree%value%numerical_data = res
           tree%co_value%deriv_values = -1
           IF (ALLOCATED(tree%co_value%text)) THEN
             DEALLOCATE(tree%co_value%text)
-            WRITE(rstring,'(ES30.17)') res
-            ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+            IF (res == 0.0_eis_num) THEN
+              ALLOCATE(tree%co_value%text, SOURCE = "0")
+            ELSE IF (res == 1.0_eis_num) THEN
+              ALLOCATE(tree%co_value%text, SOURCE = "1")
+            ELSE
+              WRITE(rstring,'(ES30.17)') res
+              ALLOCATE(tree%co_value%text, SOURCE = TRIM(ADJUSTL(rstring)))
+            END IF
           END IF
           IF (has_nodes) DEALLOCATE(tree%nodes)
         ELSE

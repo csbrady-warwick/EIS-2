@@ -5,7 +5,6 @@
 #include <stdbool.h>
 #include <string.h>
 #include <stdlib.h>
-#include <math.h>
 #include "eis_parser.h"
 
 bool success(int parser, EIS_ERROR errcode){
@@ -20,10 +19,10 @@ bool success(int parser, EIS_ERROR errcode){
   return false;
 }
 
-/*This struct holds my data that I will use in the getter function*/
-typedef struct {EIS_NUM x;} data;
+/*This struct holds my data that I will use in the getter functions*/
+typedef struct {EIS_NUM x; EIS_NUM y;} data;
 
-/*This is the getter function for x*/
+/*These are the getter functions for x and y*/
 EIS_NUM get_x(int nparams, EIS_NUM *params, void *host_params,
     EIS_STATUS *status_code, EIS_ERROR *errcode)
 {
@@ -32,31 +31,56 @@ EIS_NUM get_x(int nparams, EIS_NUM *params, void *host_params,
   return 0.0;
 }
 
+EIS_NUM get_y(int nparams, EIS_NUM *params, void *host_params,
+    EIS_STATUS *status_code, EIS_ERROR *errcode)
+{
+  data *mydata = (data*) host_params;
+  if (mydata) return mydata->y;
+  return 0.0;
+}
+
+/*Evaluate a stack on [0,1],[0,1] and write the results to a file*/
+void write_grid(int parser, int stack, data *mydata, FILE *out)
+{
+  int ix, iy, ct;
+  double res;
+  EIS_ERROR errcode;
+
+  for (iy = 0; iy < 100; ++iy) {
+    mydata->y = (double)iy / 99.0;
+    for (ix = 0; ix < 100; ++ix) {
+      mydata->x = (double)ix / 99.0;
+      ct = eis_evaluate_stack(stack, 1, &res, mydata, &errcode, NULL);
+      if (!success(parser, errcode)) exit(1);
+      fprintf(out, "%g\n", res);
+    }
+  }
+}
+
 int main(int argc, char** argv)
 {
-  int parser, fstack, dstack, ct, iter;
-  double res, fval, dval;
+  int parser, fstack, dstackdx, dstackdy, dstackdx2, dstackdy2, dstackdxdy;
   char txt[1000], str[1000];
   data mydata;
+  FILE *out;
   EIS_ERROR errcode;
   EIS_BITMASK bm;
-  const double tolerance = 1.0e-12;
-  const int max_iter = 50;
 
-  printf("This example shows the use of a derivative stack. It takes an ");
-  printf("expression in the variable x, uses the parser to get a stack that ");
-  printf("calculates the derivative of the expression with respect to x and ");
-  printf("then uses both stacks to find a root of the expression using ");
-  printf("Newton-Raphson iteration\n");
+  printf("This example takes a stack expression parameterised by two ");
+  printf("variables, x and y. It then calculates all of the first and second ");
+  printf("partial derivatives of the expression\n");
 
   parser = eis_create_parser(eis_physics_si, &errcode, NULL);
   if (!success(parser, errcode)) exit(1);
 
-  /*Add the variable x and tell the parser that the derivative of x with
-  respect to x is 1. The fourth argument of eis_set_symbol_derivative is the
-  variable that the derivative is with respect to. NULL means any variable*/
+  /*Add the variables x and y and tell the parser that the derivative of each
+  with respect to itself is 1. The fourth argument of
+  eis_set_symbol_derivative is the variable that the derivative is with respect
+  to*/
   eis_add_variable(parser, "x", get_x, &errcode, NULL);
   eis_set_symbol_derivative(parser, "x", "1", "x", &errcode, NULL);
+  eis_add_variable(parser, "y", get_y, &errcode, NULL);
+  eis_set_symbol_derivative(parser, "y", "1", "y", &errcode, NULL);
   if (!success(parser, errcode)) exit(1);
 
   printf("Please input a mathematical expression :");
@@ -68,38 +92,49 @@ int main(int argc, char** argv)
   eis_get_infix_stack(fstack, 1000, str, NULL);
   printf("Specified Function : %s\n", str);
 
-  /*Get a stack that calculates the derivative of the function with respect to
-  x. The stack that holds the derivative must already exist so create an empty
-  stack first*/
-  dstack = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
-  eis_get_deriv_stack(fstack, dstack, "x", &errcode, NULL);
+  /*The stacks that hold the derivatives must already exist so create empty
+  stacks first. Each is then filled by eis_get_deriv_stack*/
+  dstackdx = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+  dstackdy = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+  dstackdx2 = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+  dstackdy2 = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+  dstackdxdy = eis_create_stack(parser, NULL, &bm, &errcode, NULL);
+
+  eis_get_deriv_stack(fstack, dstackdx, "x", &errcode, NULL);
   if (!success(parser, errcode)) exit(1);
-  eis_get_infix_stack(dstack, 1000, str, NULL);
+  eis_get_infix_stack(dstackdx, 1000, str, NULL);
   printf("df/dx : %s\n", str);
 
-  printf("Please input a starting guess for x :");
-  if (scanf("%lf", &mydata.x) != 1) exit(0);
+  eis_get_deriv_stack(fstack, dstackdy, "y", &errcode, NULL);
+  if (!success(parser, errcode)) exit(1);
+  eis_get_infix_stack(dstackdy, 1000, str, NULL);
+  printf("df/dy : %s\n", str);
 
-  for (iter = 1; iter <= max_iter; ++iter) {
-    ct = eis_evaluate_stack(fstack, 1, &res, &mydata, &errcode, NULL);
-    fval = res;
-    ct = eis_evaluate_stack(dstack, 1, &res, &mydata, &errcode, NULL);
-    dval = res;
-    if (!success(parser, errcode)) exit(1);
+  eis_get_deriv_stack(dstackdx, dstackdx2, "x", &errcode, NULL);
+  if (!success(parser, errcode)) exit(1);
+  eis_get_infix_stack(dstackdx2, 1000, str, NULL);
+  printf("d2f/dx2 : %s\n", str);
 
-    printf("Iteration %d x = %g f(x) = %g\n", iter, mydata.x, fval);
-    if (fabs(fval) < tolerance) {
-      printf("Root found at x = %g\n", mydata.x);
-      break;
-    }
-    if (dval == 0.0) {
-      printf("The derivative is zero at x = %g. Cannot continue\n", mydata.x);
-      break;
-    }
-    mydata.x = mydata.x - fval / dval;
-  }
+  eis_get_deriv_stack(dstackdy, dstackdy2, "y", &errcode, NULL);
+  if (!success(parser, errcode)) exit(1);
+  eis_get_infix_stack(dstackdy2, 1000, str, NULL);
+  printf("df2/dy2 : %s\n", str);
 
-  if (iter > max_iter) printf("No root found in %d iterations\n", max_iter);
+  eis_get_deriv_stack(dstackdx, dstackdxdy, "y", &errcode, NULL);
+  if (!success(parser, errcode)) exit(1);
+  eis_get_infix_stack(dstackdxdy, 1000, str, NULL);
+  printf("d2f/dxdy : %s\n", str);
+
+  printf("Writing expressions evaluated on [0,1],[0,1] to \"fort.10\"\n");
+
+  out = fopen("fort.10", "w");
+  write_grid(parser, fstack, &mydata, out);
+  write_grid(parser, dstackdx, &mydata, out);
+  write_grid(parser, dstackdy, &mydata, out);
+  write_grid(parser, dstackdx2, &mydata, out);
+  write_grid(parser, dstackdy2, &mydata, out);
+  write_grid(parser, dstackdxdy, &mydata, out);
+  fclose(out);
 
   return 0;
 }
