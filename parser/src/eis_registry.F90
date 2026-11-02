@@ -76,10 +76,10 @@ MODULE eis_registry_mod
     INTEGER :: index_type = eis_reg_index_none
     INTEGER(eis_i4) :: value = 0_eis_i4
     REAL(eis_num) :: numerical_data = 0.0_eis_num
-    INTEGER(INT32), POINTER :: i32data => NULL()
-    INTEGER(INT64), POINTER :: i64data => NULL()
-    REAL(REAL32), POINTER :: r32data => NULL()
-    REAL(REAL64), POINTER :: r64data => NULL()
+    INTEGER(EIS_INT32), POINTER :: i32data => NULL()
+    INTEGER(EIS_INT64), POINTER :: i64data => NULL()
+    REAL(EIS_REAL32), POINTER :: r32data => NULL()
+    REAL(EIS_REAL64), POINTER :: r64data => NULL()
     CLASS(eis_functor), POINTER :: functor => NULL()
     INTEGER :: ptype = eis_pt_null
     INTEGER :: rtype = eis_pt_null
@@ -641,22 +641,22 @@ CONTAINS
     TYPE(eis_error_handler), INTENT(INOUT), OPTIONAL :: err_handler
 #ifdef F2008
     !> 32 bit integer point data
-    INTEGER(INT32), TARGET, OPTIONAL :: i32data
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32data
     !> 64 bit integer point data
-    INTEGER(INT64), TARGET, OPTIONAL :: i64data
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64data
     !> 32 bit real point data
-    REAL(REAL32), TARGET, OPTIONAL :: r32data
+    REAL(EIS_REAL32), TARGET, OPTIONAL :: r32data
     !> 64 bit real point data
-    REAL(REAL64), TARGET, OPTIONAL :: r64data
+    REAL(EIS_REAL64), TARGET, OPTIONAL :: r64data
 #else
     !> 32 bit integer point data
-    INTEGER(INT32), POINTER, OPTIONAL :: i32data
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32data
     !> 64 bit integer point data
-    INTEGER(INT64), POINTER, OPTIONAL :: i64data
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64data
     !> 32 bit real point data
-    REAL(REAL32), POINTER, OPTIONAL :: r32data
+    REAL(EIS_REAL32), POINTER, OPTIONAL :: r32data
     !> 64 bit real point data
-    REAL(REAL64), POINTER, OPTIONAL :: r64data
+    REAL(EIS_REAL64), POINTER, OPTIONAL :: r64data
 #endif
     !> Description of the variable
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description

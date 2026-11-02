@@ -3,10 +3,9 @@
 
 MODULE eis_ordered_store_mod
 
-  IMPLICIT NONE
+  USE eis_constants
 
-  INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9)
-  INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
+  IMPLICIT NONE
 
   TYPE :: ordered_store_item
     CLASS(*), POINTER :: item => NULL()
@@ -107,7 +106,7 @@ CONTAINS
   FUNCTION os_get(this, index) RESULT (item)
 
     CLASS(ordered_store), INTENT(IN) :: this
-    INTEGER(INT32), INTENT(IN) :: index !< Index of the item to get
+    INTEGER(EIS_INT32), INTENT(IN) :: index !< Index of the item to get
     CLASS(*), POINTER :: item !< Returned item
 
     item => NULL()
@@ -138,9 +137,9 @@ CONTAINS
     !> Whether the store owns the pointer to the item or not. Optional,
     !> default true
     LOGICAL, INTENT(IN), OPTIONAL :: owns
-    INTEGER(INT32) :: os_store !< Index to which the item is stored
+    INTEGER(EIS_INT32) :: os_store !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz
+    INTEGER(EIS_INT32) :: sz
     LOGICAL :: should_own
 
     should_own = .TRUE.
@@ -193,7 +192,7 @@ CONTAINS
     !> Not to allow storage in an arbitrary location. If index is not an 
     !> existing item index then the item is simply added to the end of the list
     INTEGER, INTENT(IN), OPTIONAL :: index
-    INTEGER(INT32) :: os_store !< Index to which the item is stored
+    INTEGER(EIS_INT32) :: os_store !< Index to which the item is stored
     CLASS(*), POINTER :: item_copy
 
     ALLOCATE(item_copy, SOURCE = item)
@@ -222,7 +221,7 @@ CONTAINS
     !> Whether the store owns the pointer to the item or not. Optional,
     !> default true
     LOGICAL, INTENT(IN), OPTIONAL :: owns
-    INTEGER(INT32) :: os_hold !< Index to which the item is stored
+    INTEGER(EIS_INT32) :: os_hold !< Index to which the item is stored
 
     os_hold = this%store_core(item, index, owns)
 
@@ -241,7 +240,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: index
     LOGICAL :: success
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz, i
+    INTEGER(EIS_INT32) :: sz, i
 
     success = this%disorder_level > 0 .AND. ALLOCATED(this%items)
     IF (.NOT. success) RETURN
@@ -330,9 +329,9 @@ CONTAINS
     CLASS(*), TARGET, INTENT(IN) :: item !< Item to insert
     !> Item index before which to insert item
     INTEGER, INTENT(IN) :: index
-    INTEGER(INT32) :: os_insert !< Index to which the item is stored
+    INTEGER(EIS_INT32) :: os_insert !< Index to which the item is stored
     TYPE(ordered_store_item), DIMENSION(:), ALLOCATABLE :: temp
-    INTEGER(INT32) :: sz, i, j
+    INTEGER(EIS_INT32) :: sz, i, j
 
     os_insert = -1
     IF (.NOT. ALLOCATED(this%items)) RETURN

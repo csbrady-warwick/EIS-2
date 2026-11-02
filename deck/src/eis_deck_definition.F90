@@ -85,23 +85,23 @@ MODULE eis_deck_definition_mod
     CHARACTER(LEN=:), ALLOCATABLE :: description
     LOGICAL :: is_hidden = .FALSE.
 
-    INTEGER(INT32), POINTER :: i32data => NULL()
-    INTEGER(INT64), POINTER :: i64data => NULL()
-    REAL(REAL32), POINTER :: r32data => NULL()
-    REAL(REAL64), POINTER :: r64data => NULL()
+    INTEGER(EIS_INT32), POINTER :: i32data => NULL()
+    INTEGER(EIS_INT64), POINTER :: i64data => NULL()
+    REAL(EIS_REAL32), POINTER :: r32data => NULL()
+    REAL(EIS_REAL64), POINTER :: r64data => NULL()
     LOGICAL, POINTER :: logicaldata => NULL()
     TYPE(eis_stack), POINTER :: stackdata => NULL()
 
-    INTEGER(INT32), DIMENSION(:), POINTER :: i32arraydata => NULL()
-    INTEGER(INT64), DIMENSION(:), POINTER :: i64arraydata => NULL()
-    REAL(REAL32), DIMENSION(:), POINTER :: r32arraydata => NULL()
-    REAL(REAL64), DIMENSION(:), POINTER :: r64arraydata => NULL()
+    INTEGER(EIS_INT32), DIMENSION(:), POINTER :: i32arraydata => NULL()
+    INTEGER(EIS_INT64), DIMENSION(:), POINTER :: i64arraydata => NULL()
+    REAL(EIS_REAL32), DIMENSION(:), POINTER :: r32arraydata => NULL()
+    REAL(EIS_REAL64), DIMENSION(:), POINTER :: r64arraydata => NULL()
     LOGICAL, DIMENSION(:), POINTER :: logicalarraydata => NULL()
 
     LOGICAL, POINTER :: set_variable => NULL()
     INTEGER(C_INT), POINTER :: c_set_variable => NULL()
-    INTEGER(INT32), POINTER :: i32count_variable => NULL()
-    INTEGER(INT64), POINTER :: i64count_variable => NULL()
+    INTEGER(EIS_INT32), POINTER :: i32count_variable => NULL()
+    INTEGER(EIS_INT64), POINTER :: i64count_variable => NULL()
 
     TYPE(C_PTR) :: c_i32data = C_NULL_PTR
     INTEGER :: c_i32len = 1
@@ -146,8 +146,8 @@ MODULE eis_deck_definition_mod
 
     LOGICAL, POINTER :: set_variable => NULL()
     INTEGER(C_INT), POINTER :: c_set_variable => NULL()
-    INTEGER(INT32), POINTER :: i32count_variable => NULL()
-    INTEGER(INT64), POINTER :: i64count_variable => NULL()
+    INTEGER(EIS_INT32), POINTER :: i32count_variable => NULL()
+    INTEGER(EIS_INT64), POINTER :: i64count_variable => NULL()
 
     INTEGER :: pass_eq = -1, pass_le = -1, pass_ge = -1
     LOGICAL :: use_eq = .FALSE., use_le = .FALSE., use_ge = .FALSE.
@@ -917,12 +917,12 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
 #ifdef F2008
     LOGICAL, TARGET, OPTIONAL :: init_flag
-    INTEGER(INT32), TARGET, OPTIONAL :: i32count
-    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64count
 #else
     LOGICAL, POINTER, OPTIONAL :: init_flag
-    INTEGER(INT32), POINTER, OPTIONAL :: i32count
-    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64count
 #endif
     CLASS(eis_deck_block_definition), INTENT(IN), OPTIONAL :: parent_block
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
@@ -1045,12 +1045,12 @@ MODULE eis_deck_definition_mod
     INTEGER, INTENT(IN), OPTIONAL :: pass_ge
 #ifdef F2008
     LOGICAL, TARGET, OPTIONAL :: init_flag
-    INTEGER(INT32), TARGET, OPTIONAL :: i32count
-    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64count
 #else
     LOGICAL, POINTER, OPTIONAL :: init_flag
-    INTEGER(INT32), POINTER, OPTIONAL :: i32count
-    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64count
 #endif
     CHARACTER(LEN=*), INTENT(IN), OPTIONAL :: description
     LOGICAL, INTENT(IN), OPTIONAL :: hidden
@@ -1364,9 +1364,9 @@ MODULE eis_deck_definition_mod
     IF (ASSOCIATED(this%set_variable)) this%set_variable = .TRUE.
     IF (ASSOCIATED(this%c_set_variable)) this%c_set_variable = 1_C_INT
     IF (ASSOCIATED(this%i32count_variable)) this%i32count_variable &
-        = this%i32count_variable + 1_INT32
+        = this%i32count_variable + 1_EIS_INT32
     IF (ASSOCIATED(this%i64count_variable)) this%i64count_variable &
-        = this%i64count_variable + 1_INT64
+        = this%i64count_variable + 1_EIS_INT64
 
     CALL eis_call_specific_triplet(this%start_block_fn, &
         this%c_start_block_fn, this%info%on_block_start_fn, &
@@ -1685,39 +1685,39 @@ MODULE eis_deck_definition_mod
     PROCEDURE(should_key_trigger_callback_c), OPTIONAL :: &
         c_should_key_trigger_fn
 #ifdef F2008
-    INTEGER(INT32), TARGET, OPTIONAL :: i32value
-    INTEGER(INT64), TARGET, OPTIONAL :: i64value
-    REAL(REAL32), TARGET, OPTIONAL :: r32value
-    REAL(REAL64), TARGET, OPTIONAL :: r64value
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32value
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64value
+    REAL(EIS_REAL32), TARGET, OPTIONAL :: r32value
+    REAL(EIS_REAL64), TARGET, OPTIONAL :: r64value
     LOGICAL, TARGET, OPTIONAL :: logicalvalue
     TYPE(eis_stack), TARGET, OPTIONAL :: stackvalue
     INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
-    INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
-    INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
-    REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
-    REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
+    INTEGER(EIS_INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
+    INTEGER(EIS_INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
+    REAL(EIS_REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
+    REAL(EIS_REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
 
     LOGICAL, TARGET, OPTIONAL :: init_flag
-    INTEGER(INT32), TARGET, OPTIONAL :: i32count
-    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64count
 #else
-    INTEGER(INT32), POINTER, OPTIONAL :: i32value
-    INTEGER(INT64), POINTER, OPTIONAL :: i64value
-    REAL(REAL32), POINTER, OPTIONAL :: r32value
-    REAL(REAL64), POINTER, OPTIONAL :: r64value
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32value
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64value
+    REAL(EIS_REAL32), POINTER, OPTIONAL :: r32value
+    REAL(EIS_REAL64), POINTER, OPTIONAL :: r64value
     LOGICAL, POINTER, OPTIONAL :: logicalvalue
     TYPE(eis_stack), POINTER, OPTIONAL :: stackvalue
     INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
-    INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
-    INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
-    REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
-    REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
+    INTEGER(EIS_INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
+    INTEGER(EIS_INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
+    REAL(EIS_REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
+    REAL(EIS_REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
 
     LOGICAL, POINTER, OPTIONAL :: init_flag
-    INTEGER(INT32), POINTER, OPTIONAL :: i32count
-    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64count
 #endif
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value
@@ -1814,10 +1814,10 @@ MODULE eis_deck_definition_mod
     INTEGER :: interop_parser, i_key_offset, i_value_offset
     LOGICAL :: run, any_candidates, isscalarvar, isarrayvar, non_value_blank
     LOGICAL :: isstackvar
-    INTEGER(INT32), DIMENSION(:), POINTER :: c_i32
-    INTEGER(INT64), DIMENSION(:), POINTER :: c_i64
-    REAL(REAL32), DIMENSION(:), POINTER :: c_r32
-    REAL(REAL64), DIMENSION(:), POINTER :: c_r64
+    INTEGER(EIS_INT32), DIMENSION(:), POINTER :: c_i32
+    INTEGER(EIS_INT64), DIMENSION(:), POINTER :: c_i64
+    REAL(EIS_REAL32), DIMENSION(:), POINTER :: c_r32
+    REAL(EIS_REAL64), DIMENSION(:), POINTER :: c_r64
     INTEGER(eis_bitmask) :: cbits
     LOGICAL :: parser_error, line_text_present
     TYPE(C_PTR) :: host_params_l
@@ -2015,9 +2015,9 @@ MODULE eis_deck_definition_mod
       IF (ASSOCIATED(dkd%set_variable)) dkd%set_variable = .TRUE.
       IF (ASSOCIATED(dkd%c_set_variable)) dkd%c_set_variable = 1_C_INT
       IF (ASSOCIATED(dkd%i32count_variable)) dkd%i32count_variable &
-          = dkd%i32count_variable + 1_INT32
+          = dkd%i32count_variable + 1_EIS_INT32
       IF (ASSOCIATED(dkd%i64count_variable)) dkd%i64count_variable &
-          = dkd%i64count_variable + 1_INT64
+          = dkd%i64count_variable + 1_EIS_INT64
 
       IF (.NOT. dkd%text_fallback) THEN
         IF (ASSOCIATED(dkd%key_text_fn)) THEN
@@ -2273,30 +2273,30 @@ MODULE eis_deck_definition_mod
           IF (ct == 1 .AND. isscalarvar) THEN
             handled = .TRUE.
             IF (ASSOCIATED(dkd%i32data)) dkd%i32data = NINT(value_array(1),&
-                INT32)
+                EIS_INT32)
             IF (ASSOCIATED(dkd%i64data)) dkd%i64data = NINT(value_array(1),&
-                INT64)
+                EIS_INT64)
             IF (ASSOCIATED(dkd%r32data)) dkd%r32data = REAL(value_array(1), &
-                REAL32)
+                EIS_REAL32)
             IF (ASSOCIATED(dkd%r64data)) dkd%r64data = REAL(value_array(1), &
-                REAL64)
+                EIS_REAL64)
             IF (ASSOCIATED(dkd%logicaldata)) dkd%logicaldata = &
                 .NOT. (ABS(value_array(1)) < 1.0e-6_eis_num)
             IF (C_ASSOCIATED(dkd%c_i32data)) THEN
               CALL C_F_POINTER(dkd%c_i32data, c_i32, [1])
-              c_i32(1) = NINT(value_array(1), INT32)
+              c_i32(1) = NINT(value_array(1), EIS_INT32)
             END IF
             IF (C_ASSOCIATED(dkd%c_i64data)) THEN
               CALL C_F_POINTER(dkd%c_i64data, c_i64, [1])
-              c_i64(1) = NINT(value_array(1), INT64)
+              c_i64(1) = NINT(value_array(1), EIS_INT64)
             END IF
             IF (C_ASSOCIATED(dkd%c_r32data)) THEN
               CALL C_F_POINTER(dkd%c_r32data, c_r32, [1])
-              c_r32(1) = REAL(value_array(1), REAL32)
+              c_r32(1) = REAL(value_array(1), EIS_REAL32)
             END IF
             IF (C_ASSOCIATED(dkd%c_r64data)) THEN
               CALL C_F_POINTER(dkd%c_r64data, c_r64, [1])
-              c_r64(1) = REAL(value_array(1), REAL64)
+              c_r64(1) = REAL(value_array(1), EIS_REAL64)
             END IF
           END IF
 
@@ -2305,7 +2305,7 @@ MODULE eis_deck_definition_mod
               IF (SIZE(dkd%i32arraydata) >= ct) THEN
                 dkd%i32arraydata(LBOUND(dkd%i32arraydata,1):&
                     LBOUND(dkd%i32arraydata,1) + ct-1) &
-                    = NINT(value_array(1:ct), INT32)
+                    = NINT(value_array(1:ct), EIS_INT32)
                 handled = .TRUE.
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
@@ -2316,7 +2316,7 @@ MODULE eis_deck_definition_mod
               IF (SIZE(dkd%i64arraydata) >= ct) THEN
                 dkd%i64arraydata(LBOUND(dkd%i64arraydata,1):&
                     LBOUND(dkd%i64arraydata,1) + ct-1) &
-                    = NINT(value_array(1:ct), INT64)
+                    = NINT(value_array(1:ct), EIS_INT64)
                 handled = .TRUE.
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
@@ -2327,7 +2327,7 @@ MODULE eis_deck_definition_mod
               IF (SIZE(dkd%r32arraydata) >= ct) THEN
                 dkd%r32arraydata(LBOUND(dkd%r32arraydata,1):&
                     LBOUND(dkd%r32arraydata,1) + ct-1) &
-                    = REAL(value_array(1:ct), REAL32)
+                    = REAL(value_array(1:ct), EIS_REAL32)
                 handled = .TRUE.
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
@@ -2338,7 +2338,7 @@ MODULE eis_deck_definition_mod
               IF (SIZE(dkd%r64arraydata) >= ct) THEN
                 dkd%r64arraydata(LBOUND(dkd%r64arraydata,1):&
                     LBOUND(dkd%r64arraydata,1) + ct-1) &
-                    = REAL(value_array(1:ct), REAL64)
+                    = REAL(value_array(1:ct), EIS_REAL64)
                 handled = .TRUE.
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
@@ -2359,7 +2359,7 @@ MODULE eis_deck_definition_mod
             IF (C_ASSOCIATED(dkd%c_i32data)) THEN
               IF (dkd%c_i32len >= ct) THEN
                 CALL C_F_POINTER(dkd%c_i32data, c_i32, [ct])
-                c_i32(1:ct) = NINT(value_array(1:ct), INT32)
+                c_i32(1:ct) = NINT(value_array(1:ct), EIS_INT32)
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
               END IF
@@ -2368,7 +2368,7 @@ MODULE eis_deck_definition_mod
             IF (C_ASSOCIATED(dkd%c_i64data)) THEN
               IF (dkd%c_i64len >= ct) THEN
                 CALL C_F_POINTER(dkd%c_i64data, c_i64, [ct])
-                c_i64(1:ct) = NINT(value_array(1:ct), INT64)
+                c_i64(1:ct) = NINT(value_array(1:ct), EIS_INT64)
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
               END IF
@@ -2377,7 +2377,7 @@ MODULE eis_deck_definition_mod
             IF (C_ASSOCIATED(dkd%c_r32data)) THEN
               IF (dkd%c_r32len >= ct) THEN
                 CALL C_F_POINTER(dkd%c_r32data, c_r32, [ct])
-                c_r32(1:ct) = REAL(value_array(1:ct), REAL32)
+                c_r32(1:ct) = REAL(value_array(1:ct), EIS_REAL32)
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
               END IF
@@ -2386,7 +2386,7 @@ MODULE eis_deck_definition_mod
             IF (C_ASSOCIATED(dkd%c_r64data)) THEN
               IF (dkd%c_r64len >= ct) THEN
                 CALL C_F_POINTER(dkd%c_r64data, c_r64, [ct])
-                c_r64(1:ct) = REAL(value_array(1:ct), REAL64)
+                c_r64(1:ct) = REAL(value_array(1:ct), EIS_REAL64)
               ELSE
                 this_err = IOR(this_err, eis_err_bad_value)
               END IF
@@ -2791,39 +2791,39 @@ MODULE eis_deck_definition_mod
     PROCEDURE(should_key_trigger_callback_c), OPTIONAL :: &
         c_should_key_trigger_fn
 #ifdef F2008
-    INTEGER(INT32), TARGET, OPTIONAL :: i32value
-    INTEGER(INT64), TARGET, OPTIONAL :: i64value
-    REAL(REAL32), TARGET, OPTIONAL :: r32value
-    REAL(REAL64), TARGET, OPTIONAL :: r64value
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32value
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64value
+    REAL(EIS_REAL32), TARGET, OPTIONAL :: r32value
+    REAL(EIS_REAL64), TARGET, OPTIONAL :: r64value
     LOGICAL, TARGET, OPTIONAL :: logicalvalue
     TYPE(eis_stack), TARGET, OPTIONAL :: stackvalue
     INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
-    INTEGER(INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
-    INTEGER(INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
-    REAL(REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
-    REAL(REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
+    INTEGER(EIS_INT32), DIMENSION(:), TARGET, OPTIONAL :: i32array
+    INTEGER(EIS_INT64), DIMENSION(:), TARGET, OPTIONAL :: i64array
+    REAL(EIS_REAL32), DIMENSION(:), TARGET, OPTIONAL :: r32array
+    REAL(EIS_REAL64), DIMENSION(:), TARGET, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), TARGET, OPTIONAL :: logicalarray
 
     LOGICAL, TARGET, OPTIONAL :: init_flag
-    INTEGER(INT32), TARGET, OPTIONAL :: i32count
-    INTEGER(INT64), TARGET, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), TARGET, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), TARGET, OPTIONAL :: i64count
 #else
-    INTEGER(INT32), POINTER, OPTIONAL :: i32value
-    INTEGER(INT64), POINTER, OPTIONAL :: i64value
-    REAL(REAL32), POINTER, OPTIONAL :: r32value
-    REAL(REAL64), POINTER, OPTIONAL :: r64value
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32value
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64value
+    REAL(EIS_REAL32), POINTER, OPTIONAL :: r32value
+    REAL(EIS_REAL64), POINTER, OPTIONAL :: r64value
     LOGICAL, POINTER, OPTIONAL :: logicalvalue
     TYPE(eis_stack), POINTER, OPTIONAL :: stackvalue
     INTEGER, INTENT(IN), OPTIONAL :: c_stackvalue
-    INTEGER(INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
-    INTEGER(INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
-    REAL(REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
-    REAL(REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
+    INTEGER(EIS_INT32), DIMENSION(:), POINTER, OPTIONAL :: i32array
+    INTEGER(EIS_INT64), DIMENSION(:), POINTER, OPTIONAL :: i64array
+    REAL(EIS_REAL32), DIMENSION(:), POINTER, OPTIONAL :: r32array
+    REAL(EIS_REAL64), DIMENSION(:), POINTER, OPTIONAL :: r64array
     LOGICAL, DIMENSION(:), POINTER, OPTIONAL :: logicalarray
 
     LOGICAL, POINTER, OPTIONAL :: init_flag
-    INTEGER(INT32), POINTER, OPTIONAL :: i32count
-    INTEGER(INT64), POINTER, OPTIONAL :: i64count
+    INTEGER(EIS_INT32), POINTER, OPTIONAL :: i32count
+    INTEGER(EIS_INT64), POINTER, OPTIONAL :: i64count
 #endif
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i32value
     TYPE(C_PTR), INTENT(IN), OPTIONAL :: c_i64value

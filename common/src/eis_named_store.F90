@@ -4,12 +4,10 @@
 MODULE eis_named_store_mod
 
   USE eis_ordered_store_mod
+  USE eis_constants
   IMPLICIT NONE
 
-  INTEGER, PARAMETER :: INT32 = SELECTED_INT_KIND(9)
-  INTEGER, PARAMETER :: INT64 = SELECTED_INT_KIND(15)
-  INTEGER, PARAMETER :: REAL64 = SELECTED_REAL_KIND(15, 307)
-  INTEGER(INT64), PARAMETER :: default_bucket_count = 100
+  INTEGER(EIS_INT64), PARAMETER :: default_bucket_count = 100
 
   INTERFACE ASSIGNMENT(=)
     MODULE PROCEDURE copy_named_store
@@ -43,7 +41,7 @@ MODULE eis_named_store_mod
     PRIVATE
     TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: buckets
     TYPE(ordered_store) :: names
-    INTEGER(INT64) :: count
+    INTEGER(EIS_INT64) :: count
     LOGICAL, PUBLIC :: is_init = .FALSE.
     LOGICAL, PUBLIC :: needs_optimise = .FALSE.
     CONTAINS
@@ -285,12 +283,12 @@ CONTAINS
     CLASS(named_store_inner_list), INTENT(INOUT) :: dest !< Destination
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
     LOGICAL :: do_shallow
-    INTEGER(INT64) :: i
+    INTEGER(EIS_INT64) :: i
 
     do_shallow = .FALSE.
     IF (PRESENT(shallow)) do_shallow = shallow
-    ALLOCATE(dest%list(SIZE(this%list, KIND=INT64)))
-    DO i = 1, SIZE(this%list, KIND=INT64)
+    ALLOCATE(dest%list(SIZE(this%list, KIND=EIS_INT64)))
+    DO i = 1, SIZE(this%list, KIND=EIS_INT64)
       ALLOCATE(dest%list(i)%name, SOURCE = this%list(i)%name)
       IF (this%list(i)%owns .AND. .NOT. do_shallow) THEN
         ALLOCATE(dest%list(i)%item, SOURCE = this%list(i)%item)
@@ -335,18 +333,18 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name !< name to look up
     !> Optional number of buckets to use when calculating the hash lookup
     !> If not present then uses the number of buckets currently allocated
-    INTEGER(INT64), INTENT(IN), OPTIONAL :: bucket_count
+    INTEGER(EIS_INT64), INTENT(IN), OPTIONAL :: bucket_count
 
-    INTEGER(INT64) :: hash, nb, i
+    INTEGER(EIS_INT64) :: hash, nb, i
 
     hash = 5381
     IF (PRESENT(bucket_count)) THEN
       nb = bucket_count
     ELSE
-      nb = SIZE(this%buckets, KIND=INT64)
+      nb = SIZE(this%buckets, KIND=EIS_INT64)
     END IF
     DO i = 1, LEN_TRIM(name)
-      hash = MOD((ISHFT(hash, 5) + hash) + INT(IACHAR(name(i:i)), INT64), nb)
+      hash = MOD((ISHFT(hash, 5) + hash) + INT(IACHAR(name(i:i)), EIS_INT64), nb)
     END DO
     hash = hash + 1 !Fortran 1 based array
 
@@ -419,7 +417,7 @@ CONTAINS
     CLASS(named_store), INTENT(IN) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
     CLASS(*), POINTER :: item
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     item => NULL()
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
@@ -493,7 +491,7 @@ CONTAINS
     CHARACTER(LEN=*), INTENT(IN) :: name
     CLASS(*), POINTER, INTENT(IN) :: item
     LOGICAL, INTENT(IN), OPTIONAL :: owns
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     IF (.NOT. ALLOCATED(this%buckets)) &
         CALL this%init(default_bucket_count)
@@ -517,7 +515,7 @@ CONTAINS
 
     CLASS(named_store), INTENT(INOUT) :: this
     CHARACTER(LEN=*), INTENT(IN) :: name
-    INTEGER(INT64) :: bucket
+    INTEGER(EIS_INT64) :: bucket
 
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
 
@@ -610,30 +608,30 @@ CONTAINS
     !> buckets. Higher values reduce the likelihood of a hash collision
     !> (if the hashing algorithm is working well) but increases the memory
     !> foot print. Optional, default 1
-    REAL(REAL64), INTENT(IN), OPTIONAL :: item_bucket_factor
+    REAL(EIS_REAL64), INTENT(IN), OPTIONAL :: item_bucket_factor
     !> Whether to reduce the number of buckets below the current number
     !> if the number of items is smaller than the number of buckets. Optional,
     !> default .FALSE.
     LOGICAL, INTENT(IN), OPTIONAL :: optimise_down
-    REAL(REAL64) :: mult
+    REAL(EIS_REAL64) :: mult
     LOGICAL :: od
-    INTEGER(INT64) :: newcount
+    INTEGER(EIS_INT64) :: newcount
 
     IF (.NOT. this%needs_optimise .AND. .NOT. PRESENT(item_bucket_factor)) &
         RETURN
 
-    mult = 1.0_REAL64
+    mult = 1.0_EIS_REAL64
     IF (PRESENT(item_bucket_factor)) mult = item_bucket_factor
 
     od = .FALSE.
     IF (PRESENT(optimise_down)) od = optimise_down
 
     IF (.NOT. ALLOCATED(this%buckets)) RETURN
-    IF (REAL(this%count, REAL64) * mult < SIZE(this%buckets) &
+    IF (REAL(this%count, EIS_REAL64) * mult < SIZE(this%buckets) &
         .AND. .NOT. od) RETURN
 
-    newcount = MAX(default_bucket_count, INT(REAL(this%count, REAL64) * mult, &
-        INT64))
+    newcount = MAX(default_bucket_count, INT(REAL(this%count, EIS_REAL64) * mult, &
+        EIS_INT64))
 
     CALL this%rebucket(newcount)
 
@@ -649,9 +647,9 @@ CONTAINS
   !> @param[in] bucket_count
   SUBROUTINE ns_rebucket(this, bucket_count)
     CLASS(named_store), INTENT(INOUT) :: this !< self pointer
-    INTEGER(INT64), INTENT(IN) :: bucket_count
+    INTEGER(EIS_INT64), INTENT(IN) :: bucket_count
     TYPE(named_store_inner_list), DIMENSION(:), ALLOCATABLE :: new_buckets
-    INTEGER(INT64) :: ibucket, ilist, h
+    INTEGER(EIS_INT64) :: ibucket, ilist, h
     TYPE(named_store_item), POINTER :: item
     LOGICAL :: is_new
 
@@ -683,8 +681,8 @@ CONTAINS
   SUBROUTINE ns_init_i8(this, bucket_count)
 
     CLASS(named_store), INTENT(INOUT) :: this
-    INTEGER(INT64), INTENT(IN) :: bucket_count
-    INTEGER(INT64) :: local_count
+    INTEGER(EIS_INT64), INTENT(IN) :: bucket_count
+    INTEGER(EIS_INT64) :: local_count
 
     local_count = MAX(bucket_count, default_bucket_count)
     this%is_init = .TRUE.
@@ -707,9 +705,9 @@ CONTAINS
   SUBROUTINE ns_init_i4(this, bucket_count)
 
     CLASS(named_store), INTENT(INOUT) :: this
-    INTEGER(INT32), INTENT(IN) :: bucket_count
+    INTEGER(EIS_INT32), INTENT(IN) :: bucket_count
 
-    CALL this%init(INT(bucket_count,INT64))
+    CALL this%init(INT(bucket_count,EIS_INT64))
 
   END SUBROUTINE ns_init_i4
 
@@ -725,15 +723,15 @@ CONTAINS
     CLASS(named_store), INTENT(IN) :: this
     CLASS(named_store), INTENT(INOUT) :: dest
     LOGICAL, INTENT(IN), OPTIONAL :: shallow
-    INTEGER(INT64) :: i
+    INTEGER(EIS_INT64) :: i
     INTEGER :: j
     LOGICAL :: ok
     CLASS(*), POINTER :: gptr
 
     IF (.NOT. this%is_init) RETURN
     IF (dest%is_init) CALL dest%cleanup()
-    CALL dest%init(SIZE(this%buckets, KIND=INT64))
-    DO i = 1, SIZE(this%buckets, KIND=INT64)
+    CALL dest%init(SIZE(this%buckets, KIND=EIS_INT64))
+    DO i = 1, SIZE(this%buckets, KIND=EIS_INT64)
       CALL this%buckets(i)%copy(dest%buckets(i), shallow)
     END DO
     ok = dest%names%clear()

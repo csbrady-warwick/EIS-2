@@ -686,8 +686,8 @@ MODULE eis_deck_definition_interop
     LOGICAL, TARGET :: fallback
     LOGICAL, POINTER :: pfallback
     INTEGER(C_INT), POINTER :: pc_init_flag
-    INTEGER(INT32), POINTER :: pi32count
-    INTEGER(INT64), POINTER :: pi64count
+    INTEGER(EIS_INT32), POINTER :: pi32count
+    INTEGER(EIS_INT64), POINTER :: pi64count
     PROCEDURE(block_generic_callback_c), POINTER :: c_init_block
     PROCEDURE(block_generic_callback_c), POINTER :: c_start_pass
     PROCEDURE(block_generic_callback_c), POINTER :: c_end_pass
@@ -828,8 +828,8 @@ MODULE eis_deck_definition_interop
     LOGICAL, TARGET :: fallback
     LOGICAL, POINTER :: pfallback
     INTEGER(C_INT), POINTER :: pc_init_flag
-    INTEGER(INT32), POINTER :: pi32count
-    INTEGER(INT64), POINTER :: pi64count
+    INTEGER(EIS_INT32), POINTER :: pi32count
+    INTEGER(EIS_INT64), POINTER :: pi64count
     PROCEDURE(key_text_callback_c), POINTER :: c_key_text_fn
     PROCEDURE(key_value_callback_c), POINTER :: c_key_value_fn
     PROCEDURE(key_numeric_value_callback_c), POINTER :: c_key_numeric_value_fn
